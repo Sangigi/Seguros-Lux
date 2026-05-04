@@ -1,0 +1,22 @@
+/vendor/
+/.env.php
+/.env
+/.env.local
+/.env.*.local
+
+# Runtime logs and sensitive artifacts
+/logs/*.log
+/public/error_log
+/public/telegram/error_log
+/public/telegram/*.log
+/public/whatsapp/*.log
+/storage/ratelimit/*.json
+/App/Controllers/bot_sessions/*.json
+
+# OS / IDE noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+.phpunit.cache/

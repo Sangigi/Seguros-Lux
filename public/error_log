@@ -1,0 +1,99 @@
+[04-May-2026 14:55:08 America/Mexico_City] PHP Fatal error:  Uncaught ErrorException: Cannot modify header information - headers already sent by (output started at /home2/grupoide/seguroslux.mx/.env.php:1) in /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php:86
+Stack trace:
+#0 [internal function]: {closure}(2, 'Cannot modify h...', '/home2/grupoide...', 86)
+#1 /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php(86): header('X-Frame-Options...')
+#2 /home2/grupoide/seguroslux.mx/public/index.php(31): App\Security\SessionManager::sendSecurityHeaders()
+#3 {main}
+  thrown in /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php on line 86
+[04-May-2026 14:55:25 America/Mexico_City] PHP Parse error:  syntax error, unexpected token "=" in /home2/grupoide/seguroslux.mx/.env.php on line 3
+[04-May-2026 14:55:26 America/Mexico_City] PHP Parse error:  syntax error, unexpected token "=" in /home2/grupoide/seguroslux.mx/.env.php on line 3
+[04-May-2026 14:55:51 America/Mexico_City] PHP Parse error:  syntax error, unexpected token "=" in /home2/grupoide/seguroslux.mx/.env.php on line 3
+[04-May-2026 14:56:29 America/Mexico_City] PHP Fatal error:  Uncaught ErrorException: Cannot modify header information - headers already sent by (output started at /home2/grupoide/seguroslux.mx/.env.php:1) in /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php:86
+Stack trace:
+#0 [internal function]: {closure}(2, 'Cannot modify h...', '/home2/grupoide...', 86)
+#1 /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php(86): header('X-Frame-Options...')
+#2 /home2/grupoide/seguroslux.mx/public/index.php(31): App\Security\SessionManager::sendSecurityHeaders()
+#3 {main}
+  thrown in /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php on line 86
+[04-May-2026 14:59:30 America/Mexico_City] PHP Fatal error:  Uncaught ErrorException: Cannot modify header information - headers already sent by (output started at /home2/grupoide/seguroslux.mx/.env.php:1) in /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php:86
+Stack trace:
+#0 [internal function]: {closure}(2, 'Cannot modify h...', '/home2/grupoide...', 86)
+#1 /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php(86): header('X-Frame-Options...')
+#2 /home2/grupoide/seguroslux.mx/public/index.php(31): App\Security\SessionManager::sendSecurityHeaders()
+#3 {main}
+  thrown in /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php on line 86
+[04-May-2026 14:59:32 America/Mexico_City] PHP Fatal error:  Uncaught ErrorException: Cannot modify header information - headers already sent by (output started at /home2/grupoide/seguroslux.mx/.env.php:1) in /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php:86
+Stack trace:
+#0 [internal function]: {closure}(2, 'Cannot modify h...', '/home2/grupoide...', 86)
+#1 /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php(86): header('X-Frame-Options...')
+#2 /home2/grupoide/seguroslux.mx/public/index.php(31): App\Security\SessionManager::sendSecurityHeaders()
+#3 {main}
+  thrown in /home2/grupoide/seguroslux.mx/App/Security/SessionManager.php on line 86
+[04-May-2026 15:00:27 America/Mexico_City] PHP Fatal error:  Uncaught RuntimeException: Error en la conexión: SQLSTATE[HY000] [1045] Access denied for user 'root'@'localhost' (using password: NO) in /home2/grupoide/seguroslux.mx/Database/Connection.php:35
+Stack trace:
+#0 /home2/grupoide/seguroslux.mx/App/Models/BaseModel.php(32): Database\Connection::getConnection()
+#1 /home2/grupoide/seguroslux.mx/App/Models/ClientModel.php(195): App\Models\BaseModel->db()
+#2 /home2/grupoide/seguroslux.mx/App/Views/dashboard/index.php(27): App\Models\ClientModel->countHoy(25)
+#3 /home2/grupoide/seguroslux.mx/public/index.php(93): require('/home2/grupoide...')
+#4 /home2/grupoide/seguroslux.mx/Core/Router.php(44): {closure}()
+#5 /home2/grupoide/seguroslux.mx/Core/Router.php(32): Router->run(Object(Closure))
+#6 /home2/grupoide/seguroslux.mx/public/index.php(134): Router->dispatch('GET', '/dashboard')
+#7 {main}
+  thrown in /home2/grupoide/seguroslux.mx/Database/Connection.php on line 35
+[04-May-2026 15:04:09 America/Mexico_City] PHP Fatal error:  Uncaught Error: Failed opening required '/home2/grupoide/seguroslux.mx/.env.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home2/grupoide/seguroslux.mx/public/index.php:26
+Stack trace:
+#0 {main}
+  thrown in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:04:10 America/Mexico_City] PHP Fatal error:  Uncaught Error: Failed opening required '/home2/grupoide/seguroslux.mx/.env.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home2/grupoide/seguroslux.mx/public/index.php:26
+Stack trace:
+#0 {main}
+  thrown in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:04:11 America/Mexico_City] PHP Fatal error:  Uncaught Error: Failed opening required '/home2/grupoide/seguroslux.mx/.env.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home2/grupoide/seguroslux.mx/public/index.php:26
+Stack trace:
+#0 {main}
+  thrown in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:04:12 America/Mexico_City] PHP Fatal error:  Uncaught Error: Failed opening required '/home2/grupoide/seguroslux.mx/.env.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home2/grupoide/seguroslux.mx/public/index.php:26
+Stack trace:
+#0 {main}
+  thrown in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:04:13 America/Mexico_City] PHP Fatal error:  Uncaught Error: Failed opening required '/home2/grupoide/seguroslux.mx/.env.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home2/grupoide/seguroslux.mx/public/index.php:26
+Stack trace:
+#0 {main}
+  thrown in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:04:20 America/Mexico_City] PHP Fatal error:  Uncaught Error: Failed opening required '/home2/grupoide/seguroslux.mx/.env.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home2/grupoide/seguroslux.mx/public/index.php:26
+Stack trace:
+#0 {main}
+  thrown in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:04:20 America/Mexico_City] PHP Fatal error:  Uncaught Error: Failed opening required '/home2/grupoide/seguroslux.mx/.env.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home2/grupoide/seguroslux.mx/public/index.php:26
+Stack trace:
+#0 {main}
+  thrown in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:07:22 America/Mexico_City] PHP Warning:  require(/home2/grupoide/seguroslux.mx/.env.php): Failed to open stream: No such file or directory in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:07:22 America/Mexico_City] PHP Fatal error:  Uncaught Error: Failed opening required '/home2/grupoide/seguroslux.mx/.env.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home2/grupoide/seguroslux.mx/public/index.php:26
+Stack trace:
+#0 {main}
+  thrown in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:07:24 America/Mexico_City] PHP Warning:  require(/home2/grupoide/seguroslux.mx/.env.php): Failed to open stream: No such file or directory in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:07:24 America/Mexico_City] PHP Fatal error:  Uncaught Error: Failed opening required '/home2/grupoide/seguroslux.mx/.env.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home2/grupoide/seguroslux.mx/public/index.php:26
+Stack trace:
+#0 {main}
+  thrown in /home2/grupoide/seguroslux.mx/public/index.php on line 26
+[04-May-2026 15:20:12 America/Mexico_City] PHP Fatal error:  Uncaught TypeError: htmlspecialchars(): Argument #1 ($string) must be of type string, null given in /home2/grupoide/seguroslux.mx/App/Views/citas/index.php:424
+Stack trace:
+#0 /home2/grupoide/seguroslux.mx/App/Views/citas/index.php(424): htmlspecialchars(NULL)
+#1 /home2/grupoide/seguroslux.mx/public/index.php(111): require('/home2/grupoide...')
+#2 /home2/grupoide/seguroslux.mx/Core/Router.php(44): {closure}()
+#3 /home2/grupoide/seguroslux.mx/Core/Router.php(32): Router->run(Object(Closure))
+#4 /home2/grupoide/seguroslux.mx/public/index.php(135): Router->dispatch('GET', '/citas')
+#5 {main}
+  thrown in /home2/grupoide/seguroslux.mx/App/Views/citas/index.php on line 424
+[04-May-2026 15:23:38 America/Mexico_City] PHP Fatal error:  Uncaught TypeError: htmlspecialchars(): Argument #1 ($string) must be of type string, null given in /home2/grupoide/seguroslux.mx/App/Views/cotizaciones/crear.php:432
+Stack trace:
+#0 /home2/grupoide/seguroslux.mx/App/Views/cotizaciones/crear.php(432): htmlspecialchars(NULL)
+#1 /home2/grupoide/seguroslux.mx/public/index.php(108): require('/home2/grupoide...')
+#2 /home2/grupoide/seguroslux.mx/Core/Router.php(44): {closure}()
+#3 /home2/grupoide/seguroslux.mx/Core/Router.php(32): Router->run(Object(Closure))
+#4 /home2/grupoide/seguroslux.mx/public/index.php(135): Router->dispatch('GET', '/crear-cotizaci...')
+#5 {main}
+  thrown in /home2/grupoide/seguroslux.mx/App/Views/cotizaciones/crear.php on line 432
+[04-May-2026 15:34:46 America/Mexico_City] WhatsAppBot: SQLSTATE[HY093]: Invalid parameter number @ /home2/grupoide/seguroslux.mx/App/Models/CitaModel.php:347

@@ -1,0 +1,587 @@
+/* ════════════════════════════════════════════════
+   1. FUENTES
+════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap"');
+ 
+ 
+/* ════════════════════════════════════════════════
+   2. VARIABLES — Sobreescribe las de styles.css
+════════════════════════════════════════════════ */
+:root {
+    /* Tipografía */
+    --font-body:    'Google Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: 'Google Sans', Georgia, serif;
+
+    /* Fondos cálidos neutros (reemplaza el bg-body azulado) */
+    --bg-body:    #f2f1ee;
+    --bg-subtle:  #ebe9e5;
+    --bg-card:    #ffffff;
+
+    /* Sidebar: negro puro, igual que el panel izq del login */
+    --sidebar-bg:     #111110;
+    --sidebar-border: rgba(255, 255, 255, 0.07);
+    --sidebar-hover:  rgba(255, 255, 255, 0.05);
+    --sidebar-text:   rgba(255, 255, 255, 0.5);
+    --sidebar-active: #ffffff;
+
+    /* Accent: mismo tono que el login */
+    --accent:       #c0842a;
+    --accent-light: #d4a044;
+    --accent-dark:  #a87025;
+    --accent-glow:  rgba(192, 132, 42, 0.25);
+
+    /* Info: neutro carbón en lugar de azul */
+    --info:       #111110;
+    --info-light: rgba(17, 17, 16, 0.06);
+
+    /* Bordes más suaves */
+    --border:       #dddbd6;
+    --border-light: #eae8e3;
+
+    /* Textos */
+    --text-primary:   #111110;
+    --text-secondary: #5a5855;
+    --text-muted:     #9c9994;
+
+    /* Sombras más sutiles (sin el exceso de capas) */
+    --shadow-card:       0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.09), 0 2px 8px rgba(0,0,0,0.05);
+    --shadow-lg:         0 12px 32px rgba(0,0,0,0.1);
+
+    /* Radios más contenidos — menos bubbly */
+    --radius-sm: 8px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+}
+
+
+/* ════════════════════════════════════════════════
+   3. BASE
+════════════════════════════════════════════════ */
+body {
+    font-family: var(--font-body);
+    background: var(--bg-body);
+    /* Elimina el body::before con gradientes de colores de styles.css */
+}
+
+body::before {
+    display: none;
+}
+
+/* Fondo de página: textura de grano muy sutil */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0.5;
+}
+
+
+/* ════════════════════════════════════════════════
+   4. SIDEBAR
+════════════════════════════════════════════════ */
+
+/* El sidebar de _navbar.php usa .crm-sidebar
+   El de styles.css usa .sidebar
+   Este parche cubre AMBOS */
+.sidebar,
+.crm-sidebar {
+    background: var(--sidebar-bg) !important;
+    border-right: 1px solid var(--sidebar-border) !important;
+}
+
+/* Elimina el pseudo-gradiente dorado del sidebar */
+.sidebar::before {
+    display: none;
+}
+
+/* Logo */
+.sidebar-logo-icon,
+.sidebar-logo-icon svg {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Logo cuadrado geométrico — igual al login */
+.sidebar-logo-icon {
+    width: 28px !important;
+    height: 28px !important;
+    border: 1.5px solid rgba(255,255,255,0.75) !important;
+    border-radius: 0 !important;
+    position: relative;
+    background: transparent !important;
+}
+
+.sidebar-logo-icon::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    right: -5px;
+    width: 11px;
+    height: 11px;
+    background: #fff;
+    pointer-events: none;
+}
+
+.sidebar-logo-text {
+    font-family: var(--font-display) !important;
+    font-size: 19px !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.01em !important;
+}
+
+/* Nav items */
+.nav-item,
+.sidebar-link {
+    border-radius: 6px !important;
+    font-family: var(--font-body) !important;
+    font-size: 13.5px !important;
+    font-weight: 400 !important;
+    letter-spacing: 0 !important;
+    color: var(--sidebar-text) !important;
+    position: relative;
+    transition: color 0.25s, background 0.25s !important;
+}
+
+.nav-item:hover,
+.sidebar-link:hover {
+    background: var(--sidebar-hover) !important;
+    color: #fff !important;
+}
+
+/* Barra izquierda de item activo — igual que en el login */
+.nav-item.active,
+.sidebar-link.active {
+    background: rgba(192, 132, 42, 0.1) !important;
+    color: rgba(255,255,255,0.9) !important;
+    font-weight: 500 !important;
+}
+
+.nav-item.active::before,
+.sidebar-link.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px; bottom: 8px;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+    box-shadow: none !important;
+}
+
+/* Elimina el ::before que hace la barra de hover en styles.css */
+.nav-item::before {
+    display: none;
+}
+.nav-item.active::before {
+    display: block;
+}
+
+/* Avatar usuario */
+.sidebar-user-avatar {
+    background: var(--accent) !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    color: #111110 !important;
+    font-family: var(--font-body) !important;
+}
+
+/* Section labels */
+.nav-section-title,
+.sidebar-section-label {
+    font-family: var(--font-body) !important;
+    font-size: 10px !important;
+    letter-spacing: 0.15em !important;
+    color: rgba(255,255,255,0.25) !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   5. PAGE HEADER
+════════════════════════════════════════════════ */
+.page-title {
+    font-family: var(--font-display) !important;
+    font-size: 28px !important;
+    font-weight: 400 !important;
+    letter-spacing: -0.3px !important;
+    gap: 14px !important;
+}
+
+/* Icono de page title — cuadrado limpio en lugar del gradiente dorado */
+.page-title-icon {
+    width: 44px !important;
+    height: 44px !important;
+    background: var(--bg-subtle) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-sm) !important;
+    color: var(--text-primary) !important;
+    box-shadow: none !important;
+    transition: background 0.2s, border-color 0.2s !important;
+}
+
+.page-title-icon:hover {
+    transform: none !important;
+    background: var(--bg-card) !important;
+    border-color: var(--accent) !important;
+}
+
+.page-subtitle {
+    font-family: var(--font-body) !important;
+    font-size: 13px !important;
+    color: var(--text-muted) !important;
+    font-weight: 400 !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   6. CARDS
+════════════════════════════════════════════════ */
+.card {
+    border: 1px solid var(--border-light) !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-card) !important;
+    transition: box-shadow 0.3s, border-color 0.3s !important;
+}
+
+.card:hover {
+    box-shadow: var(--shadow-card-hover) !important;
+    border-color: var(--border) !important;
+}
+
+.card-header {
+    background: var(--bg-card) !important;
+    border-bottom: 1px solid var(--border-light) !important;
+    padding: 20px 24px !important;
+}
+
+.card-title {
+    font-family: var(--font-body) !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+}
+
+.card-body {
+    padding: 24px !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   7. STAT CARDS
+════════════════════════════════════════════════ */
+.stat-card {
+    border-radius: var(--radius-lg) !important;
+    border: 1px solid var(--border-light) !important;
+    box-shadow: var(--shadow-card) !important;
+    padding: 24px !important;
+    transition: transform 0.3s, box-shadow 0.3s !important;
+}
+
+.stat-card:hover {
+    transform: translateY(-3px) !important;
+    box-shadow: var(--shadow-card-hover) !important;
+}
+
+/* Barra superior: solo aparece en hover, sin glow */
+.stat-card::before {
+    height: 2px !important;
+    border-radius: 0 !important;
+}
+
+.stat-card-value {
+    font-family: var(--font-display) !important;
+    font-size: 34px !important;
+    font-weight: 400 !important;
+    letter-spacing: -0.5px !important;
+    color: var(--text-primary) !important;
+}
+
+.stat-card-label {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+    color: var(--text-muted) !important;
+}
+
+/* Íconos sin el recuadro azul */
+.stat-card-icon {
+    background: var(--bg-subtle) !important;
+    color: var(--text-secondary) !important;
+    border-radius: var(--radius-sm) !important;
+    box-shadow: none !important;
+}
+
+.stat-card:hover .stat-card-icon {
+    transform: none !important;
+}
+
+.stat-card.accent .stat-card-icon {
+    background: rgba(192, 132, 42, 0.1) !important;
+    color: var(--accent) !important;
+}
+
+.stat-card.success .stat-card-icon { background: rgba(34,197,94,0.08) !important; }
+.stat-card.warning .stat-card-icon { background: rgba(245,158,11,0.08) !important; }
+.stat-card.danger  .stat-card-icon { background: rgba(239,68,68,0.08) !important; }
+
+
+/* ════════════════════════════════════════════════
+   8. BOTONES
+════════════════════════════════════════════════ */
+
+/* El shimmer de brillo de ::before en .btn — queda, es sutil */
+
+.btn {
+    font-family: var(--font-body) !important;
+    font-weight: 500 !important;
+    border-radius: var(--radius-sm) !important;
+    letter-spacing: 0.01em !important;
+}
+
+/* Primary: negro sólido con sweep — igual que en el login */
+.btn-primary {
+    background: var(--text-primary) !important;
+    color: #f2f1ee !important;
+    box-shadow: none !important;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #2a2a28 !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* Outline: borde fino */
+.btn-outline {
+    border: 1.5px solid var(--border) !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+.btn-outline:hover:not(:disabled) {
+    border-color: var(--text-primary) !important;
+    color: var(--text-primary) !important;
+    background: var(--bg-subtle) !important;
+}
+
+/* Success: verde oscuro austero */
+.btn-success {
+    background: #166534 !important;
+    box-shadow: none !important;
+}
+.btn-success:hover:not(:disabled) {
+    background: #14532d !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* Danger */
+.btn-danger {
+    box-shadow: none !important;
+}
+.btn-danger:hover:not(:disabled) {
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   9. FORMULARIOS
+════════════════════════════════════════════════ */
+.form-input,
+.form-select,
+.form-textarea,
+.search-bar-input,
+.filter-select {
+    font-family: var(--font-body) !important;
+    background: var(--bg-card) !important;
+    border: 1.5px solid var(--border) !important;
+    border-radius: var(--radius-sm) !important;
+    color: var(--text-primary) !important;
+    transition: border-color 0.25s, box-shadow 0.25s !important;
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus,
+.search-bar-input:focus,
+.filter-select:focus {
+    border-color: var(--text-primary) !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.form-label {
+    font-family: var(--font-body) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase !important;
+    color: var(--text-secondary) !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   10. TABLAS
+════════════════════════════════════════════════ */
+.data-table th {
+    background: var(--bg-card) !important;
+    font-family: var(--font-body) !important;
+    font-size: 10px !important;
+    letter-spacing: 0.12em !important;
+    color: var(--text-muted) !important;
+    border-bottom: 1.5px solid var(--border) !important;
+}
+
+.data-table tbody tr:hover {
+    background: var(--bg-subtle) !important;
+}
+
+/* Elimina el box-shadow lateral dorado en hover */
+.data-table tbody tr:hover td:first-child {
+    box-shadow: inset 2px 0 0 var(--accent) !important;
+}
+
+.table-user-avatar {
+    background: var(--text-primary) !important;
+    border-radius: var(--radius-sm) !important;
+    box-shadow: none !important;
+}
+
+.data-table tbody tr:hover .table-user-avatar {
+    transform: none !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   11. BADGES
+════════════════════════════════════════════════ */
+.badge {
+    font-family: var(--font-body) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    border-radius: 4px !important;      /* píldora rectangular, no circular */
+    letter-spacing: 0.03em !important;
+    padding: 4px 10px !important;
+}
+
+.badge-info {
+    background: rgba(17,17,16,0.07) !important;
+    color: var(--text-primary) !important;
+    border-color: rgba(17,17,16,0.15) !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   12. MODALES
+════════════════════════════════════════════════ */
+.modal-overlay {
+    backdrop-filter: blur(8px) !important;
+    background: rgba(17,17,16,0.55) !important;
+}
+
+.modal {
+    border-radius: var(--radius-lg) !important;
+    border: 1px solid var(--border-light) !important;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.18) !important;
+}
+
+.modal-header {
+    background: var(--bg-card) !important;
+    border-bottom: 1px solid var(--border-light) !important;
+    padding: 24px 28px !important;
+}
+
+.modal-title {
+    font-family: var(--font-display) !important;
+    font-size: 20px !important;
+    font-weight: 400 !important;
+    color: var(--text-primary) !important;
+}
+
+.modal-close {
+    border-radius: var(--radius-sm) !important;
+    transition: background 0.2s, transform 0.2s !important;
+}
+
+.modal-close:hover {
+    transform: none !important;
+    rotate: 90deg;
+}
+
+.modal-footer {
+    background: var(--bg-subtle) !important;
+    border-top: 1px solid var(--border-light) !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   13. TOASTS
+════════════════════════════════════════════════ */
+.toast {
+    border-radius: var(--radius-md) !important;
+    border: 1px solid var(--border-light) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
+    font-family: var(--font-body) !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   14. PAGINACIÓN
+════════════════════════════════════════════════ */
+.page-btn {
+    border-radius: var(--radius-sm) !important;
+    border: 1.5px solid var(--border) !important;
+    font-family: var(--font-body) !important;
+    font-size: 13px !important;
+    transition: border-color 0.2s, color 0.2s !important;
+}
+
+.page-btn:hover {
+    transform: none !important;
+    border-color: var(--text-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+.page-btn.active {
+    background: var(--text-primary) !important;
+    color: #f2f1ee !important;
+    border-color: var(--text-primary) !important;
+    box-shadow: none !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   15. SCROLLBAR
+════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+
+/* ════════════════════════════════════════════════
+   16. FOCUS ACCESIBLE
+════════════════════════════════════════════════ */
+:focus-visible {
+    outline: 2px solid var(--text-primary) !important;
+    outline-offset: 2px !important;
+}
+
+
+/* ════════════════════════════════════════════════
+   17. ANIMACIÓN DE ENTRADA DE PÁGINA
+════════════════════════════════════════════════ */
+@keyframes fadeInContent {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.main-content {
+    animation: fadeInContent 0.4s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
