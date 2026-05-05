@@ -150,6 +150,15 @@ $csrfToken = SessionManager::getCsrfToken();
 
         </form>
 
+        <div class="back-home">
+            <a href="/" class="back-link">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M8 1L3 6l5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Volver a la página principal
+            </a>
+        </div>
+
         <div class="stats-row">
             <div class="stat">
                 <div class="stat-n" id="sn1">0</div>
@@ -165,15 +174,6 @@ $csrfToken = SessionManager::getCsrfToken();
             </div>
         </div>
     </div><!-- /right -->
-
-    <div class="back-home">
-        <a href="/" class="back-link">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M8 1L3 6l5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Volver a la página principal
-        </a>
-    </div>
 
 </div><!-- /lrRoot -->
 
