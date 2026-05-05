@@ -52,7 +52,7 @@ GET /api/health?deep=1&token=TU_TOKEN — readiness: verifica BD. Define HEALTH_
 
 Pruebas y CI
 
-vendor/bin/phpunit
+vendor/bin/phpunit || vendor/bin/phpunit --testdox
 
 En GitHub, el workflow .github/workflows/ci.yml ejecuta composer install, composer audit --no-dev, PHPUnit y comprobación de sintaxis PHP (php -l).
 
