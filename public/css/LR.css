@@ -411,26 +411,25 @@
 }
 
 .back-home {
-    margin-top: 16px;
+    margin-top: 1.25rem;
+    margin-bottom: 0.25rem;
     text-align: center;
 }
 
 .back-link {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: rgba(0,0,0,0.3);
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: #8a7f6e;
     text-decoration: none;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    font-family: 'Google Sans', sans-serif;
-    transition: color 0.2s ease;
+    letter-spacing: 0.02em;
+    transition: color 0.2s ease, gap 0.2s ease;
 }
 
 .back-link:hover {
-    color: #111110;
-    gap: 6px;
+    color: #3d3529;
+    gap: 0.6rem;
 }
 
 .back-link svg {
