@@ -20,3 +20,8 @@ Thumbs.db
 .vscode/
 
 .phpunit.cache/
+
+/public/images/
+/public/blog/
+/uploads/
+/logs/
