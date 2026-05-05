@@ -89,9 +89,10 @@
   padding:52px 52px 48px;
   display:flex;
   flex-direction:column;
-  justify-content:center;
+  justify-content:center; 
   position:relative;
   background:#f5f4f1;
+  overflow-y:auto;
 }
 
 /* Número de fondo decorativo */
