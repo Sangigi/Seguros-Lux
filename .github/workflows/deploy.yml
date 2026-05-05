@@ -2,14 +2,15 @@ name: Deploy to Hostgator
 
 on:
   push:
-    branches:
-      - main  # Segun tu rama principal juasjuas
+    branches: [ "main" ]
 
 jobs:
-  deploy:
+  ftp-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
