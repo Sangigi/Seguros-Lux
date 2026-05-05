@@ -13,10 +13,10 @@ $clienteModel   = new ClientModel();
 $cotizacionModel= new CotizacionModel();
 $historialModel = new HistorialModel();
 
-$_autoloader = dirname(__DIR__, 3) . '/vendor/autoload.php';
-if (file_exists($_autoloader)) require_once $_autoloader;
+// $_autoloader = dirname(__DIR__, 3) . '/vendor/autoload.php';
+// if (file_exists($_autoloader)) require_once $_autoloader;
 
-// ── AJAX GET: límite de cotizaciones ─────────────────────────────────────
+// ── AJAX GET ──────────────────────────────────────────────────────────────
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'limite') {
     header('Content-Type: application/json');
     $cid = (int)($_GET['cliente_id'] ?? 0);
@@ -41,20 +41,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         exit;
     }
 
-    // ── Crear cotización ─────────────────────────────────────────────────
     if ($_POST['accion'] === 'crear') {
-        $pCliente    = (int)($_POST['cliente_id']       ?? 0);
+        $pCliente    = (int)($_POST['cliente_id']    ?? 0);
         $pRamo       = $ramoActivo;
-        $pCompania   = trim($_POST['compania']          ?? '');
-        $pCobertura  = trim($_POST['tipo_cobertura']    ?? '');
-        // Prima: 0 es válido — se permite dejar en blanco o poner 0
+        $pCompania   = trim($_POST['compania']        ?? '');
+        $pCobertura  = trim($_POST['tipo_cobertura']  ?? '');
         $pPrecio     = $_POST['precio'] !== '' ? (float)$_POST['precio'] : 0.0;
-        $pEstadoF    = trim($_POST['estado_folio']      ?? 'N');
-        $pComentarios= trim($_POST['comentarios']       ?? '');
-        $pFecha      = trim($_POST['fecha']             ?? date('Y-m-d'));
-        $pMetodo     = trim($_POST['metodo_pago']       ?? '');
-
-        $pEstado = 'pendiente';
+        $pEstadoF    = trim($_POST['estado_folio']    ?? 'N');
+        $pComentarios= trim($_POST['comentarios']     ?? '');
+        $pFecha      = trim($_POST['fecha']           ?? date('Y-m-d'));
+        $pMetodo     = trim($_POST['metodo_pago']     ?? '');
+        $pEstado     = 'pendiente';
 
         $errores = [];
         if (!$pCliente)   $errores[] = 'Selecciona un cliente.';
@@ -85,11 +82,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         ];
 
         try {
-            $cotId = $cotizacionModel->transaction(function() use (
-                $cotizacionModel, $clienteModel, $historialModel,
+            $cotId = $cotizacionModel->transaction(function () use (
+                $cotizacionModel, $clienteModel,
                 $pCliente, $pRamo, $pCompania, $pCobertura, $pPrecio,
-                $pEstado, $pEstadoF, $pComentarios, $pFecha,
-                $pMetodo, $agenteId
+                $pEstado, $pEstadoF, $pComentarios, $pFecha, $pMetodo, $agenteId
             ) {
                 $cotId = $cotizacionModel->crear([
                     'cliente_id'    => $pCliente,
@@ -103,21 +99,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                     'comentarios'   => $pComentarios,
                     'fecha'         => $pFecha,
                 ]);
-
                 if ($pMetodo && in_array($pMetodo, ['spei','contado','meses_sin_intereses'], true)) {
                     $cotizacionModel->updateMetodoPago($cotId, $agenteId, $pMetodo);
                 }
-
                 $clienteModel->updateEstadoSiProcede($pCliente, $agenteId, 'con_cotizacion');
                 return $cotId;
             });
         } catch (\Throwable $e) {
             error_log('Crear cotización error: ' . $e->getMessage());
-            echo json_encode(['ok'=>false,'msg'=>'Error al crear la cotización: ' . $e->getMessage()]); exit;
+            echo json_encode(['ok'=>false,'msg'=>'Error: '.$e->getMessage(),'_file'=>$e->getFile(),'_line'=>$e->getLine()]);
+            exit;
         }
 
         $folio = $cotizacionModel->find($cotId, ['folio'])['folio'] ?? '';
-
         $uploadDir = dirname(__DIR__, 3) . "/uploads/cotizaciones/{$cotId}/";
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
         $archivosGuardados = [];
@@ -128,37 +122,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             if ($file['error'] !== UPLOAD_ERR_OK) continue;
             $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
             if (!in_array($ext, $extsValidos, true) || $file['size'] > 10*1024*1024) {
-                echo json_encode(['ok'=>false,'msg'=>"Formato o tamaño inválido en {$label}."]); exit;
+                echo json_encode(['ok'=>false,'msg'=>"Formato inválido en {$label}."]); exit;
             }
             $nombreArchivo = $tipo . '_' . time() . '.' . $ext;
             $rutaRelativa  = "uploads/cotizaciones/{$cotId}/{$nombreArchivo}";
             if (!move_uploaded_file($file['tmp_name'], $uploadDir . $nombreArchivo)) {
                 echo json_encode(['ok'=>false,'msg'=>"Error al subir {$label}."]); exit;
             }
-            $archivoId = $cotizacionModel->adjuntarArchivo($cotId, $agenteId, $tipo, $file['name'], $nombreArchivo, $rutaRelativa);
-            $archivosGuardados[] = $archivoId;
+            $archivosGuardados[] = $cotizacionModel->adjuntarArchivo(
+                $cotId, $agenteId, $tipo, $file['name'], $nombreArchivo, $rutaRelativa
+            );
         }
-
-        // Prima en el historial: mostrar "Sin definir" si es 0
-        $primaLabel = $pPrecio > 0
-            ? '$' . number_format($pPrecio, 2)
-            : 'Sin definir';
 
         $historialModel->registrar($pCliente, $agenteId, 'cotizacion',
             "Cotización creada — Folio: {$folio}",
-            "{$pCompania} · {$pCobertura} · {$primaLabel}"
+            "{$pCompania} · {$pCobertura} · " . ($pPrecio > 0 ? '$'.number_format($pPrecio,2) : 'Sin definir')
         );
 
         echo json_encode(['ok'=>true,'folio'=>$folio,'id'=>$cotId,'docs'=>count($archivosGuardados)]);
         exit;
     }
 
-    // ── Actualizar cotización existente (modo edición) ───────────────────────
     if ($_POST['accion'] === 'actualizar') {
         $pCotId      = (int)($_POST['cotizacion_id'] ?? 0);
         $pCompania   = trim($_POST['compania']        ?? '');
         $pCobertura  = trim($_POST['tipo_cobertura']  ?? '');
-        // Prima: 0 es válido
         $pPrecio     = $_POST['precio'] !== '' ? (float)$_POST['precio'] : 0.0;
         $pComentarios= trim($_POST['comentarios']     ?? '');
         $pFecha      = trim($_POST['fecha']           ?? date('Y-m-d'));
@@ -167,71 +155,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         if (!$pCotId || !$pCompania || !$pCobertura || !$pFecha) {
             echo json_encode(['ok'=>false,'msg'=>'Completa todos los campos requeridos.']); exit;
         }
-
         $cotExist = $cotizacionModel->getByIdYAgente($pCotId, $agenteId);
         if (!$cotExist) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
 
         try {
-            $cotizacionModel->transaction(function() use (
+            $cotizacionModel->transaction(function ($db) use (
                 $cotizacionModel, $historialModel,
                 $pCotId, $pCompania, $pCobertura, $pPrecio,
-                $pComentarios, $pFecha, $pMetodo,
-                $agenteId, $cotExist
+                $pComentarios, $pFecha, $pMetodo, $agenteId, $cotExist
             ) {
-                $db = \Database\Connection::getConnection();
                 $db->prepare(
-                    "UPDATE cotizaciones
-                     SET compania=?, tipo_cobertura=?, precio=?,
-                         comentarios=?, fecha=?
+                    "UPDATE cotizaciones SET compania=?,tipo_cobertura=?,precio=?,comentarios=?,fecha=?
                      WHERE id=? AND agente_id=?"
-                )->execute([
-                    $pCompania, $pCobertura, $pPrecio,
-                    $pComentarios, $pFecha,
-                    $pCotId, $agenteId,
-                ]);
+                )->execute([$pCompania,$pCobertura,$pPrecio,$pComentarios,$pFecha,$pCotId,$agenteId]);
 
-                if ($pMetodo && in_array($pMetodo, ['spei','contado','meses_sin_intereses'], true)) {
-                    $cotizacionModel->updateMetodoPago($pCotId, $agenteId, $pMetodo);
+                if ($pMetodo && in_array($pMetodo,['spei','contado','meses_sin_intereses'],true)) {
+                    $cotizacionModel->updateMetodoPago($pCotId,$agenteId,$pMetodo);
                 }
-
-                $primaLabel = $pPrecio > 0
-                    ? '$' . number_format($pPrecio, 2)
-                    : 'Sin definir';
-
                 $historialModel->registrar(
                     (int)$cotExist['cliente_id'], $agenteId, 'cotizacion',
-                    'Cotización actualizada — Folio: ' . ($cotExist['folio'] ?? '#'.$pCotId),
-                    "{$pCompania} · {$pCobertura} · {$primaLabel}"
+                    'Cotización actualizada — Folio: '.($cotExist['folio']??'#'.$pCotId),
+                    "{$pCompania} · {$pCobertura} · ".($pPrecio>0?'$'.number_format($pPrecio,2):'Sin definir')
                 );
             });
         } catch (\Throwable $e) {
-            error_log('Actualizar cotización error: ' . $e->getMessage());
-            echo json_encode(['ok'=>false,'msg'=>'Error al actualizar: ' . $e->getMessage()]); exit;
+            error_log('Actualizar cotización: '.$e->getMessage());
+            echo json_encode(['ok'=>false,'msg'=>'Error: '.$e->getMessage(),'_line'=>$e->getLine()]); exit;
         }
 
-        $tiposDoc = [
-            'doc_cotizacion'      => ['Documento de cotización', ['pdf','jpg','jpeg','png']],
-            'foto_coche_1'=>['Foto 1',['jpg','jpeg','png']],'foto_coche_2'=>['Foto 2',['jpg','jpeg','png']],
-            'foto_coche_3'=>['Foto 3',['jpg','jpeg','png']],'foto_coche_4'=>['Foto 4',['jpg','jpeg','png']],
-            'foto_coche_5'=>['Foto 5',['jpg','jpeg','png']],
-            'ine'=>['INE',['pdf','jpg','jpeg','png']],'comprobante_dom'=>['Comprobante domicilio',['pdf','jpg','jpeg','png']],
-            'tarjeta_circulacion'=>['Tarjeta circulación',['pdf','jpg','jpeg','png']],
-            'factura_auto'=>['Factura del auto',['pdf','jpg','jpeg','png']],
-            'constancia_fiscal'=>['Constancia fiscal',['pdf','jpg','jpeg','png']],
-        ];
-        $uploadDir = dirname(__DIR__, 3) . "/uploads/cotizaciones/{$pCotId}/";
-        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-        foreach ($tiposDoc as $tipo => [$label, $extsValidos]) {
+        $tiposDoc = ['doc_cotizacion'=>['Doc',['pdf','jpg','jpeg','png']],'foto_coche_1'=>['F1',['jpg','jpeg','png']],'foto_coche_2'=>['F2',['jpg','jpeg','png']],'foto_coche_3'=>['F3',['jpg','jpeg','png']],'foto_coche_4'=>['F4',['jpg','jpeg','png']],'foto_coche_5'=>['F5',['jpg','jpeg','png']],'ine'=>['INE',['pdf','jpg','jpeg','png']],'comprobante_dom'=>['CD',['pdf','jpg','jpeg','png']],'tarjeta_circulacion'=>['TC',['pdf','jpg','jpeg','png']],'factura_auto'=>['FA',['pdf','jpg','jpeg','png']],'constancia_fiscal'=>['CF',['pdf','jpg','jpeg','png']]];
+        $uploadDir = dirname(__DIR__,3)."/uploads/cotizaciones/{$pCotId}/";
+        if (!is_dir($uploadDir)) mkdir($uploadDir,0755,true);
+        foreach ($tiposDoc as $tipo=>[$label,$exts]) {
             if (empty($_FILES[$tipo]['name'])) continue;
-            $file = $_FILES[$tipo];
-            if ($file['error'] !== UPLOAD_ERR_OK) continue;
-            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            if (!in_array($ext, $extsValidos, true) || $file['size'] > 10*1024*1024) continue;
-            $nombreArchivo = $tipo . '_' . time() . '.' . $ext;
-            $rutaRelativa  = "uploads/cotizaciones/{$pCotId}/{$nombreArchivo}";
-            if (move_uploaded_file($file['tmp_name'], $uploadDir . $nombreArchivo)) {
-                $cotizacionModel->adjuntarArchivo($pCotId, $agenteId, $tipo, $file['name'], $nombreArchivo, $rutaRelativa);
-            }
+            $file=$_FILES[$tipo]; if($file['error']!==UPLOAD_ERR_OK) continue;
+            $ext=strtolower(pathinfo($file['name'],PATHINFO_EXTENSION));
+            if(!in_array($ext,$exts,true)||$file['size']>10*1024*1024) continue;
+            $n=$tipo.'_'.time().'.'.$ext; $r="uploads/cotizaciones/{$pCotId}/{$n}";
+            if(move_uploaded_file($file['tmp_name'],$uploadDir.$n))
+                $cotizacionModel->adjuntarArchivo($pCotId,$agenteId,$tipo,$file['name'],$n,$r);
         }
 
         echo json_encode(['ok'=>true,'folio'=>$cotExist['folio']??'','cliente_id'=>$cotExist['cliente_id']]);
@@ -241,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     echo json_encode(['ok'=>false,'msg'=>'Acción desconocida.']); exit;
 }
 
-// ── Datos para el formulario ──────────────────────────────────────────────
+// ── GET: datos para el formulario ─────────────────────────────────────────
 $cotizacionId   = isset($_GET['cotizacion_id']) ? (int)$_GET['cotizacion_id'] : null;
 $cotizacionEdit = null;
 $modoEdicion    = false;
@@ -249,7 +211,7 @@ $modoEdicion    = false;
 if ($cotizacionId) {
     $cotizacionEdit = $cotizacionModel->getByIdYAgente($cotizacionId, $agenteId);
     if ($cotizacionEdit) {
-        $modoEdicion  = true;
+        $modoEdicion        = true;
         $_GET['cliente_id'] = $cotizacionEdit['cliente_id'];
     } else {
         $cotizacionId = null;
@@ -277,7 +239,9 @@ $companias = ['GNP','Qualitas','AXA','HDI','Mapfre','Zurich','Banorte','Chubb','
 $estadosF  = ['N'=>'Nueva','R'=>'Renovación'];
 
 $coberturasPorRamoJSON = json_encode($coberturasPorRamo);
-$pageTitle = $modoEdicion ? 'Editar Cotización — ' . ($cotizacionEdit['folio'] ?? '#'.$cotizacionId) : 'Nueva Cotización';
+$pageTitle = $modoEdicion
+    ? 'Editar Cotización — ' . ($cotizacionEdit['folio'] ?? '#'.$cotizacionId)
+    : 'Nueva Cotización';
 ?>
 <!DOCTYPE html>
 <html lang="es">

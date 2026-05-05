@@ -1,0 +1,4 @@
+/home2/grupoide/crmideas.grupoideasmx.com/App/Cron/SubirIdriveYBorrar.php
+/home2/grupoide/seguroslux.mx/App/Cron/SubirIdriveYBorrar.php
+/home2/grupoide/crmideasmx.com/App/Cron/SubirIdriveYBorrar.php
+/home2/grupoide/qa.crmideasmx.com/App/Cron/SubirIdriveYBorrar.php
