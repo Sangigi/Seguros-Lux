@@ -408,3 +408,34 @@
     font-size: 18px;
   }
 }
+
+.back-home {
+    margin-top: 1.25rem;
+    margin-bottom: 0.25rem;
+    text-align: center;
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: #8a7f6e;
+    text-decoration: none;
+    letter-spacing: 0.02em;
+    transition: color 0.2s ease, gap 0.2s ease;
+}
+
+.back-link:hover {
+    color: #3d3529;
+    gap: 0.6rem;
+}
+
+.back-link svg {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.back-link:hover svg {
+    transform: translateX(-2px);
+}
