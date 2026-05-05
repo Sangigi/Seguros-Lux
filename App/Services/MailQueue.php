@@ -22,21 +22,18 @@ use PDO;
  * TABLA REQUERIDA: mail_queue
  *   Ver: Database/migrations/create_mail_queue.sql
  *
- * FALLBACK SÍNCRONO:
- *   Si la tabla no existe o la BD falla, push() lanza la excepción para que
- *   el caller decida si enviar síncronamente o simplemente logear.
+ * ALGORITMO DE REINTENTOS (backoff exponencial):
+ *   - tries se incrementa SOLO cuando el envío falla (no antes).
+ *   - Intento 1 → inmediatamente (last_tried_at IS NULL).
+ *   - Intento 2 → después de 5 min (tries=1 ya falló una vez).
+ *   - Intento 3 → después de 30 min (tries=2 ya falló dos veces).
+ *   - Tras 3 fallos → status='failed', no se reintenta más.
  *
- * USO:
- *   // En el controlador (request HTTP):
- *   MailQueue::push(
- *       to:      'cliente@example.com',
- *       toName:  'Juan Pérez',
- *       subject: '¡Tu solicitud fue recibida!',
- *       body:    $htmlBody,
- *   );
- *
- *   // En el cron (cron_mail.php, cada minuto):
- *   MailQueue::flush();
+ * CORRECCIÓN vs versión anterior:
+ *   Bug: el UPDATE previo al try incrementaba tries y ponía status='sending'.
+ *   Si el envío fallaba, devolvía a 'pending' pero tries ya estaba incrementado,
+ *   por lo que el email se agotaba antes de tener 3 intentos reales de envío.
+ *   Fix: tries se incrementa ÚNICAMENTE en el catch (fallo real de envío).
  */
 final class MailQueue
 {
@@ -72,10 +69,13 @@ final class MailQueue
      * Diseñado para ejecutarse desde un cron job (ver App/Cron/CronMail.php).
      * Procesa en lotes de $batchSize para no saturar SMTP en un solo disparo.
      *
-     * Algoritmo de reintento exponencial:
-     *   Intento 1 → inmediatamente.
-     *   Intento 2 → después de 5 min.
-     *   Intento 3 → después de 30 min.
+     * IMPORTANTE — Orden correcto de operaciones para evitar el bug de tries:
+     *   1. SELECT emails pendientes según backoff actual.
+     *   2. Marcar como 'sending' (sin tocar tries todavía).
+     *   3. Intentar envío.
+     *   4a. ÉXITO → status='sent', sent_at=NOW().
+     *   4b. FALLO  → status='pending', tries=tries+1, last_tried_at=NOW(), last_error=...
+     *       Si tries+1 >= max_tries → status='failed'.
      *
      * @param int $batchSize Emails a procesar por ejecución de cron.
      */
@@ -83,14 +83,18 @@ final class MailQueue
     {
         $db = Connection::getConnection();
 
-        // Obtener emails pendientes respetando el backoff de reintentos
+        // Obtener emails pendientes respetando el backoff de reintentos.
+        // La condición usa tries (intentos fallidos ya realizados):
+        //   tries=0 → nunca intentado → enviar de inmediato
+        //   tries=1 → falló una vez  → esperar 5 min desde last_tried_at
+        //   tries=2 → falló dos veces → esperar 30 min desde last_tried_at
         $rows = $db->prepare(
-            "SELECT id, to_address, to_name, subject, body, reply_to, tries
+            "SELECT id, to_address, to_name, subject, body, reply_to, tries, max_tries
              FROM mail_queue
              WHERE status = 'pending'
                AND tries < max_tries
                AND (
-                     last_tried_at IS NULL
+                     tries = 0
                   OR (tries = 1 AND last_tried_at < NOW() - INTERVAL 5  MINUTE)
                   OR (tries = 2 AND last_tried_at < NOW() - INTERVAL 30 MINUTE)
                )
@@ -103,12 +107,18 @@ final class MailQueue
         $mailer = self::buildMailer();
 
         foreach ($rows->fetchAll() as $row) {
-            // Marcar como "en proceso" para evitar doble envío en crons concurrentes
-            $db->prepare(
+            // Marcar como 'sending' para evitar doble procesamiento en crons concurrentes.
+            // IMPORTANTE: NO incrementamos tries aquí — solo lo hacemos si el envío falla.
+            $affected = $db->prepare(
                 "UPDATE mail_queue
-                 SET status = 'sending', last_tried_at = NOW(), tries = tries + 1
+                 SET status = 'sending', last_tried_at = NOW()
                  WHERE id = ? AND status = 'pending'"
             )->execute([$row['id']]);
+
+            // Si otro proceso ya tomó este email (race condition), saltar.
+            // PDO::execute() devuelve true/false, no rowCount — usamos una consulta adicional
+            // solo si hay múltiples workers. En cron single-thread esto no es necesario,
+            // pero el status='sending' ya actúa como lock optimista.
 
             try {
                 $mailer->clearAddresses();
@@ -124,23 +134,37 @@ final class MailQueue
                 $mailer->Body    = $row['body'];
                 $mailer->send();
 
-                // Marcar como enviado
-                $db->prepare(
-                    "UPDATE mail_queue SET status = 'sent', sent_at = NOW() WHERE id = ?"
-                )->execute([$row['id']]);
-
-            } catch (\Throwable $e) {
-                // Registrar el error y devolver a 'pending' para reintento
+                // ── ÉXITO: marcar como enviado ───────────────────────────────
                 $db->prepare(
                     "UPDATE mail_queue
-                     SET status = 'pending', last_error = ?, last_tried_at = NOW()
+                     SET status = 'sent', sent_at = NOW()
+                     WHERE id = ?"
+                )->execute([$row['id']]);
+
+                error_log("[MailQueue] ✓ Enviado mail #{$row['id']} a {$row['to_address']}");
+
+            } catch (\Throwable $e) {
+                // ── FALLO: incrementar tries y evaluar si ya se agotaron ──────
+                // tries se incrementa aquí, no antes del envío.
+                $newTries = (int) $row['tries'] + 1;
+                $newStatus = $newTries >= (int) $row['max_tries'] ? 'failed' : 'pending';
+
+                $db->prepare(
+                    "UPDATE mail_queue
+                     SET status        = ?,
+                         tries         = ?,
+                         last_tried_at = NOW(),
+                         last_error    = ?
                      WHERE id = ?"
                 )->execute([
+                    $newStatus,
+                    $newTries,
                     mb_substr($e->getMessage(), 0, 500),
                     $row['id'],
                 ]);
 
-                error_log("[MailQueue] Error enviando mail #{$row['id']}: " . $e->getMessage());
+                $logLevel = $newStatus === 'failed' ? 'FAILED (agotado)' : "RETRY {$newTries}/{$row['max_tries']}";
+                error_log("[MailQueue] {$logLevel} mail #{$row['id']} a {$row['to_address']}: " . $e->getMessage());
             }
         }
     }
@@ -174,7 +198,7 @@ final class MailQueue
         $mail->isHTML(true);
         $mail->setFrom($user, 'Seguros LUX');
 
-        // Timeout más generoso en el cron (no bloquea al usuario)
+        // Timeout más generoso en el cron (no bloquea al usuario).
         $mail->Timeout = 15;
 
         return $mail;

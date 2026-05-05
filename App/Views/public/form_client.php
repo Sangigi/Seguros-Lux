@@ -1,5 +1,5 @@
-<?php declare(strict_types=1);
-
+<?php
+declare(strict_types=1);
 use App\Security\SessionManager;
 $nonce = SessionManager::nonce();
 ?>
@@ -70,9 +70,10 @@ $nonce = SessionManager::nonce();
         <!-- ─── VEHICULAR ─── -->
         <div class="ramo-form" id="ramoVehicular" style="display:none;">
             <div class="form-card">
-                <div class="step-counter">Paso <span id="veh-currentStep">1</span> de 5</div>
+                <div class="step-counter">Paso <span id="veh-currentStep">1</span> de 6</div>
                 <div class="progress-wrapper" id="veh-progressBar">
                     <div class="progress-segment active"></div>
+                    <div class="progress-segment"></div>
                     <div class="progress-segment"></div>
                     <div class="progress-segment"></div>
                     <div class="progress-segment"></div>
@@ -223,7 +224,7 @@ $nonce = SessionManager::nonce();
                         </div>
                     </div>
 
-                    <!-- V5: Cita — ahora submit directo -->
+                    <!-- V5: Cita -->
                     <div class="form-step" data-vstep="5">
                         <h2>Agenda tu Cita</h2>
                         <p class="step-subtitle">¿Cómo y cuándo te contactamos?</p>
@@ -250,6 +251,55 @@ $nonce = SessionManager::nonce();
                         </div>
                         <div class="btn-actions">
                             <button type="button" class="btn-prev" data-prevstep="5"><i class="bi bi-arrow-left"></i> Atrás</button>
+                            <button type="button" class="btn-next" data-nextstep="5">Continuar <i class="bi bi-arrow-right"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- V6: Canal de notificación (multi-select) -->
+                    <div class="form-step" data-vstep="6">
+                        <h2>¿Cómo quieres recibir la confirmación?</h2>
+                        <p class="step-subtitle">Elige uno o varios canales. Puedes seleccionar más de uno.</p>
+                        <div class="section-divider"></div>
+
+                        <div class="canal-cards" id="canalOptions">
+                            <!-- Email: siempre disponible -->
+                            <div class="canal-card" data-canal="email">
+                                <div class="canal-icon em"><i class="bi bi-envelope-fill"></i></div>
+                                <div class="canal-info">
+                                    <p class="canal-name">Correo Electrónico</p>
+                                    <p class="canal-desc">Recibirás la confirmación en tu bandeja de entrada.</p>
+                                </div>
+                                <div class="canal-check"><i class="bi bi-check"></i></div>
+                            </div>
+
+                            <!-- WhatsApp -->
+                            <div class="canal-card" data-canal="whatsapp">
+                                <div class="canal-icon wa">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                                </div>
+                                <div class="canal-info">
+                                    <p class="canal-name">WhatsApp</p>
+                                    <p class="canal-desc">Gestiona y cancela tu cita desde WhatsApp.</p>
+                                </div>
+                                <div class="canal-check"><i class="bi bi-check"></i></div>
+                            </div>
+
+                            <!-- Telegram -->
+                            <div class="canal-card" data-canal="telegram">
+                                <div class="canal-icon tg">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.94z"/></svg>
+                                </div>
+                                <div class="canal-info">
+                                    <p class="canal-name">Telegram</p>
+                                    <p class="canal-desc">El bot te enviará la confirmación y recordatorios.</p>
+                                </div>
+                                <div class="canal-check"><i class="bi bi-check"></i></div>
+                            </div>
+                        </div>
+                        <div class="error-msg" id="error-canal">Selecciona al menos un canal de notificación.</div>
+
+                        <div class="btn-actions">
+                            <button type="button" class="btn-prev" data-prevstep="6"><i class="bi bi-arrow-left"></i> Atrás</button>
                             <button type="button" id="btnSubmitVehicular" class="btn-next">Confirmar Cita <i class="bi bi-check-lg"></i></button>
                         </div>
                     </div>
@@ -360,8 +410,32 @@ $nonce = SessionManager::nonce();
                         <div class="conf-row"><span class="conf-label">Tipo:</span><span class="conf-value" id="conf-tipo-cita">-</span></div>
                         <div class="conf-row"><span class="conf-label">Fecha:</span><span class="conf-value" id="conf-fecha">-</span></div>
                         <div class="conf-row"><span class="conf-label">Hora:</span><span class="conf-value" id="conf-hora">-</span></div>
+                        <div class="conf-row"><span class="conf-label">Canal(es):</span><span class="conf-value" id="conf-canal">-</span></div>
                     </div>
                 </div>
+
+                <!--
+                    Botones de WhatsApp y Telegram:
+                    Se muestran SIEMPRE que el usuario eligió ese canal,
+                    independientemente de si el servidor devolvió un link.
+                    Si el servidor devuelve whatsapp_link / telegram_link,
+                    se usa ese URL. Si no, se usan los fallbacks hardcoded.
+                -->
+                <div id="whatsappBotSection" style="display:none;margin-top:16px;">
+                    <a id="whatsappBotBtn" href="#" target="_blank" rel="noopener" class="bot-btn wa-bot-btn"
+                       style="display:flex;align-items:center;gap:10px;justify-content:center;padding:12px 20px;background:#25d366;color:#fff;border-radius:12px;text-decoration:none;font-weight:600;font-size:.95rem;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                        Abrir WhatsApp para gestionar mi cita
+                    </a>
+                </div>
+                <div id="telegramSection" style="display:none;margin-top:10px;">
+                    <a id="telegramBtn" href="#" target="_blank" rel="noopener" class="bot-btn tg-bot-btn"
+                       style="display:flex;align-items:center;gap:10px;justify-content:center;padding:12px 20px;background:#0088cc;color:#fff;border-radius:12px;text-decoration:none;font-weight:600;font-size:.95rem;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.94z"/></svg>
+                        Abrir Telegram para gestionar mi cita
+                    </a>
+                </div>
+
                 <div style="margin-top:20px;text-align:center;">
                     <a href="/formulario" class="btn-prev" style="display:inline-flex;text-decoration:none;margin:0 auto;">Nueva cotización</a>
                 </div>
@@ -381,8 +455,13 @@ $nonce = SessionManager::nonce();
 ══════════════════════════════════════════════════════════ */
 var selectedRamo        = null;
 var selectedVidaGmmRamo = null;
+// Números de WhatsApp/Telegram para fallback (si el servidor no devuelve link)
+var WA_NUMERO_NEGOCIO   = '5215541232311'; // número sin + con código país
+var TG_BOT_USERNAME     = 'SegurosLuxBot'; // username del bot sin @
+
 var _vehRadioSel        = { tipoVehiculo: null, asegurado: null, tiempoCompra: null, recienComprado: null, sexo: null, tipoCita: null };
 var _vehMiniData        = {};
+var _vehCanales         = [];   // array de strings: 'email', 'whatsapp', 'telegram'
 var _vehSelectedDate    = null;
 var _vehSelectedTime    = null;
 
@@ -416,14 +495,14 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // ── Botones de ramo (sidebar)
+    // ── Botones de ramo (sidebar) ────────────────────────────────────────────
     document.querySelectorAll('.ramo-btn[data-ramo]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             selectRamo(this.dataset.ramo, this);
         });
     });
 
-    // ── Option cards genéricas (sexo, asegurado, tiempoCompra, tipoCita, recienComprado)
+    // ── Option cards genéricas (sexo, asegurado, tiempoCompra, tipoCita, recienComprado) ──
     document.querySelectorAll('.option-card[data-group]').forEach(function (card) {
         card.addEventListener('click', function () {
             var group = this.dataset.group;
@@ -436,14 +515,14 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // ── Option cards tipo vehículo (sin data-group, lógica especial)
+    // ── Option cards tipo vehículo (sin data-group, lógica especial) ─────────
     document.querySelectorAll('#tipoVehiculoOptions .option-card').forEach(function (card) {
         card.addEventListener('click', function () {
             selectTipoVehiculo(this.dataset.value, this);
         });
     });
 
-    // ── Mini toggles
+    // ── Mini toggles ─────────────────────────────────────────────────────────
     document.addEventListener('click', function (e) {
         var tog = e.target.closest('.mini-tog');
         if (!tog) return;
@@ -455,39 +534,53 @@ document.addEventListener('DOMContentLoaded', function () {
         if (group) _vehMiniData[group] = tog.dataset.val;
     });
 
-    // ── Botones Siguiente
+    // ── Canal cards (multi-select) — paso 6 ──────────────────────────────────
+    document.querySelectorAll('.canal-card[data-canal]').forEach(function (card) {
+        card.addEventListener('click', function () {
+            this.classList.toggle('selected');
+            var canal = this.dataset.canal;
+            var idx = _vehCanales.indexOf(canal);
+            if (idx === -1) _vehCanales.push(canal);
+            else _vehCanales.splice(idx, 1);
+            // Limpiar error al seleccionar algo
+            var errEl = document.getElementById('error-canal');
+            if (errEl) errEl.classList.remove('show');
+        });
+    });
+
+    // ── Botones Siguiente ────────────────────────────────────────────────────
     document.querySelectorAll('.btn-next[data-nextstep]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             nextStep(parseInt(this.dataset.nextstep));
         });
     });
 
-    // ── Botones Atrás
+    // ── Botones Atrás ────────────────────────────────────────────────────────
     document.querySelectorAll('.btn-prev[data-prevstep]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             vPrev(parseInt(this.dataset.prevstep));
         });
     });
 
-    // ── Botón Confirmar Cita (submit vehicular — ahora en paso 5)
+    // ── Botón Confirmar Cita (submit vehicular — paso 6) ──────────────────────
     var btnSubmit = document.getElementById('btnSubmitVehicular');
     if (btnSubmit) {
         btnSubmit.addEventListener('click', submitVehicular);
     }
 
-    // ── Botón Enviar Vida/GMM
+    // ── Botón Enviar Vida/GMM ─────────────────────────────────────────────────
     var btnVG = document.getElementById('btnEnviarVidaGmm');
     if (btnVG) {
         btnVG.addEventListener('click', submitVidaGmm);
     }
 
-    // ── Botón Enviar Empresa
+    // ── Botón Enviar Empresa ──────────────────────────────────────────────────
     var btnEmp = document.getElementById('btnEnviarEmpresa');
     if (btnEmp) {
         btnEmp.addEventListener('click', submitEmpresa);
     }
 
-    // ── Calendario: prev / next
+    // ── Calendario ───────────────────────────────────────────────────────────
     var btnCalPrev = document.getElementById('btnCalPrev');
     var btnCalNext = document.getElementById('btnCalNext');
     if (btnCalPrev) btnCalPrev.addEventListener('click', function () { changeMonth(-1); });
@@ -499,7 +592,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 /* ══════════════════════════════════════════════════════════
-   NAVEGACIÓN VEHICULAR (5 pasos)
+   NAVEGACIÓN VEHICULAR (6 pasos)
 ══════════════════════════════════════════════════════════ */
 function showVStep(n) {
     document.querySelectorAll('#ramoVehicular .form-step').forEach(function (s) { s.classList.remove('active'); });
@@ -525,6 +618,7 @@ function vPrev(fromStep) {
     else showVStep(fromStep - 1);
 }
 
+/* ── Validación por paso ────────────────────────────────────────────────────── */
 function validateVStep(step) {
     var valid = true;
     function showE(id) { var e = document.getElementById('error-' + id); if (e) e.classList.add('show'); }
@@ -576,6 +670,11 @@ function validateVStep(step) {
         if (!_vehSelectedDate) { showE('fecha'); valid = false; }
         clearE('hora');
         if (!_vehSelectedTime) { showE('hora'); valid = false; }
+    }
+    // Paso 6: validar que se eligió al menos un canal
+    if (step === 6) {
+        clearE('canal');
+        if (_vehCanales.length === 0) { showE('canal'); valid = false; }
     }
     return valid;
 }
@@ -742,10 +841,13 @@ function cargarHorasOcupadas(fecha) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   SUBMIT VEHICULAR — sin canal, directo desde paso 5
+   SUBMIT VEHICULAR — paso 6
+   El botón "Confirmar Cita" ya NO llama a nextStep sino directo aquí.
+   validateVStep(6) valida que haya al menos un canal seleccionado.
 ══════════════════════════════════════════════════════════ */
 function submitVehicular() {
-    if (!validateVStep(5)) return;
+    // Validar paso 6 antes de enviar
+    if (!validateVStep(6)) return;
 
     var btn = document.getElementById('btnSubmitVehicular');
     if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
@@ -804,22 +906,43 @@ function submitVehicular() {
         tiempoCompra: _vehRadioSel.tiempoCompra,
         tipoCita: _vehRadioSel.tipoCita,
         fechaCita: _vehSelectedDate, horaCita: _vehSelectedTime,
+        canalNotificacion: _vehCanales.join(','),
         comentarios: comentariosExtra
     };
 
-    fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        .then(function (r) { return r.json(); })
-        .then(function (d) { mostrarConfirmacion(d, nombre, apPat, apMat, correo, telefono, edadTxt, marcaTxt, modelo, anio, lblTipoVeh, calleTxt, colTxt, ciuTxt, estadoTxt, cpTxt, ecTxt, fechaFmt); })
-        .catch(function () { mostrarConfirmacion({}, nombre, apPat, apMat, correo, telefono, edadTxt, marcaTxt, modelo, anio, lblTipoVeh, calleTxt, colTxt, ciuTxt, estadoTxt, cpTxt, ecTxt, fechaFmt); });
+    fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        mostrarConfirmacionVehicular(
+            d, nombre, apPat, apMat, correo, telefono,
+            edadTxt, marcaTxt, modelo, anio, lblTipoVeh,
+            calleTxt, colTxt, ciuTxt, estadoTxt, cpTxt, ecTxt, fechaFmt
+        );
+    })
+    .catch(function () {
+        // Aunque falle el fetch, mostrar confirmación con los datos locales
+        mostrarConfirmacionVehicular(
+            {}, nombre, apPat, apMat, correo, telefono,
+            edadTxt, marcaTxt, modelo, anio, lblTipoVeh,
+            calleTxt, colTxt, ciuTxt, estadoTxt, cpTxt, ecTxt, fechaFmt
+        );
+    });
 }
 
-function mostrarConfirmacion(d, nombre, apPat, apMat, correo, telefono, edadTxt, marcaTxt, modelo, anio, lblTipoVeh, calleTxt, colTxt, ciuTxt, estadoTxt, cpTxt, ecTxt, fechaFmt) {
+function mostrarConfirmacionVehicular(d, nombre, apPat, apMat, correo, telefono, edadTxt,
+    marcaTxt, modelo, anio, lblTipoVeh, calleTxt, colTxt, ciuTxt, estadoTxt, cpTxt, ecTxt, fechaFmt)
+{
     ['ramoVehicular', 'ramoVidaGmm', 'ramoEmpresas'].forEach(function (id) {
         var el = document.getElementById(id); if (el) el.style.display = 'none';
     });
     document.getElementById('ramoConfirmacion').style.display = 'block';
 
     function setConf(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+
     setConf('conf-nombre',    nombre + ' ' + apPat + ' ' + apMat);
     setConf('conf-correo',    correo);
     setConf('conf-telefono',  telefono);
@@ -835,28 +958,55 @@ function mostrarConfirmacion(d, nombre, apPat, apMat, correo, telefono, edadTxt,
     setConf('conf-tipo-cita', _vehRadioSel.tipoCita === 'videollamada' ? '💻 Videollamada' : '📞 Llamada telefónica');
     setConf('conf-fecha',     fechaFmt);
     setConf('conf-hora',      (_vehSelectedTime || '') + ' hrs');
+    setConf('conf-canal',     _vehCanales.join(', '));
 
-    // Mensaje personalizado según respuesta del servidor
+    // ── Mensaje de confirmación ───────────────────────────────────────────────
     var cMsg = document.getElementById('mensajePersonalizado');
     if (cMsg) {
-        var ico = document.getElementById('iconoConfirmacion');
-        var tit = document.getElementById('tituloConfirmacion');
-        if (d && d.cliente_existente && d.tiene_cita_activa) {
-            cMsg.innerHTML = '⚠️ <strong>¡Ya tienes una cita activa con nosotros!</strong><br>Comunícate con tu asesor para gestionarla.';
-            cMsg.style.cssText = 'display:block;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
-            if (ico) { ico.className = 'bi bi-exclamation-circle'; ico.style.color = '#f59e0b'; }
-            if (tit) tit.textContent = '¡Ya tienes una cita!';
-        } else if (d && d.cliente_existente) {
-            cMsg.innerHTML = '👋 <strong>¡Bienvenido de vuelta!</strong><br>Hemos agendado tu nueva cita. ¡Nos da gusto verte de nuevo!';
-            cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
-        } else {
-            cMsg.innerHTML = '🎉 <strong>¡Cita registrada!</strong><br>En breve un asesor se pondrá en contacto contigo.';
-            cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
-        }
-        cMsg.style.display = 'block';
+        cMsg.innerHTML = '🎉 <strong>¡Cita registrada con éxito!</strong><br>'
+            + 'En breve un asesor de Seguros LUX se pondrá en contacto contigo.';
+        cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;'
+            + 'border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
     }
 
-    if (window.innerWidth < 900) document.getElementById('formMain').scrollIntoView({ behavior: 'smooth' });
+    // ── Botones WhatsApp / Telegram ───────────────────────────────────────────
+    // Se muestran si el usuario eligió ese canal.
+    // URL preferida: la que devuelve el servidor (d.whatsapp_link / d.telegram_link).
+    // Fallback: construimos el link nosotros con los números hardcoded.
+
+    var waSec = document.getElementById('whatsappBotSection');
+    var tgSec = document.getElementById('telegramSection');
+    var waBtn = document.getElementById('whatsappBotBtn');
+    var tgBtn = document.getElementById('telegramBtn');
+
+    var eligioWa = (_vehCanales.indexOf('whatsapp') !== -1);
+    var eligioTg = (_vehCanales.indexOf('telegram') !== -1);
+
+    if (eligioWa && waSec && waBtn) {
+        // Link WA: abre conversación con el número de negocio y envía mensaje de inicio
+        var waMsg = encodeURIComponent(
+            'Hola, acabo de agendar una cita para el ' + fechaFmt +
+            ' a las ' + (_vehSelectedTime || '') + ' hrs.'
+        );
+        var waLink = d.whatsapp_link || ('https://wa.me/' + WA_NUMERO_NEGOCIO + '?text=' + waMsg);
+        waBtn.href = waLink;
+        waSec.style.display = 'block';
+    } else if (waSec) {
+        waSec.style.display = 'none';
+    }
+
+    if (eligioTg && tgSec && tgBtn) {
+        // Link TG: abre el bot. Si el servidor devolvió un deep link con token, mejor.
+        var tgLink = d.telegram_link || ('https://t.me/' + TG_BOT_USERNAME);
+        tgBtn.href = tgLink;
+        tgSec.style.display = 'block';
+    } else if (tgSec) {
+        tgSec.style.display = 'none';
+    }
+
+    if (window.innerWidth < 900) {
+        document.getElementById('formMain').scrollIntoView({ behavior: 'smooth' });
+    }
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -879,9 +1029,14 @@ function selectRamo(ramo, el) {
         var gmmExtraEl = document.getElementById('gmmExtra');
         var fechaEl    = document.getElementById('vg-fecha');
         if (titleEl)    titleEl.textContent    = ramo === 'gmm' ? 'Gastos Médicos Mayores' : 'Seguro de Vida';
-        if (subtitleEl) subtitleEl.textContent = ramo === 'gmm' ? 'Cotización personalizada para ti y tu familia.' : 'Un especialista te orientará sobre la mejor opción.';
+        if (subtitleEl) subtitleEl.textContent = ramo === 'gmm'
+            ? 'Cotización personalizada para ti y tu familia.'
+            : 'Un especialista te orientará sobre la mejor opción.';
         if (gmmExtraEl) gmmExtraEl.style.display = ramo === 'gmm' ? 'block' : 'none';
-        if (fechaEl) { var minD = new Date(); minD.setDate(minD.getDate() + 1); fechaEl.min = minD.toISOString().split('T')[0]; }
+        if (fechaEl) {
+            var minD = new Date(); minD.setDate(minD.getDate() + 1);
+            fechaEl.min = minD.toISOString().split('T')[0];
+        }
         document.getElementById('ramoVidaGmm').style.display = 'block';
     } else if (ramo === 'empresas') {
         document.getElementById('ramoEmpresas').style.display = 'block';
@@ -941,21 +1096,27 @@ function showConfirmacionVidaGmm(p) {
         var el = document.getElementById(id); if (el) el.style.display = 'none';
     });
     document.getElementById('ramoConfirmacion').style.display = 'block';
-    ['confVehiculo', 'confCita', 'confDireccion', 'conf-row-sexo', 'conf-row-ecivil'].forEach(function (id) {
+    // Ocultar secciones irrelevantes
+    ['confVehiculo', 'confCita', 'confDireccion', 'conf-row-sexo', 'conf-row-ecivil', 'whatsappBotSection', 'telegramSection'].forEach(function (id) {
         var el = document.getElementById(id); if (el) el.style.display = 'none';
     });
+
     var tit = document.getElementById('tituloConfirmacion');
     if (tit) tit.textContent = p.ramo === 'gmm' ? '¡Solicitud GMM Recibida!' : '¡Solicitud de Vida Recibida!';
+
     function setConf(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
     setConf('conf-nombre', p.nombre); setConf('conf-correo', p.correo); setConf('conf-telefono', p.telefono);
+
     var ramoLabel = p.ramo === 'gmm' ? '🏥 Gastos Médicos Mayores' : '❤️ Seguro de Vida';
-    var MONTHS2 = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    var pts = p.fecha_preferida.split('-');
-    var fechaFmt = pts[2] + ' de ' + (MONTHS2[parseInt(pts[1]) - 1] || '') + ' ' + pts[0];
+    var MONTHS2   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    var pts       = p.fecha_preferida.split('-');
+    var fechaFmt  = pts[2] + ' de ' + (MONTHS2[parseInt(pts[1]) - 1] || '') + ' ' + pts[0];
+
     var cMsg = document.getElementById('mensajePersonalizado');
     if (cMsg) {
         cMsg.innerHTML = ramoLabel + '<br>Un asesor te contactará antes del <strong>' + fechaFmt + '</strong>.';
-        cMsg.style.cssText = 'display:block;background:linear-gradient(135deg,#e0f2fe,#ddd6fe);color:#1e3a5f;border:1px solid #93c5fd;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
+        cMsg.style.cssText = 'display:block;background:linear-gradient(135deg,#e0f2fe,#ddd6fe);color:#1e3a5f;'
+            + 'border:1px solid #93c5fd;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
     }
     if (window.innerWidth < 900) document.getElementById('formMain').scrollIntoView({ behavior: 'smooth' });
 }
@@ -985,7 +1146,8 @@ function submitEmpresa() {
         correo: correo,
         telefono: '+52' + document.getElementById('emp-telefono').value.trim(),
         empleados: document.getElementById('emp-empleados').value,
-        servicios: Array.from(document.querySelectorAll('#ramoEmpresas .check-pill input:checked')).map(function (c) { return c.value; }).join(', '),
+        servicios: Array.from(document.querySelectorAll('#ramoEmpresas .check-pill input:checked'))
+            .map(function (c) { return c.value; }).join(', '),
         mensaje: document.getElementById('emp-mensaje').value.trim(),
         ramo: 'empresas',
         comentarios: document.getElementById('emp-mensaje').value.trim(),
@@ -998,16 +1160,23 @@ function submitEmpresa() {
 }
 
 function showConfirmacionSimple(nombre, correo, telefono) {
-    ['ramoVehicular', 'ramoVidaGmm', 'ramoEmpresas'].forEach(function (id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    ['ramoVehicular', 'ramoVidaGmm', 'ramoEmpresas'].forEach(function (id) {
+        var el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
     document.getElementById('ramoConfirmacion').style.display = 'block';
-    ['confVehiculo', 'confCita', 'confDireccion', 'conf-row-edad', 'conf-row-sexo', 'conf-row-ecivil'].forEach(function (id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
-    var tit = document.getElementById('tituloConfirmacion'); if (tit) tit.textContent = '¡Solicitud Empresarial Recibida!';
+    ['confVehiculo', 'confCita', 'confDireccion', 'conf-row-edad', 'conf-row-sexo', 'conf-row-ecivil',
+     'whatsappBotSection', 'telegramSection'].forEach(function (id) {
+        var el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
+    var tit = document.getElementById('tituloConfirmacion');
+    if (tit) tit.textContent = '¡Solicitud Empresarial Recibida!';
     function setConf(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
     setConf('conf-nombre', nombre); setConf('conf-correo', correo); setConf('conf-telefono', telefono);
     var cMsg = document.getElementById('mensajePersonalizado');
     if (cMsg) {
         cMsg.innerHTML = '🎉 <strong>¡Gracias, ' + nombre + '!</strong><br>Nuestro equipo te contactará a la brevedad.';
-        cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
+        cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;'
+            + 'border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
     }
     if (window.innerWidth < 900) document.getElementById('formMain').scrollIntoView({ behavior: 'smooth' });
 }
