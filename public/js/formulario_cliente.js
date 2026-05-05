@@ -1,8 +1,7 @@
 /**
  * formulario_cliente.js — CRM Seguros Lux
- * JS del formulario vehicular público (form_client.php)
- * Corregido: selectTipoVehiculo sin radio oculto, showStep sin crash null,
- *            prevStep con fallback si volverASeleccionRamo no existe.
+ * JS del formulario vehicular público
+ * Simplificado: sin canal de notificación, sin paso 5b, flujo de 5 pasos.
  */
 
 /* ═══════════════════════════════════════════════════
@@ -32,13 +31,11 @@ var MARCAS_POR_TIPO = {
     ]
 };
 
-/* Estado global del formulario */
+/* Estado global */
 var currentStepNum   = 0;
-var totalSteps       = 7;
 var selectedDate     = null;
 var selectedTime     = null;
 var selectedTipoCita = null;
-var selectedCanal    = null;
 var calendarMonth    = new Date().getMonth();
 var calendarYear     = new Date().getFullYear();
 
@@ -56,8 +53,6 @@ var MONTHS = [
     'Enero','Febrero','Marzo','Abril','Mayo','Junio',
     'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
 ];
-
-var PHONE_NUMBER = '5215512345678';
 
 /* ═══════════════════════════════════════════════════
    INICIALIZACIÓN
@@ -125,16 +120,11 @@ function setupInputClearErrors() {
 
 /* ═══════════════════════════════════════════════════
    MARCAS DINÁMICAS — TIPO DE VEHÍCULO
-   FIX: no intentar acceder a radio oculto que puede no existir
 ═══════════════════════════════════════════════════ */
 function selectTipoVehiculo(tipo, el) {
     var parent = el.parentNode;
     parent.querySelectorAll('.option-card').forEach(function (c) { c.classList.remove('selected'); });
     el.classList.add('selected');
-
-    /* El radio es opcional — algunas cards no lo tienen */
-    var radio = el.querySelector('input[type="radio"]');
-    if (radio) radio.checked = true;
 
     radioSelections.tipoVehiculo = tipo;
     clearError('tipoVehiculo');
@@ -153,7 +143,6 @@ function selectTipoVehiculo(tipo, el) {
     });
     miniFormData = {};
 
-    /* Mostrar wrapper de datos del vehículo */
     var wrapper = document.getElementById('vehDatosWrapper');
     if (wrapper) wrapper.style.display = 'block';
 
@@ -201,16 +190,12 @@ function selectTipoCita(tipo, el) {
 }
 
 /* ═══════════════════════════════════════════════════
-   OPTION CARDS GENÉRICAS (sexo, recienComprado, asegurado, tiempoCompra)
-   FIX: radio también es opcional aquí
+   OPTION CARDS GENÉRICAS
 ═══════════════════════════════════════════════════ */
 function selectOption(groupName, el) {
     var parent = el.parentNode;
     parent.querySelectorAll('.option-card').forEach(function (c) { c.classList.remove('selected'); });
     el.classList.add('selected');
-
-    var radio = el.querySelector('input[type="radio"]');
-    if (radio) radio.checked = true;
 
     radioSelections[groupName] = el.getAttribute('data-value');
     var errEl = document.getElementById('error-' + groupName);
@@ -218,75 +203,7 @@ function selectOption(groupName, el) {
 }
 
 /* ═══════════════════════════════════════════════════
-   NAVEGACIÓN ENTRE PASOS
-   FIX: showStep no hace getElementById('formVidaGmm') directamente
-        — usa getElementById con null-check para ambos nombres posibles
-═══════════════════════════════════════════════════ */
-function showStep(n) {
-    /* Ocultar form vida/gmm — soporta ambos IDs posibles */
-    var vidaEl = document.getElementById('formVidaGmm') || document.getElementById('ramoVidaGmm');
-    if (vidaEl) vidaEl.style.display = 'none';
-
-    document.querySelectorAll('.form-step').forEach(function (s) { s.classList.remove('active'); });
-
-    var stepAttr = (n === '5b' || n === 5.5) ? '5b' : String(n);
-    var target = document.querySelector('.form-step[data-step="' + stepAttr + '"]');
-    if (target) target.classList.add('active');
-
-    var counterEl = document.getElementById('currentStep');
-    var scEl      = document.querySelector('.step-counter');
-    var pbEl      = document.getElementById('progressBar');
-
-    var displayMap = { '0':1, '1':2, '2':3, '3':4, '4':5, '5':6, '5b':7, '6':null };
-    var displayN   = displayMap[stepAttr];
-
-    if (displayN !== null && displayN !== undefined) {
-        if (scEl)      scEl.style.display  = 'block';
-        if (pbEl)      pbEl.style.display  = 'flex';
-        if (counterEl) counterEl.textContent = displayN;
-    } else {
-        if (scEl) scEl.style.display = 'none';
-        if (pbEl) pbEl.style.display = 'none';
-    }
-
-    if (displayN) {
-        document.querySelectorAll('.progress-segment').forEach(function (seg, i) {
-            seg.classList.remove('active', 'done');
-            if (i < displayN - 1) seg.classList.add('done');
-            if (i === displayN - 1) seg.classList.add('active');
-        });
-    }
-
-    currentStepNum = n;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function nextStep(fromStep) {
-    if (!validateStep(fromStep)) return;
-    if (fromStep === 5) {
-        showStep('5b');
-    } else {
-        showStep(fromStep + 1);
-    }
-}
-
-function prevStep(fromStep) {
-    if (fromStep === 1) {
-        /* FIX: fallback si volverASeleccionRamo no está definido en el inline */
-        if (typeof volverASeleccionRamo === 'function') {
-            volverASeleccionRamo();
-        } else {
-            document.querySelectorAll('.ramo-form,[id^="ramo"]').forEach(function(f){ f.style.display='none'; });
-            var empty = document.getElementById('formEmpty');
-            if (empty) empty.style.display = 'block';
-        }
-    } else {
-        showStep(fromStep - 1);
-    }
-}
-
-/* ═══════════════════════════════════════════════════
-   VALIDACIÓN POR PASO
+   VALIDACIÓN
 ═══════════════════════════════════════════════════ */
 function showError(fieldId) {
     var input = document.getElementById(fieldId);
@@ -403,9 +320,8 @@ function renderCalendar() {
         cell.className   = 'day-cell';
         cell.textContent = d;
 
-        var cellDate = new Date(calendarYear, calendarMonth, d);
-        var dow      = cellDate.getDay();
-        var dateStr  = calendarYear+'-'+String(calendarMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+        var dow     = new Date(calendarYear, calendarMonth, d).getDay();
+        var dateStr = calendarYear+'-'+String(calendarMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
 
         if (dateStr < todayStr || dow === 0) {
             cell.classList.add('disabled');
@@ -485,7 +401,9 @@ function cargarHorasOcupadas(fecha) {
 
     fetch('/horas-ocupadas?fecha=' + fecha)
         .then(function (r) { return r.json(); })
-        .then(function (ocupadas) {
+        .then(function (data) {
+            var ocupadas = Array.isArray(data) ? data : (data && data.horas ? data.horas : []);
+            if (!Array.isArray(ocupadas)) ocupadas = [];
             if (container) container.style.opacity = '1';
             document.querySelectorAll('.time-slot').forEach(function (slot) {
                 var hora    = slot.getAttribute('data-time');
@@ -524,13 +442,9 @@ function buildComentariosMiniForm() {
         cilindrada:  'Cilindrada',
         tipo_moto:   'Tipo de moto',
         uso_moto:    'Uso delivery',
-        mod_moto:    'Modificaciones',
         uso_suv:     'Uso SUV',
-        techo_suv:   'Techo panorámico',
         trac_suv:    'Tracción SUV',
-        viaje_suv:   'Viajes carretera',
         uso_pickup:  'Uso pickup',
-        acces_pickup:'Accesorios pickup',
         trac_pickup: 'Tracción pickup'
     };
 
@@ -543,227 +457,9 @@ function buildComentariosMiniForm() {
 }
 
 /* ═══════════════════════════════════════════════════
-   ENVÍO DEL FORMULARIO
-═══════════════════════════════════════════════════ */
-function submitForm() {
-    if (typeof selectedCanal === 'undefined' || !selectedCanal) {
-        var errCanal = document.getElementById('error-canal');
-        if (errCanal) errCanal.classList.add('show');
-        return;
-    }
-
-    var nombreEl   = document.getElementById('nombre');
-    var apPatEl    = document.getElementById('apellidoPaterno');
-    var apMatEl    = document.getElementById('apellidoMaterno');
-    var correoEl   = document.getElementById('correo');
-    var edadEl     = document.getElementById('edad');
-    var marcaSel   = document.getElementById('marca');
-    var modeloEl   = document.getElementById('modelo');
-    var anioEl     = document.getElementById('anioVehiculo');
-    var calleEl    = document.getElementById('calle');
-    var coloniaEl  = document.getElementById('colonia');
-    var ciudadEl   = document.getElementById('ciudad');
-    var cpEl       = document.getElementById('codigoPostal');
-    var estadoSel  = document.getElementById('estado');
-    var ecSel      = document.getElementById('estadoCivil');
-    var ladaEl     = document.getElementById('lada');
-    var telEl      = document.getElementById('telefono');
-
-    var nombre    = nombreEl   ? nombreEl.value.trim()   : '';
-    var apPat     = apPatEl    ? apPatEl.value.trim()    : '';
-    var apMat     = apMatEl    ? apMatEl.value.trim()    : '';
-    var correo    = correoEl   ? correoEl.value.trim()   : '';
-    var edad      = edadEl     ? edadEl.value            : '';
-    var marcaText = marcaSel   ? marcaSel.options[marcaSel.selectedIndex].text : '';
-    var modelo    = modeloEl   ? modeloEl.value.trim()   : '';
-    var anio      = anioEl     ? anioEl.value            : '';
-    var calle     = calleEl    ? calleEl.value.trim()    : '';
-    var colonia   = coloniaEl  ? coloniaEl.value.trim()  : '';
-    var ciudad    = ciudadEl   ? ciudadEl.value.trim()   : '';
-    var cp        = cpEl       ? cpEl.value.trim()       : '';
-    var estadoText= estadoSel  ? estadoSel.options[estadoSel.selectedIndex].text : '';
-    var ecText    = ecSel      ? ecSel.options[ecSel.selectedIndex].text : '';
-
-    var parts          = (selectedDate||'').split('-');
-    var fechaFormatted = parts[2] + ' de ' + MONTHS[parseInt(parts[1]) - 1] + ' ' + parts[0];
-    var comentarioExtra = buildComentariosMiniForm();
-
-    var formData = {
-        nombre:           nombre,
-        apellidoPaterno:  apPat,
-        apellidoMaterno:  apMat,
-        fechaNacimiento:  (document.getElementById('fechaNacimiento')||{value:''}).value,
-        correo:           correo,
-        sexo:             radioSelections.sexo,
-        estadoCivil:      ecSel ? ecSel.value : '',
-        calle:            calle,
-        colonia:          colonia,
-        ciudad:           ciudad,
-        estado:           estadoSel ? estadoSel.value : '',
-        codigoPostal:     cp,
-        marca:            marcaSel ? marcaSel.value : '',
-        modelo:           modelo,
-        anioVehiculo:     anio,
-        tipoVehiculo:     radioSelections.tipoVehiculo,
-        recienComprado:   radioSelections.recienComprado,
-        asegurado:        radioSelections.asegurado,
-        tiempoCompra:     radioSelections.tiempoCompra,
-        tipoCita:         selectedTipoCita,
-        telefono:         '+' + (ladaEl?ladaEl.value:'52') + (telEl?telEl.value.trim():''),
-        fechaCita:        selectedDate,
-        horaCita:         selectedTime,
-        canalNotificacion:selectedCanal,
-        comentarios:      comentarioExtra
-    };
-
-    /* Rellenar resumen de confirmación con null-checks */
-    function setConf(id, val) { var el=document.getElementById(id); if(el) el.textContent=val; }
-    setConf('conf-nombre',    nombre + ' ' + apPat + ' ' + apMat);
-    setConf('conf-correo',    correo);
-    setConf('conf-telefono',  '+' + (ladaEl?ladaEl.value:'52') + ' ' + (telEl?telEl.value.trim():''));
-    setConf('conf-edad',      edad || 'No indicada');
-    setConf('conf-sexo',      capitalize(radioSelections.sexo));
-    setConf('conf-ecivil',    ecText);
-    setConf('conf-direccion', calle + ', ' + colonia);
-    setConf('conf-ciudad',    ciudad + ', ' + estadoText);
-    setConf('conf-cp',        cp);
-    setConf('conf-tipo',      capitalize(radioSelections.tipoVehiculo));
-    setConf('conf-auto',      marcaText + ' ' + modelo + ' ' + anio);
-    setConf('conf-recien',    radioSelections.recienComprado === 'si' ? 'Sí' : 'No');
-    setConf('conf-asegurado', radioSelections.asegurado === 'si' ? 'Sí' : 'No');
-    setConf('conf-tipo-cita', selectedTipoCita === 'videollamada' ? '💻 Videollamada' : '📞 Llamada telefónica');
-    setConf('conf-fecha',     fechaFormatted);
-    setConf('conf-hora',      (selectedTime||'') + ' hrs');
-
-    var canalLabels = { email: '✉️ Correo electrónico', whatsapp: '💬 WhatsApp', telegram: '✈️ Telegram' };
-    setConf('conf-canal', canalLabels[selectedCanal] || selectedCanal);
-
-    fetch('/api/clientes', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(formData)
-    })
-    .then(function (response) { return response.json(); })
-    .then(function (data) {
-        if (data.success) {
-            showStep(6);
-            mostrarMensajePersonalizado(data);
-            mostrarCanalBanner(data, nombre, correo, fechaFormatted);
-
-            if (selectedCanal === 'whatsapp' && data.whatsapp_link) {
-                var waSec = document.getElementById('whatsappBotSection');
-                var waBtn = document.getElementById('whatsappBotBtn');
-                if (waSec && waBtn) { waBtn.href = data.whatsapp_link; waSec.style.display = 'block'; }
-            }
-            if (selectedCanal === 'telegram' && data.telegram_link) {
-                var tgSec = document.getElementById('telegramSection');
-                var tgBtn = document.getElementById('telegramBtn');
-                if (tgSec && tgBtn) { tgBtn.href = data.telegram_link; tgSec.style.display = 'block'; }
-            }
-        } else {
-            alert('Error: ' + (data.message || 'Ocurrió un error. Por favor intenta de nuevo.'));
-        }
-    })
-    .catch(function (error) {
-        console.error('Error:', error);
-        showStep(6);
-    });
-}
-
-/* ═══════════════════════════════════════════════════
-   BANNER DE CANAL
-═══════════════════════════════════════════════════ */
-function mostrarCanalBanner(data, nombre, correo, fechaFormatted) {
-    var bannerEl = document.getElementById('canalEnviadoBanner');
-    if (!bannerEl) return;
-    bannerEl.className = '';
-    bannerEl.style.display = 'block';
-
-    if (selectedCanal === 'email') {
-        bannerEl.classList.add('email-banner');
-        bannerEl.innerHTML = '✉️ <strong>¡Confirmación enviada a tu correo!</strong><br>Hemos enviado los detalles a <strong>' + correo + '</strong>.<br><small style="opacity:.8;">Si no lo encuentras, revisa tu carpeta de spam.</small>';
-    } else if (selectedCanal === 'whatsapp') {
-        bannerEl.classList.add('wa-banner');
-        bannerEl.innerHTML = '💬 <strong>¡Abre WhatsApp para gestionar tu cita!</strong><br>Nuestro asistente reconocerá tu cita automáticamente.';
-    } else if (selectedCanal === 'telegram') {
-        bannerEl.classList.add('tg-banner');
-        bannerEl.innerHTML = '✈️ <strong>¡Abre Telegram para gestionar tu cita!</strong><br>El bot confirmará tu cita al instante.';
-    }
-}
-
-function mostrarMensajePersonalizado(data) {
-    var msgEl = document.getElementById('mensajePersonalizado');
-    if (!msgEl) return;
-
-    if (data.cliente_existente && data.tiene_cita_activa) {
-        msgEl.innerHTML = '⚠️ <strong>¡Ya tienes una cita activa con nosotros!</strong><br>Puedes gestionarla desde el bot o comunícate con tu asesor.';
-        msgEl.style.cssText = 'display:block;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
-        var ico = document.getElementById('iconoConfirmacion');
-        var tit = document.getElementById('tituloConfirmacion');
-        if (ico) { ico.className = 'bi bi-exclamation-circle'; ico.style.color = '#f59e0b'; }
-        if (tit) tit.textContent = '¡Ya tienes una cita!';
-    } else if (data.cliente_existente) {
-        msgEl.innerHTML = '👋 <strong>¡Bienvenido de vuelta!</strong><br>Hemos agendado tu nueva cita. ¡Nos da gusto verte de nuevo!';
-        msgEl.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
-    } else {
-        msgEl.innerHTML = '🎉 <strong>¡Registro exitoso!</strong><br>Tu cita ha sido agendada. En breve un asesor se pondrá en contacto contigo.';
-        msgEl.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
-    }
-}
-
-/* ═══════════════════════════════════════════════════
    UTILIDADES
 ═══════════════════════════════════════════════════ */
 function capitalize(str) {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-/* ═══════════════════════════════════════════════════
-   CANAL DE NOTIFICACIÓN
-═══════════════════════════════════════════════════ */
-function selectCanal(canal, el) {
-    document.querySelectorAll('#canalOptions .canal-card').forEach(function (c) { c.classList.remove('selected'); });
-    el.classList.add('selected');
-    selectedCanal = canal;
-    var errEl = document.getElementById('error-canal');
-    if (errEl) errEl.classList.remove('show');
-}
-
-/* ═══════════════════════════════════════════════════
-   ACCIONES DEL PASO DE CONFIRMACIÓN
-═══════════════════════════════════════════════════ */
-function sendWhatsApp() {
-    var nombreEl = document.getElementById('conf-nombre');
-    var fechaEl  = document.getElementById('conf-fecha');
-    var horaEl   = document.getElementById('conf-hora');
-    var nombre = nombreEl ? nombreEl.textContent : '';
-    var fecha  = fechaEl  ? fechaEl.textContent  : '';
-    var hora   = horaEl   ? horaEl.textContent   : '';
-    var msg = encodeURIComponent(
-        'Hola, acabo de registrar una cita en Seguros LUX.\n' +
-        'Nombre: ' + nombre + '\n' +
-        'Fecha: ' + fecha + '\n' +
-        'Hora: ' + hora
-    );
-    window.open('https://wa.me/' + PHONE_NUMBER + '?text=' + msg, '_blank');
-}
-
-function sendEmail() {
-    var correoEl = document.getElementById('conf-correo');
-    var fechaEl  = document.getElementById('conf-fecha');
-    var horaEl   = document.getElementById('conf-hora');
-    var nombreEl = document.getElementById('conf-nombre');
-    var correo = correoEl ? correoEl.textContent : '';
-    var fecha  = fechaEl  ? fechaEl.textContent  : '';
-    var hora   = horaEl   ? horaEl.textContent   : '';
-    var nombre = nombreEl ? nombreEl.textContent : '';
-    var subject = encodeURIComponent('Confirmación de cita — Seguros LUX');
-    var body    = encodeURIComponent(
-        'Hola,\n\nTe escribo para confirmar mi cita en Seguros LUX:\n\n' +
-        'Nombre: ' + nombre + '\n' +
-        'Fecha: ' + fecha + '\n' +
-        'Hora: ' + hora + '\n\n¡Gracias!'
-    );
-    window.location.href = 'mailto:' + correo + '?subject=' + subject + '&body=' + body;
 }

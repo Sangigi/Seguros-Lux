@@ -31,7 +31,6 @@ $nonce = SessionManager::nonce();
             <p>Selecciona el tipo de seguro para iniciar tu cotización.</p>
         </div>
         <div class="ramo-list">
-            <!-- FIX CSP: onclick removidos — los listeners se registran en JS -->
             <button class="ramo-btn" data-ramo="vehicular">
                 <span class="ramo-icon-wrap veh"><i class="bi bi-car-front-fill"></i></span>
                 <span class="ramo-text"><strong>Seguro Vehicular</strong><small>Autos, SUV, Moto, Pickup</small></span>
@@ -71,9 +70,13 @@ $nonce = SessionManager::nonce();
         <!-- ─── VEHICULAR ─── -->
         <div class="ramo-form" id="ramoVehicular" style="display:none;">
             <div class="form-card">
-                <div class="step-counter">Paso <span id="veh-currentStep">1</span> de 6</div>
+                <div class="step-counter">Paso <span id="veh-currentStep">1</span> de 5</div>
                 <div class="progress-wrapper" id="veh-progressBar">
-                    <div class="progress-segment active"></div><div class="progress-segment"></div><div class="progress-segment"></div><div class="progress-segment"></div><div class="progress-segment"></div><div class="progress-segment"></div>
+                    <div class="progress-segment active"></div>
+                    <div class="progress-segment"></div>
+                    <div class="progress-segment"></div>
+                    <div class="progress-segment"></div>
+                    <div class="progress-segment"></div>
                 </div>
                 <form id="vehForm" novalidate>
 
@@ -82,7 +85,6 @@ $nonce = SessionManager::nonce();
                         <h2>Tipo de vehículo</h2>
                         <p class="step-subtitle">Selecciona tu vehículo y cuéntanos un poco más.</p>
                         <div class="section-divider"></div>
-                        <!-- FIX CSP: data-value en cada card, listeners en JS -->
                         <div class="option-cards" id="tipoVehiculoOptions">
                             <div class="option-card" data-value="auto"><i class="bi bi-car-front" style="color:#0ea5e9;"></i><span class="option-label">Auto</span><small class="option-desc">Sedán, hatchback</small></div>
                             <div class="option-card" data-value="moto"><i class="bi bi-bicycle" style="color:#8b5cf6;"></i><span class="option-label">Moto</span><small class="option-desc">600 cc o más</small></div>
@@ -221,7 +223,7 @@ $nonce = SessionManager::nonce();
                         </div>
                     </div>
 
-                    <!-- V5: Cita -->
+                    <!-- V5: Cita — ahora submit directo -->
                     <div class="form-step" data-vstep="5">
                         <h2>Agenda tu Cita</h2>
                         <p class="step-subtitle">¿Cómo y cuándo te contactamos?</p>
@@ -248,35 +250,6 @@ $nonce = SessionManager::nonce();
                         </div>
                         <div class="btn-actions">
                             <button type="button" class="btn-prev" data-prevstep="5"><i class="bi bi-arrow-left"></i> Atrás</button>
-                            <button type="button" class="btn-next" data-nextstep="5">Continuar <i class="bi bi-arrow-right"></i></button>
-                        </div>
-                    </div>
-
-                    <!-- V6: Canal (multi) -->
-                    <div class="form-step" data-vstep="6">
-                        <h2>Confirmación de cita</h2>
-                        <p class="step-subtitle">Elige uno o varios canales para recibir los detalles.</p>
-                        <div class="section-divider"></div>
-                        <div class="canal-cards" id="canalOptions">
-                            <div class="canal-card" data-canal="email">
-                                <div class="canal-icon em"><i class="bi bi-envelope-fill"></i></div>
-                                <div class="canal-info"><p class="canal-name">Correo Electrónico</p><p class="canal-desc">Los detalles llegan directo a tu bandeja.</p></div>
-                                <div class="canal-check"><i class="bi bi-check"></i></div>
-                            </div>
-                            <div class="canal-card" data-canal="whatsapp">
-                                <div class="canal-icon wa"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></div>
-                                <div class="canal-info"><p class="canal-name">WhatsApp</p><p class="canal-desc">Nuestro asistente gestionará tu cita automáticamente.</p></div>
-                                <div class="canal-check"><i class="bi bi-check"></i></div>
-                            </div>
-                            <div class="canal-card" data-canal="telegram">
-                                <div class="canal-icon tg"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.94z"/></svg></div>
-                                <div class="canal-info"><p class="canal-name">Telegram</p><p class="canal-desc">El bot confirmará y gestionará tu cita.</p></div>
-                                <div class="canal-check"><i class="bi bi-check"></i></div>
-                            </div>
-                        </div>
-                        <div class="error-msg" id="error-canal">Selecciona al menos un canal.</div>
-                        <div class="btn-actions">
-                            <button type="button" class="btn-prev" data-prevstep="6"><i class="bi bi-arrow-left"></i> Atrás</button>
                             <button type="button" id="btnSubmitVehicular" class="btn-next">Confirmar Cita <i class="bi bi-check-lg"></i></button>
                         </div>
                     </div>
@@ -299,7 +272,6 @@ $nonce = SessionManager::nonce();
                 <div class="field-group"><label class="form-label-custom">Fecha preferida de contacto <span class="required">*</span></label><input type="date" class="form-input" id="vg-fecha"><div class="error-msg" id="error-vg-fecha">Selecciona una fecha.</div></div>
                 <div id="gmmExtra" style="display:none;">
                     <div class="row-fields">
-                        <!-- <div class="field-group"><label class="form-label-custom">Edad</label><input type="number" class="form-input" id="vg-edad" placeholder="35" min="0" max="99"></div> -->
                         <div class="field-group"><label class="form-label-custom">Dependientes</label>
                             <select class="form-input" id="vg-dependientes"><option value="0">Solo yo</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4+</option></select>
                         </div>
@@ -359,7 +331,6 @@ $nonce = SessionManager::nonce();
                     <h2 id="tituloConfirmacion" style="margin-top:12px;">¡Cita Registrada!</h2>
                     <p class="step-subtitle">Tu solicitud fue procesada correctamente.</p>
                 </div>
-                <div id="canalEnviadoBanner" style="display:none;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;"></div>
                 <div id="mensajePersonalizado" style="display:none;"></div>
                 <div class="section-divider"></div>
                 <div class="confirmation-summary" id="confSummary">
@@ -389,14 +360,7 @@ $nonce = SessionManager::nonce();
                         <div class="conf-row"><span class="conf-label">Tipo:</span><span class="conf-value" id="conf-tipo-cita">-</span></div>
                         <div class="conf-row"><span class="conf-label">Fecha:</span><span class="conf-value" id="conf-fecha">-</span></div>
                         <div class="conf-row"><span class="conf-label">Hora:</span><span class="conf-value" id="conf-hora">-</span></div>
-                        <div class="conf-row"><span class="conf-label">Canal(es):</span><span class="conf-value" id="conf-canal">-</span></div>
                     </div>
-                </div>
-                <div id="whatsappBotSection" style="display:none;margin-top:16px;">
-                    <a id="whatsappBotBtn" href="#" target="_blank" class="bot-btn wa-bot-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> Gestionar por WhatsApp</a>
-                </div>
-                <div id="telegramSection" style="display:none;margin-top:10px;">
-                    <a id="telegramBtn" href="#" target="_blank" class="bot-btn tg-bot-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.94z"/></svg> Gestionar por Telegram</a>
                 </div>
                 <div style="margin-top:20px;text-align:center;">
                     <a href="/formulario" class="btn-prev" style="display:inline-flex;text-decoration:none;margin:0 auto;">Nueva cotización</a>
@@ -409,10 +373,8 @@ $nonce = SessionManager::nonce();
 
 <div style="text-align:center;padding:20px;font-size:13px;color:#94a3b8;">© 2026 LUX Seguros. Todos los derechos reservados.</div>
 
-<!-- JS externo primero (funciones base) -->
 <script src="/js/formulario_cliente.js"></script>
 
-<!-- Script inline con nonce CSP — FIX: reemplaza todos los onclick="" del HTML original -->
 <script nonce="<?= htmlspecialchars($nonce, ENT_QUOTES) ?>">
 /* ══════════════════════════════════════════════════════════
    ESTADO GLOBAL
@@ -421,13 +383,11 @@ var selectedRamo        = null;
 var selectedVidaGmmRamo = null;
 var _vehRadioSel        = { tipoVehiculo: null, asegurado: null, tiempoCompra: null, recienComprado: null, sexo: null, tipoCita: null };
 var _vehMiniData        = {};
-var _vehCanales         = [];
 var _vehSelectedDate    = null;
 var _vehSelectedTime    = null;
-var _vehSelectedTipoCita= null;
 
 /* ══════════════════════════════════════════════════════════
-   INICIALIZACIÓN — reemplaza todos los onclick="" inline
+   INICIALIZACIÓN
 ══════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -456,36 +416,34 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // ── Botones de ramo (sidebar) ────────────────────────────────────────────
+    // ── Botones de ramo (sidebar)
     document.querySelectorAll('.ramo-btn[data-ramo]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             selectRamo(this.dataset.ramo, this);
         });
     });
 
-    // ── Option cards genéricas (sexo, asegurado, tiempoCompra, etc.) ─────────
+    // ── Option cards genéricas (sexo, asegurado, tiempoCompra, tipoCita, recienComprado)
     document.querySelectorAll('.option-card[data-group]').forEach(function (card) {
         card.addEventListener('click', function () {
             var group = this.dataset.group;
-            var value = this.dataset.value;
-            // Deseleccionar hermanas del mismo grupo
             var parent = this.closest('[id$="Options"]') || this.parentNode;
             parent.querySelectorAll('.option-card').forEach(function (c) { c.classList.remove('selected'); });
             this.classList.add('selected');
-            _vehRadioSel[group] = value;
+            _vehRadioSel[group] = this.dataset.value;
             var errEl = document.getElementById('error-' + group);
             if (errEl) errEl.classList.remove('show');
         });
     });
 
-    // ── Option cards tipo vehículo (sin data-group, lógica especial) ─────────
+    // ── Option cards tipo vehículo (sin data-group, lógica especial)
     document.querySelectorAll('#tipoVehiculoOptions .option-card').forEach(function (card) {
         card.addEventListener('click', function () {
             selectTipoVehiculo(this.dataset.value, this);
         });
     });
 
-    // ── Mini toggles ──────────────────────────────────────────────────────────
+    // ── Mini toggles
     document.addEventListener('click', function (e) {
         var tog = e.target.closest('.mini-tog');
         if (!tog) return;
@@ -497,65 +455,51 @@ document.addEventListener('DOMContentLoaded', function () {
         if (group) _vehMiniData[group] = tog.dataset.val;
     });
 
-    // ── Canal cards (multi-select) ────────────────────────────────────────────
-    document.querySelectorAll('.canal-card[data-canal]').forEach(function (card) {
-        card.addEventListener('click', function () {
-            this.classList.toggle('selected');
-            var canal = this.dataset.canal;
-            var idx = _vehCanales.indexOf(canal);
-            if (idx === -1) _vehCanales.push(canal);
-            else _vehCanales.splice(idx, 1);
-            var errEl = document.getElementById('error-canal');
-            if (errEl) errEl.classList.remove('show');
-        });
-    });
-
-    // ── Botones Siguiente ────────────────────────────────────────────────────
+    // ── Botones Siguiente
     document.querySelectorAll('.btn-next[data-nextstep]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             nextStep(parseInt(this.dataset.nextstep));
         });
     });
 
-    // ── Botones Atrás ────────────────────────────────────────────────────────
+    // ── Botones Atrás
     document.querySelectorAll('.btn-prev[data-prevstep]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             vPrev(parseInt(this.dataset.prevstep));
         });
     });
 
-    // ── Botón Confirmar Cita (submit vehicular) ───────────────────────────────
+    // ── Botón Confirmar Cita (submit vehicular — ahora en paso 5)
     var btnSubmit = document.getElementById('btnSubmitVehicular');
     if (btnSubmit) {
         btnSubmit.addEventListener('click', submitVehicular);
     }
 
-    // ── Botón Enviar Vida/GMM ─────────────────────────────────────────────────
+    // ── Botón Enviar Vida/GMM
     var btnVG = document.getElementById('btnEnviarVidaGmm');
     if (btnVG) {
         btnVG.addEventListener('click', submitVidaGmm);
     }
 
-    // ── Botón Enviar Empresa ─────────────────────────────────────────────────
+    // ── Botón Enviar Empresa
     var btnEmp = document.getElementById('btnEnviarEmpresa');
     if (btnEmp) {
         btnEmp.addEventListener('click', submitEmpresa);
     }
 
-    // ── Calendario: prev / next ───────────────────────────────────────────────
+    // ── Calendario: prev / next
     var btnCalPrev = document.getElementById('btnCalPrev');
     var btnCalNext = document.getElementById('btnCalNext');
     if (btnCalPrev) btnCalPrev.addEventListener('click', function () { changeMonth(-1); });
     if (btnCalNext) btnCalNext.addEventListener('click', function () { changeMonth(1); });
 
-    // Inicializar calendario y time slots
     renderCalendar();
     renderTimeSlots();
     autoSelectToday();
 });
 
 /* ══════════════════════════════════════════════════════════
-   FUNCIONES DE NAVEGACIÓN VEHICULAR
+   NAVEGACIÓN VEHICULAR (5 pasos)
 ══════════════════════════════════════════════════════════ */
 function showVStep(n) {
     document.querySelectorAll('#ramoVehicular .form-step').forEach(function (s) { s.classList.remove('active'); });
@@ -637,7 +581,7 @@ function validateVStep(step) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   TIPO DE VEHÍCULO — actualiza marcas y mini-form
+   TIPO DE VEHÍCULO
 ══════════════════════════════════════════════════════════ */
 var MARCAS_POR_TIPO_LOCAL = {
     auto:      ['Audi','BMW','Chevrolet','Ford','Honda','Hyundai','Jeep','KIA','Mazda','Mercedes-Benz','Mitsubishi','Nissan','Peugeot','Porsche','Renault','SEAT','Suzuki','Toyota','Volkswagen','Volvo','Otra'],
@@ -654,11 +598,6 @@ function selectTipoVehiculo(tipo, el) {
     var errEl = document.getElementById('error-tipoVehiculo');
     if (errEl) errEl.classList.remove('show');
 
-    // Mostrar wrapper de datos
-    var wrapper = document.getElementById('vehDatosWrapper');
-    if (wrapper) wrapper.style.display = 'block';
-
-    // Actualizar marcas
     var sel = document.getElementById('marca');
     if (sel) {
         sel.innerHTML = '<option value="">Selecciona una marca</option>';
@@ -670,10 +609,11 @@ function selectTipoVehiculo(tipo, el) {
         });
     }
 
-    // Mostrar mini-form correcto
     var miniMap = { auto: 'miniFormAuto', moto: 'miniFormMoto', camioneta: 'miniFormCamioneta', pickup: 'miniFormPickup' };
     Object.values(miniMap).forEach(function (id) { var el2 = document.getElementById(id); if (el2) el2.style.display = 'none'; });
     _vehMiniData = {};
+    var wrapper = document.getElementById('vehDatosWrapper');
+    if (wrapper) wrapper.style.display = 'block';
     var target = document.getElementById(miniMap[tipo]);
     if (target) {
         target.style.display = 'block';
@@ -682,7 +622,7 @@ function selectTipoVehiculo(tipo, el) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   CALENDARIO VEHICULAR
+   CALENDARIO
 ══════════════════════════════════════════════════════════ */
 var _vehCalMonth = new Date().getMonth();
 var _vehCalYear  = new Date().getFullYear();
@@ -802,12 +742,14 @@ function cargarHorasOcupadas(fecha) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   SUBMIT VEHICULAR
+   SUBMIT VEHICULAR — sin canal, directo desde paso 5
 ══════════════════════════════════════════════════════════ */
 function submitVehicular() {
-    if (_vehCanales.length === 0) {
-        var e = document.getElementById('error-canal'); if (e) e.classList.add('show'); return;
-    }
+    if (!validateVStep(5)) return;
+
+    var btn = document.getElementById('btnSubmitVehicular');
+    if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
+
     var nombre   = (document.getElementById('nombre') || {}).value || '';
     var apPat    = (document.getElementById('apellidoPaterno') || {}).value || '';
     var apMat    = (document.getElementById('apellidoMaterno') || {}).value || '';
@@ -816,10 +758,6 @@ function submitVehicular() {
     var telEl    = document.getElementById('telefono');
     var telefono = '+' + (ladaEl ? ladaEl.value : '52') + (telEl ? telEl.value.trim() : '');
     var edadTxt  = ((document.getElementById('edad') || {}).value || '').trim();
-    var calleTxt = ((document.getElementById('calle') || {}).value || '').trim();
-    var colTxt   = ((document.getElementById('colonia') || {}).value || '').trim();
-    var ciuTxt   = ((document.getElementById('ciudad') || {}).value || '').trim();
-    var cpTxt    = ((document.getElementById('codigoPostal') || {}).value || '').trim();
     var marcaSel = document.getElementById('marca');
     var marcaTxt = marcaSel ? marcaSel.options[marcaSel.selectedIndex].text : '';
     var modelo   = (document.getElementById('modelo') || {}).value || '';
@@ -830,20 +768,23 @@ function submitVehicular() {
     var ecSel = document.getElementById('estadoCivil');
     var ecTxt = ecSel && ecSel.options[ecSel.selectedIndex]
         ? ecSel.options[ecSel.selectedIndex].text : '';
-    function lblSexo(v) {
-        if (v === 'masculino') return 'Masculino';
-        if (v === 'femenino') return 'Femenino';
-        return v || '—';
-    }
-    var tipoCitaLbl = (_vehRadioSel.tipoCita === 'videollamada')
-        ? '💻 Videollamada' : '📞 Llamada telefónica';
+    var calleTxt = ((document.getElementById('calle') || {}).value || '').trim();
+    var colTxt   = ((document.getElementById('colonia') || {}).value || '').trim();
+    var ciuTxt   = ((document.getElementById('ciudad') || {}).value || '').trim();
+    var cpTxt    = ((document.getElementById('codigoPostal') || {}).value || '').trim();
+
     var lblTipoVeh = (_vehRadioSel.tipoVehiculo || '').trim();
     if (lblTipoVeh) lblTipoVeh = lblTipoVeh.charAt(0).toUpperCase() + lblTipoVeh.slice(1);
 
-    var parts     = (_vehSelectedDate || '').split('-');
-    var fechaFmt  = parts[2] + ' de ' + _MONTHS_ES[parseInt(parts[1]) - 1] + ' ' + parts[0];
-    var comentariosExtra = '[Mini-form] ';
-    Object.keys(_vehMiniData).forEach(function (k) { comentariosExtra += k + ': ' + _vehMiniData[k] + ' | '; });
+    var parts    = (_vehSelectedDate || '').split('-');
+    var fechaFmt = parts[2] + ' de ' + _MONTHS_ES[parseInt(parts[1]) - 1] + ' ' + parts[0];
+
+    var comentariosExtra = '';
+    if (Object.keys(_vehMiniData).length) {
+        comentariosExtra = '[Datos adicionales] ' + Object.keys(_vehMiniData).map(function (k) {
+            return k + ': ' + _vehMiniData[k];
+        }).join(' | ');
+    }
 
     var payload = {
         nombre: nombre.trim(), apellidoPaterno: apPat.trim(), apellidoMaterno: apMat.trim(),
@@ -863,77 +804,59 @@ function submitVehicular() {
         tiempoCompra: _vehRadioSel.tiempoCompra,
         tipoCita: _vehRadioSel.tipoCita,
         fechaCita: _vehSelectedDate, horaCita: _vehSelectedTime,
-        canalNotificacion: _vehCanales.join(','),
         comentarios: comentariosExtra
     };
 
     fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(function (r) { return r.json(); })
-        .then(function (d) {
-            if (d.success) {
-                ['ramoVehicular', 'ramoVidaGmm', 'ramoEmpresas'].forEach(function (id) {
-                    var el = document.getElementById(id); if (el) el.style.display = 'none';
-                });
-                document.getElementById('ramoConfirmacion').style.display = 'block';
-                var tit = document.getElementById('tituloConfirmacion'); if (tit) tit.textContent = '¡Cita Registrada!';
-                function setConf(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
-                setConf('conf-nombre',    nombre + ' ' + apPat + ' ' + apMat);
-                setConf('conf-correo',    correo);
-                setConf('conf-telefono',  telefono);
-                setConf('conf-edad',       edadTxt ? edadTxt : '—');
-                setConf('conf-sexo',       lblSexo(_vehRadioSel.sexo || ''));
-                setConf('conf-ecivil',     ecTxt ? ecTxt : '—');
-                setConf('conf-direccion',  (calleTxt || colTxt) ? (calleTxt + ', ' + colTxt) : '—');
-                setConf('conf-ciudad',     (ciuTxt || estadoTxt) ? (ciuTxt + ', ' + estadoTxt) : '—');
-                setConf('conf-cp',         cpTxt ? cpTxt : '—');
-                setConf('conf-tipo',      lblTipoVeh ? lblTipoVeh : '—');
-                setConf('conf-auto',      marcaTxt + ' ' + modelo + ' ' + anio);
-                setConf('conf-asegurado', _vehRadioSel.asegurado === 'si' ? 'Sí' : (_vehRadioSel.asegurado === 'no' ? 'No' : '—'));
-                setConf('conf-tipo-cita', tipoCitaLbl);
-                setConf('conf-fecha',     fechaFmt);
-                setConf('conf-hora',      (_vehSelectedTime || '') + ' hrs');
-                setConf('conf-canal',     _vehCanales.join(', '));
+        .then(function (d) { mostrarConfirmacion(d, nombre, apPat, apMat, correo, telefono, edadTxt, marcaTxt, modelo, anio, lblTipoVeh, calleTxt, colTxt, ciuTxt, estadoTxt, cpTxt, ecTxt, fechaFmt); })
+        .catch(function () { mostrarConfirmacion({}, nombre, apPat, apMat, correo, telefono, edadTxt, marcaTxt, modelo, anio, lblTipoVeh, calleTxt, colTxt, ciuTxt, estadoTxt, cpTxt, ecTxt, fechaFmt); });
+}
 
-                var ban = document.getElementById('canalEnviadoBanner');
-                if (ban) {
-                    ban.style.display = 'block'; ban.className = '';
-                    var bits = [];
-                    if (_vehCanales.indexOf('email') !== -1)
-                        bits.push('✉️ Si elegiste correo, revisa tu bandeja (y spam) para la confirmación.');
-                    if (_vehCanales.indexOf('whatsapp') !== -1)
-                        bits.push('💬 Abre WhatsApp con el botón de abajo para gestionar tu cita.');
-                    if (_vehCanales.indexOf('telegram') !== -1)
-                        bits.push('✈️ Abre Telegram con el botón de abajo para vincular el bot.');
-                    ban.innerHTML = bits.join('<br>');
-                }
-                var waSec = document.getElementById('whatsappBotSection');
-                var tgSec = document.getElementById('telegramSection');
-                var waBtn = document.getElementById('whatsappBotBtn');
-                var tgBtn = document.getElementById('telegramBtn');
-                if (d.whatsapp_link && waSec && waBtn && _vehCanales.indexOf('whatsapp') !== -1) {
-                    waBtn.href = d.whatsapp_link; waSec.style.display = 'block';
-                } else if (waSec) { waSec.style.display = 'none'; }
-                if (d.telegram_link && tgSec && tgBtn && _vehCanales.indexOf('telegram') !== -1) {
-                    tgBtn.href = d.telegram_link; tgSec.style.display = 'block';
-                } else if (tgSec) { tgSec.style.display = 'none'; }
+function mostrarConfirmacion(d, nombre, apPat, apMat, correo, telefono, edadTxt, marcaTxt, modelo, anio, lblTipoVeh, calleTxt, colTxt, ciuTxt, estadoTxt, cpTxt, ecTxt, fechaFmt) {
+    ['ramoVehicular', 'ramoVidaGmm', 'ramoEmpresas'].forEach(function (id) {
+        var el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
+    document.getElementById('ramoConfirmacion').style.display = 'block';
 
-                var cMsg = document.getElementById('mensajePersonalizado');
-                if (cMsg) {
-                    cMsg.innerHTML = '🎉 <strong>¡Registro exitoso!</strong><br>Tu cita ha sido agendada. En breve un asesor se pondrá en contacto contigo.';
-                    cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
-                }
-                if (window.innerWidth < 900) document.getElementById('formMain').scrollIntoView({ behavior: 'smooth' });
-            } else {
-                alert('Error: ' + (d.message || 'Ocurrió un error. Por favor intenta de nuevo.'));
-            }
-        })
-        .catch(function () {
-            ['ramoVehicular', 'ramoVidaGmm', 'ramoEmpresas'].forEach(function (id) {
-                var el = document.getElementById(id); if (el) el.style.display = 'none';
-            });
-            document.getElementById('ramoConfirmacion').style.display = 'block';
-            if (window.innerWidth < 900) document.getElementById('formMain').scrollIntoView({ behavior: 'smooth' });
-        });
+    function setConf(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+    setConf('conf-nombre',    nombre + ' ' + apPat + ' ' + apMat);
+    setConf('conf-correo',    correo);
+    setConf('conf-telefono',  telefono);
+    setConf('conf-edad',      edadTxt || '—');
+    setConf('conf-sexo',      _vehRadioSel.sexo ? (_vehRadioSel.sexo.charAt(0).toUpperCase() + _vehRadioSel.sexo.slice(1)) : '—');
+    setConf('conf-ecivil',    ecTxt || '—');
+    setConf('conf-direccion', (calleTxt || colTxt) ? (calleTxt + ', ' + colTxt) : '—');
+    setConf('conf-ciudad',    (ciuTxt || estadoTxt) ? (ciuTxt + ', ' + estadoTxt) : '—');
+    setConf('conf-cp',        cpTxt || '—');
+    setConf('conf-tipo',      lblTipoVeh || '—');
+    setConf('conf-auto',      marcaTxt + ' ' + modelo + ' ' + anio);
+    setConf('conf-asegurado', _vehRadioSel.asegurado === 'si' ? 'Sí' : (_vehRadioSel.asegurado === 'no' ? 'No' : '—'));
+    setConf('conf-tipo-cita', _vehRadioSel.tipoCita === 'videollamada' ? '💻 Videollamada' : '📞 Llamada telefónica');
+    setConf('conf-fecha',     fechaFmt);
+    setConf('conf-hora',      (_vehSelectedTime || '') + ' hrs');
+
+    // Mensaje personalizado según respuesta del servidor
+    var cMsg = document.getElementById('mensajePersonalizado');
+    if (cMsg) {
+        var ico = document.getElementById('iconoConfirmacion');
+        var tit = document.getElementById('tituloConfirmacion');
+        if (d && d.cliente_existente && d.tiene_cita_activa) {
+            cMsg.innerHTML = '⚠️ <strong>¡Ya tienes una cita activa con nosotros!</strong><br>Comunícate con tu asesor para gestionarla.';
+            cMsg.style.cssText = 'display:block;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
+            if (ico) { ico.className = 'bi bi-exclamation-circle'; ico.style.color = '#f59e0b'; }
+            if (tit) tit.textContent = '¡Ya tienes una cita!';
+        } else if (d && d.cliente_existente) {
+            cMsg.innerHTML = '👋 <strong>¡Bienvenido de vuelta!</strong><br>Hemos agendado tu nueva cita. ¡Nos da gusto verte de nuevo!';
+            cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
+        } else {
+            cMsg.innerHTML = '🎉 <strong>¡Cita registrada!</strong><br>En breve un asesor se pondrá en contacto contigo.';
+            cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
+        }
+        cMsg.style.display = 'block';
+    }
+
+    if (window.innerWidth < 900) document.getElementById('formMain').scrollIntoView({ behavior: 'smooth' });
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1004,7 +927,6 @@ function submitVidaGmm() {
         nombre: nombre.trim(), correo: correo.trim(),
         telefono: '+52' + telefono.trim().replace(/\D/g, ''),
         fecha_preferida: fecha, ramo: ramo,
-        edad: (document.getElementById('vg-edad') || {}).value || '',
         dependientes: (document.getElementById('vg-dependientes') || { value: '0' }).value,
         comentarios: (document.getElementById('vg-comentarios') || {}).value || ''
     };
@@ -1022,23 +944,18 @@ function showConfirmacionVidaGmm(p) {
     ['confVehiculo', 'confCita', 'confDireccion', 'conf-row-sexo', 'conf-row-ecivil'].forEach(function (id) {
         var el = document.getElementById(id); if (el) el.style.display = 'none';
     });
-    var ramoLabel = p.ramo === 'gmm' ? '🏥 Gastos Médicos Mayores' : '❤️ Seguro de Vida';
     var tit = document.getElementById('tituloConfirmacion');
     if (tit) tit.textContent = p.ramo === 'gmm' ? '¡Solicitud GMM Recibida!' : '¡Solicitud de Vida Recibida!';
     function setConf(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
     setConf('conf-nombre', p.nombre); setConf('conf-correo', p.correo); setConf('conf-telefono', p.telefono);
+    var ramoLabel = p.ramo === 'gmm' ? '🏥 Gastos Médicos Mayores' : '❤️ Seguro de Vida';
     var MONTHS2 = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     var pts = p.fecha_preferida.split('-');
     var fechaFmt = pts[2] + ' de ' + (MONTHS2[parseInt(pts[1]) - 1] || '') + ' ' + pts[0];
-    var banner = document.getElementById('canalEnviadoBanner');
-    if (banner) {
-        banner.innerHTML = ramoLabel + '<br>Un asesor te contactará antes del <strong>' + fechaFmt + '</strong>.';
-        banner.style.cssText = 'display:block;background:linear-gradient(135deg,#e0f2fe,#ddd6fe);color:#1e3a5f;border:1px solid #93c5fd;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
-    }
     var cMsg = document.getElementById('mensajePersonalizado');
     if (cMsg) {
-        cMsg.innerHTML = '🎉 <strong>¡Gracias, ' + p.nombre + '!</strong><br>Tu solicitud fue recibida. Te contactaremos pronto.';
-        cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
+        cMsg.innerHTML = ramoLabel + '<br>Un asesor te contactará antes del <strong>' + fechaFmt + '</strong>.';
+        cMsg.style.cssText = 'display:block;background:linear-gradient(135deg,#e0f2fe,#ddd6fe);color:#1e3a5f;border:1px solid #93c5fd;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
     }
     if (window.innerWidth < 900) document.getElementById('formMain').scrollIntoView({ behavior: 'smooth' });
 }
@@ -1069,24 +986,22 @@ function submitEmpresa() {
         telefono: '+52' + document.getElementById('emp-telefono').value.trim(),
         empleados: document.getElementById('emp-empleados').value,
         servicios: Array.from(document.querySelectorAll('#ramoEmpresas .check-pill input:checked')).map(function (c) { return c.value; }).join(', '),
-        mensaje: document.getElementById('emp-mensaje').value.trim()
-    };
-    var payloadEmp = Object.assign({}, payload, {
+        mensaje: document.getElementById('emp-mensaje').value.trim(),
         ramo: 'empresas',
-        comentarios: payload.mensaje,
+        comentarios: document.getElementById('emp-mensaje').value.trim(),
         fecha_preferida: new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]
-    });
-    fetch('/api/vida-solicitud', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payloadEmp) })
+    };
+    fetch('/api/vida-solicitud', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(function (r) { return r.json(); })
-        .then(function () { showConfirmacionSimple(payload.nombre, payload.correo, payload.telefono, '¡Solicitud Empresarial Recibida!'); })
-        .catch(function () { showConfirmacionSimple(payload.nombre, payload.correo, payload.telefono, '¡Solicitud Empresarial Recibida!'); });
+        .then(function () { showConfirmacionSimple(payload.nombre, payload.correo, payload.telefono); })
+        .catch(function () { showConfirmacionSimple(payload.nombre, payload.correo, payload.telefono); });
 }
 
-function showConfirmacionSimple(nombre, correo, telefono, titulo) {
+function showConfirmacionSimple(nombre, correo, telefono) {
     ['ramoVehicular', 'ramoVidaGmm', 'ramoEmpresas'].forEach(function (id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
     document.getElementById('ramoConfirmacion').style.display = 'block';
     ['confVehiculo', 'confCita', 'confDireccion', 'conf-row-edad', 'conf-row-sexo', 'conf-row-ecivil'].forEach(function (id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
-    var tit = document.getElementById('tituloConfirmacion'); if (tit) tit.textContent = titulo;
+    var tit = document.getElementById('tituloConfirmacion'); if (tit) tit.textContent = '¡Solicitud Empresarial Recibida!';
     function setConf(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
     setConf('conf-nombre', nombre); setConf('conf-correo', correo); setConf('conf-telefono', telefono);
     var cMsg = document.getElementById('mensajePersonalizado');
