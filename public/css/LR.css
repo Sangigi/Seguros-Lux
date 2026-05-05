@@ -89,10 +89,9 @@
   padding:52px 52px 48px;
   display:flex;
   flex-direction:column;
-  justify-content:center; 
+  justify-content:center;
   position:relative;
   background:#f5f4f1;
-  overflow-y:auto;
 }
 
 /* Número de fondo decorativo */
@@ -269,7 +268,7 @@
 /* ── STATS BOTTOM ── */
 .stats-row{
   display:flex;gap:24px;
-  margin-top:auto;         
+  margin-top:40px;
   padding-top:28px;
   border-top:1px solid rgba(0,0,0,0.08);
 }
@@ -443,4 +442,3 @@
     font-size: 18px;
   }
 }
-
