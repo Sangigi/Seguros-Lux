@@ -300,6 +300,40 @@
   z-index:1;
 }
 
+/*Boton Regresar Login*/
+
+.back-home {
+    margin-top: 16px;
+    text-align: center;
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: rgba(0,0,0,0.3);
+    text-decoration: none;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: 'Google Sans', sans-serif;
+    transition: color 0.2s ease;
+}
+
+.back-link:hover {
+    color: #111110;
+    gap: 6px;
+}
+
+.back-link svg {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.back-link:hover svg {
+    transform: translateX(-2px);
+}
+
 /* ════════════════════════════════════════════════
    TIPOGRAFÍA RESPONSIVA — LOGIN
 ════════════════════════════════════════════════ */
@@ -410,34 +444,3 @@
   }
 }
 
-.back-home {
-    margin-top: 16px;
-    text-align: center;
-}
-
-.back-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: rgba(0,0,0,0.3);
-    text-decoration: none;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    font-family: 'Google Sans', sans-serif;
-    transition: color 0.2s ease;
-}
-
-.back-link:hover {
-    color: #111110;
-    gap: 6px;
-}
-
-.back-link svg {
-    transition: transform 0.2s ease;
-    flex-shrink: 0;
-}
-
-.back-link:hover svg {
-    transform: translateX(-2px);
-}
