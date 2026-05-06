@@ -82,7 +82,7 @@
     background: var(--accent); color: var(--primary);
     font-size: 14px; font-weight: 900; flex-shrink: 0;
   }
-  .legal-content h3 { font-size: 16px; font-weight: 800; color: #fff; margin: 22px 0 8px; }
+  .legal-content h3 { font-size: 16px; font-weight: 800; color: var(--white); margin: 22px 0 8px; }
   .legal-content p { font-size: 15px; color: var(--gray-600); line-height: 1.75; margin-bottom: 14px; }
   .legal-content ul, .legal-content ol { margin: 10px 0 16px 20px; }
   .legal-content li { font-size: 15px; color: var(--gray-600); line-height: 1.65; margin-bottom: 6px; }
@@ -219,14 +219,14 @@
         <h2 id="objeto"><span class="num">I</span> Objeto</h2>
         <p>El objeto es regular el acceso y utilización del contenido, productos y/o servicios a disposición del público en general en el dominio <a href="https://seguroslux.mx">https://seguroslux.mx</a>.</p>
         <p>El titular se reserva el derecho de realizar cualquier tipo de modificación en el sitio web en cualquier momento y sin previo aviso; el usuario acepta dichas modificaciones.</p>
-        <p>El acceso al sitio web por parte del usuario es libre y gratuito, en el cual podrán consultarse los productos y servicios en cuanto a Pólizas de Seguros (gastos médicos mayores, vida, auto/moto y patrimonio). La utilización del contenido, cotización de producto y/o servicio no implicará un costo y no compromete al usuario a la contratación de producto alguno.</p>
+        <p>El acceso al sitio web por parte del usuario es libre y gratuito, en el cual podrán consultarse los productos y servicios en cuanto a Pólizas de Seguros (gastos médicos mayores, vida, auto/moto y patrimonio). La utilización del contenido, cotización de producto y/o servicio no implicará un costo adicional y no compromete al usuario a la contratación de producto alguno.</p>
         <p>El sitio web solo admite el acceso a personas mayores de edad y no se hace responsable por el incumplimiento de esto. El sitio está dirigido a usuarios residentes en México y cumple con la legislación establecida en dicho país.</p>
         <p>La administración del sitio web puede ejercerse por terceros, es decir, personas distintas al titular, sin afectar los presentes términos y condiciones.</p>
 
         <h2 id="usuario"><span class="num">II</span> Usuario</h2>
         <p>La actividad del usuario en el sitio web —como publicaciones o comentarios— estará sujeta a los presentes términos y condiciones. El usuario se compromete a utilizar el contenido, productos y/o servicios de forma lícita, sin faltar a la moral o al orden público, absteniéndose de realizar cualquier acto que afecte los derechos de terceros o el funcionamiento del sitio web.</p>
         <p>El usuario se compromete a proporcionar información verídica en los formularios del sitio web.</p>
-        <p>El acceso al sitio web no supone una relación entre el usuario y el titular. SEGUROS LUX se deslinda de toda responsabilidad del mal uso que el usuario pudiera dar al sitio. Está totalmente prohibido el uso del sitio para actos ilícitos, de forma enunciativa y no limitativa: venta de estupefacientes, armas de fuego, trata de personas, venta o reproducción de contenido de pornografía infantil o de cualquier tipo, apuestas y casinos, entre otros. SEGUROS LUX by GRUPO IDEAS queda exento de cualquier responsabilidad derivada del mal uso del sitio.</p>
+        <p>El acceso al sitio web no supone una relación entre el usuario y el titular. SEGUROS LUX se deslinda de toda responsabilidad del mal uso que el usuario pudiera dar al sitio. Está totalmente prohibido el uso del sitio para actos ilícitos, de forma enunciativa y no limitativa: venta de estupefacientes, armas de fuego, trata de personas, venta o reproducción de contenido de pornografía infantil o de cualquier tipo, apuestas y casinos, entre otros. SEGUROS LUX by GRUPO IDEAS queda exenta de cualquier responsabilidad derivada del mal uso del sitio.</p>
         <p>El usuario manifiesta ser mayor de edad y contar con la capacidad jurídica para acatar los presentes términos y condiciones.</p>
         <p>Una vez contratada una Póliza de Seguro (gastos médicos mayores, vida, auto/moto o patrimonio), el usuario deberá enviar la documentación requerida y sus datos personales. Una vez recabados y aceptados, el contratante deberá realizar el pago de la póliza contratada. El pago podrá efectuarse en efectivo, transferencia interbancaria (SPI), tarjeta de débito y crédito (MSI).</p>
         <p>SEGUROS LUX by GRUPO IDEAS se pondrá en contacto con el cliente en caso de que falten datos o documentos para la integración de su expediente, así como para notificar pagos pendientes, vencimientos próximos o la cancelación de la póliza.</p>
@@ -324,7 +324,7 @@
       </div>
     </div>
     <div class="footer-bottom">
-      <div>©Seguros Lux. Intermediario autorizado por la CNSF. Todos los derechos reservados.</div>
+      <div>© Seguros Lux. Intermediario autorizado por la CNSF. Todos los derechos reservados.</div>
       <div>Powered by <strong style="color:#fff">GrupoIdeas</strong></div>
     </div>
   </div>

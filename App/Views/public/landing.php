@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Seguros Lux | Protege lo que más importa</title>
-<meta name="description" content="Seguros Lux: atención personal, especialistas en vehículos y respuesta en minutos. Cotiza tu seguro vehicular, de vida o gastos médicos mayores." />
+<meta name="description" content="Seguros Lux: atención personal, especialistas en vehículos y respuesta rapida. Cotiza tu seguro vehicular, de vida o gastos médicos mayores." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
@@ -359,7 +359,7 @@
       <div class="hero-eyebrow">Aseguradora #1 en México</div>
       <h1>Protege <em>lo que más</em> importa.</h1>
       <p class="lead">
-        Atención personal, especialistas en vehículos y respuesta en minutos.
+        Atención personal, especialistas en vehículos y respuesta rapida.
         Así protegemos tu patrimonio, tu familia y tu salud.
       </p>
       <div class="hero-ctas">
@@ -423,7 +423,7 @@
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
         <h3>Atención personal</h3>
-        <p>Un asesor real te conoce por nombre desde el primer día. Nada de call centers ni respuestas automáticas: un solo contacto que resuelve.</p>
+        <p>Un asesor real que te conoce por tu nombre desde el primer día. Sin bots: un solo contacto que te acompaña siempre.</p>
       </div>
       <div class="reason-card reveal">
         <div class="reason-number">02</div>
@@ -445,7 +445,7 @@
         <div class="reason-icon">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </div>
-        <h3>Respuesta en minutos</h3>
+        <h3>Respuesta rapida</h3>
         <p>Los imprevistos no esperan. Por eso te atendemos por teléfono o WhatsApp, cualquier día y a cualquier hora.</p>
       </div>
     </div>
@@ -500,9 +500,9 @@
         </div>
         <div class="seguro-body">
           <ul class="seguro-features">
-            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Cobertura amplia o limitada</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Cobertura amplia, amplia total o premium</li>
             <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Plan especial para vehículos</li>
-            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Grúa y auto sustituto</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Grúa, cambio de llanta, combustible, cerrajero y paso de corriente</li>
             <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Camiones y flotillas</li>
           </ul>
           <a href="seguros/autos" class="seguro-cta">
@@ -521,8 +521,8 @@
           <ul class="seguro-features">
             <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Fallecimiento por cualquier causa</li>
             <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Invalidez total y permanente</li>
-            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Deducibilidad fiscal</li>
-            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Suma asegurada flexible</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Retiro con deducibilidad fiscal</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Suma asegurada flexible, cubrimos tus necesidades y nos ajustamos a tu presupuesto</li>
           </ul>
           <a href="seguros/vida" class="seguro-cta">
             Conocer más
@@ -538,10 +538,11 @@
         </div>
         <div class="seguro-body">
           <ul class="seguro-features">
-            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> +460 hospitales certificados</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Hospitales en convenio, medicos certificados</li>
             <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Pago directo al hospital</li>
             <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Orientación médica 24/7</li>
-            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Cobertura internacional</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Cobertura nacional</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Asistencias medicas en convenio</li>
           </ul>
           <a href="seguros/gmm" class="seguro-cta">
             Conocer más
@@ -564,7 +565,7 @@
     <div class="testi-grid">
       <div class="testi-card reveal">
         <div class="testi-stars">★★★★★</div>
-        <p>"Tuve un percance y en menos de 20 minutos ya tenía la grúa en camino. Totalmente recomendados."</p>
+        <p>"Tuve un percance y recibi atención pronta que me ayudo a resolver mi problema. Totalmente recomendados."</p>
         <div class="testi-author">
           <div class="testi-avatar">MG</div>
           <div>
@@ -586,7 +587,7 @@
       </div>
       <div class="testi-card reveal">
         <div class="testi-stars">★★★★★</div>
-        <p>"Llevo 3 años con ellos y nunca he tenido problemas. El seguro premium vale cada peso que pagas."</p>
+        <p>"Llevo 3 años con ellos y al momento de mi choque me atendieron y me senti respaldado. El seguro premium vale cada peso que pagas."</p>
         <div class="testi-author">
           <div class="testi-avatar">AL</div>
           <div>
@@ -689,19 +690,31 @@
       </details>
       <details class="faq-item">
         <summary>¿Cuánto tarda en activarse mi póliza?</summary>
-        <div class="faq-answer">Se activa inmediatamente después de realizar el pago. Recibirás tu póliza digital por correo electrónico en cuestión de minutos.</div>
+        <div class="faq-answer">Se activa inmediatamente después de realizar el pago. Recibirás tu póliza digital por correo electrónico en cuestión de rapida. Se aplican terminos y condiciones.</div>
       </details>
       <details class="faq-item">
         <summary>¿Puedo cancelar mi seguro?</summary>
-        <div class="faq-answer">Sí, puedes cancelar tu seguro en cualquier momento. El proceso es sencillo y te devolvemos la parte proporcional no utilizada de tu prima.</div>
+        <div class="faq-answer">Sí, puedes cancelar tu seguro en cualquier momento. Nosotros te guiamos en el proceso y te devolvemos la parte proporcional no utilizada de tu prima.</div>
       </details>
       <details class="faq-item">
         <summary>¿Cómo puedo contactar a un asesor?</summary>
-        <div class="faq-answer">Por teléfono al 55 4123 2311, por WhatsApp, o llenando nuestro formulario de contacto. Estamos disponibles 24/7 para atenderte.</div>
+        <div class="faq-answer">Por teléfono al 55 4123 2311, por WhatsApp, o llenando nuestro formulario de contacto. Estamos disponibles para atenderte.</div>
       </details>
       <details class="faq-item">
         <summary>¿Son especialistas en vehículos?</summary>
         <div class="faq-answer">Sí. Llevamos años asesorando a vehículos y conocemos a detalle las coberturas, deducibles y asistencias que realmente marcan la diferencia sobre dos ruedas.</div>
+      </details>
+      <details class="faq-item">
+        <summary>¿Tienes alguna opción para mi retiro?</summary>
+        <div class="faq-answer">Sí. Contamos con planes para tu retiro, donde tambien podemos ayudarte con la deducibilidad de impuestos.</div>
+      </details>
+      <details class="faq-item">
+        <summary>¿Cuentan con planes para la educación de mis hijos?</summary>
+        <div class="faq-answer">Sí. Contamos con las mejores estrategias para cubrir varias etapas de su educación.</div>
+      </details>
+      <details class="faq-item">
+        <summary>¿Cuentan con planes para la salud?</summary>
+        <div class="faq-answer">Sí. Contamos con Seguros de Gastos Medicos Mayores con diferentes empresas, cubriendo tus necesidades y ajustandonos a tu presupuesto.</div>
       </details>
     </div>
   </div>
@@ -712,7 +725,7 @@
   <div class="container">
     <div class="section-header center reveal">
       <span class="section-badge">Siempre contigo</span>
-      <h2 class="section-title">Atención a clientes <em>24/7</em></h2>
+      <h2 class="section-title">Atención a <em>clientes</em></h2>
       <p class="section-description">Siempre hay un asesor real listo para ayudarte. Contáctanos por el medio que prefieras.</p>
     </div>
     <div class="contacto-grid">
@@ -720,7 +733,7 @@
         <div class="contacto-icon">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         </div>
-        <h3>Teléfono 24/7</h3>
+        <h3>Teléfono</h3>
         <p>Línea directa para emergencias y atención general.</p>
         <a href="tel:+525541232311" class="link">55 4123 2311</a>
       </div>
@@ -777,7 +790,7 @@
 <section class="cta-final">
   <div class="container">
     <h2>Protege lo que más <em>importa hoy</em></h2>
-    <p>Completa nuestro formulario rápido y recibe una cotización personalizada en minutos. Sin compromiso, sin letra pequeña.</p>
+    <p>Completa nuestro formulario rápido y recibe una cotización personalizada rapida. Sin compromiso, sin letra pequeña.</p>
     <div class="cta-final-actions">
       <a href="/formulario" class="btn btn-primary">
         Llenar Formulario
