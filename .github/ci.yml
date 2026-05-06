@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  # ── 1. Lint y auditoría de dependencias (rápido, sin BD) ──────────────────
+  # ── 1. Lint y auditoría (sin BD, solo PHP) ─────────────────────────────────
   lint:
     name: "Lint & Audit"
     runs-on: ubuntu-latest
@@ -17,7 +17,8 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.2"
-          extensions: mbstring, pdo, pdo_sqlite
+          # pdo_sqlite está incluida en php-common — no hace falta paquete extra
+          extensions: mbstring, pdo_sqlite
           coverage: none
 
       - name: Validate composer.json
@@ -26,17 +27,17 @@ jobs:
       - name: Install dependencies
         run: composer install --no-progress --prefer-dist
 
-      - name: Composer audit (vulnerabilidades conocidas)
-        run: composer audit --no-dev
+      - name: Composer audit (vulnerabilidades)
+        run: composer audit
 
-      - name: Syntax check (todos los .php excepto vendor/)
+      - name: Syntax check (todos los .php del proyecto)
         run: |
-          find . -name '*.php' -not -path './vendor/*' -print0 \
-            | xargs -0 -P4 -n1 php -l
+          find . \( -path ./vendor -o -path ./.git \) -prune -o \
+            -name '*.php' -print0 | xargs -0 -P4 -n1 php -l
 
-  # ── 2. Tests unitarios + seguridad (sin BD externa) ────────────────────────
+  # ── 2. Tests unitarios (sin BD real) ───────────────────────────────────────
   unit:
-    name: "Tests unitarios y de seguridad"
+    name: "Unit tests"
     runs-on: ubuntu-latest
     needs: lint
     steps:
@@ -46,23 +47,20 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.2"
-          extensions: mbstring, pdo, pdo_sqlite
+          extensions: mbstring, pdo_sqlite
           coverage: none
 
       - name: Install dependencies
         run: composer install --no-progress --prefer-dist
 
-      - name: Tests unitarios
+      - name: PHPUnit — suite unit
         run: vendor/bin/phpunit --testsuite unit --colors=always
 
-      - name: Tests de seguridad
-        run: vendor/bin/phpunit --testsuite security --colors=always
-
-  # ── 3. Tests de integración (SQLite en memoria — sin MySQL externo) ─────────
-  integration:
-    name: "Tests de integración (SQLite)"
+  # ── 3. Tests de seguridad ──────────────────────────────────────────────────
+  security:
+    name: "Security tests"
     runs-on: ubuntu-latest
-    needs: unit
+    needs: lint
     steps:
       - uses: actions/checkout@v4
 
@@ -70,13 +68,37 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.2"
-          extensions: mbstring, pdo, pdo_sqlite
+          extensions: mbstring, pdo_sqlite
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-progress --prefer-dist
+
+      - name: Crear directorio de rate limit (necesario para RateLimiterTest)
+        run: mkdir -p storage/ratelimit
+
+      - name: PHPUnit — suite security
+        run: vendor/bin/phpunit --testsuite security --colors=always
+
+  # ── 4. Tests de integración con cobertura (SQLite en memoria) ──────────────
+  integration:
+    name: "Integration tests + coverage"
+    runs-on: ubuntu-latest
+    needs: [unit, security]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo_sqlite
           coverage: xdebug
 
       - name: Install dependencies
         run: composer install --no-progress --prefer-dist
 
-      - name: Tests de integración con cobertura
+      - name: PHPUnit — suite integration con cobertura
         run: |
           vendor/bin/phpunit \
             --testsuite integration \
@@ -85,35 +107,38 @@ jobs:
         env:
           XDEBUG_MODE: coverage
 
-      - name: Guardar reporte de cobertura
+      - name: Subir reporte de cobertura
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-report
+          name: coverage-clover
           path: build/clover.xml
-          retention-days: 7
+          retention-days: 14
 
-  # ── 4. Suite completa en matriz de versiones PHP ───────────────────────────
-  matrix:
-    name: "PHP ${{ matrix.php-version }}"
+  # ── 5. Matriz de compatibilidad PHP 8.1 / 8.2 / 8.3 ───────────────────────
+  compat:
+    name: "PHP ${{ matrix.php }}"
     runs-on: ubuntu-latest
     needs: lint
     strategy:
       fail-fast: false
       matrix:
-        php-version: ["8.1", "8.2", "8.3"]
+        php: ["8.1", "8.2", "8.3"]
     steps:
       - uses: actions/checkout@v4
 
-      - name: "Setup PHP ${{ matrix.php-version }}"
+      - name: "Setup PHP ${{ matrix.php }}"
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ matrix.php-version }}
-          extensions: mbstring, pdo, pdo_sqlite
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, pdo_sqlite
           coverage: none
 
       - name: Install dependencies
         run: composer install --no-progress --prefer-dist
 
-      - name: "PHPUnit completo en PHP ${{ matrix.php-version }}"
+      - name: Crear directorio de rate limit
+        run: mkdir -p storage/ratelimit
+
+      - name: "Suite completa en PHP ${{ matrix.php }}"
         run: vendor/bin/phpunit --colors=always

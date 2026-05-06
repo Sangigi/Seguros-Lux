@@ -4,26 +4,24 @@ declare(strict_types=1);
 /**
  * tests/bootstrap.php — Entorno de pruebas de Seguros Lux.
  *
+ * CORRECCIONES respecto a la versión anterior:
+ *   - Eliminado: `use Database\TestConnection` (la clase no existe — error fatal).
+ *   - Eliminado: `use Database\Connection` en el bloque use (no es necesario,
+ *     el FQCN se usa directamente abajo).
+ *   - Simplificado: la inyección de SQLite ahora comprueba primero si
+ *     `setTestConnection()` existe (ya está en Connection.php) y lo llama
+ *     con el FQCN completo, sin imports que podían generar conflictos.
+ *
  * Responsabilidades:
- *   1. Marcar el proceso como entorno de testing.
- *   2. Cargar el autoloader de Composer (PHPUnit y clases del proyecto).
- *   3. Registrar el autoloader propio del CRM (Core/Autoloader.php).
- *   4. Conectar la BD de testing (SQLite en memoria) e inyectarla en
- *      Database\Connection para que todos los modelos la usen.
- *   5. Crear el esquema mínimo necesario para los tests de integración.
- *
- * FILOSOFÍA:
- *   Los tests de integración usan SQLite (:memory:) para:
- *     - No depender de MySQL en CI (GitHub Actions no levanta un servidor).
- *     - Velocidad: las transacciones en memoria son ~100× más rápidas.
- *     - Aislamiento: cada ejecución parte de cero.
- *
- *   Los tests unitarios pasan mocks de PDO y no llegan a este setup.
+ *   1. Marcar el proceso como entorno de testing (APP_ENV=testing).
+ *   2. Cargar Composer autoload y el autoloader propio del CRM.
+ *   3. Crear una conexión PDO SQLite en memoria con el esquema completo.
+ *   4. Inyectarla en Database\Connection para que todos los modelos la usen.
  */
 
 putenv('APP_ENV=testing');
 
-// ── 1. Composer autoload ───────────────────────────────────────────────────────
+// ── 1. Composer autoload ──────────────────────────────────────────────────────
 $autoload = dirname(__DIR__) . '/vendor/autoload.php';
 if (!is_file($autoload)) {
     fwrite(STDERR, "ERROR: Ejecuta `composer install` antes de correr los tests.\n");
@@ -40,20 +38,8 @@ if (is_file($crmAutoloader)) {
 // ── 3. Helpers globales ───────────────────────────────────────────────────────
 require_once dirname(__DIR__) . '/Core/helpers.php';
 
-// ── 4. BD en memoria (SQLite) ─────────────────────────────────────────────────
-//
-// Sobrescribimos Database\Connection con una subclase que devuelve
-// siempre la misma instancia de SQLite en memoria.
-// Así todos los modelos que llamen Connection::getConnection()
-// reciben la BD de testing sin ningún cambio en el código de producción.
+// ── 4. SQLite en memoria con esquema del CRM ──────────────────────────────────
 
-use Database\TestConnection;
-use Database\Connection;
-
-/**
- * Crea y devuelve una conexión PDO a SQLite en memoria con el esquema del CRM.
- * Se llama UNA sola vez; las llamadas siguientes devuelven la misma instancia.
- */
 function createTestPdo(): PDO
 {
     static $pdo = null;
@@ -67,9 +53,8 @@ function createTestPdo(): PDO
     $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES,   false);
 
     // SQLite no tiene ENUM — se usa TEXT con CHECK para aproximar.
-    $pdo->exec(/** @lang SQLite */ <<<'SQL'
+    $pdo->exec(<<<'SQL'
 
-        -- ── agentes ──────────────────────────────────────────────────────────
         CREATE TABLE agentes (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre      TEXT    NOT NULL,
@@ -78,11 +63,10 @@ function createTestPdo(): PDO
             telefono    TEXT    NOT NULL DEFAULT '',
             contrasena  TEXT    NOT NULL,
             rol         TEXT    NOT NULL DEFAULT 'asesor'
-                            CHECK(rol IN ('asesor','agente','coordinador','admin','superadmin')),
+                            CHECK(rol IN ('asesor','agente','coordinador','administrador','superadmin')),
             activo      INTEGER NOT NULL DEFAULT 1
         );
 
-        -- ── clientes ─────────────────────────────────────────────────────────
         CREATE TABLE clientes (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre            TEXT    NOT NULL,
@@ -102,7 +86,6 @@ function createTestPdo(): PDO
             ramo              TEXT
         );
 
-        -- ── cotizaciones ─────────────────────────────────────────────────────
         CREATE TABLE cotizaciones (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
             cliente_id              INTEGER NOT NULL,
@@ -117,7 +100,6 @@ function createTestPdo(): PDO
             fecha_fin_vigencia      TEXT
         );
 
-        -- ── polizas ──────────────────────────────────────────────────────────
         CREATE TABLE polizas (
             id                     INTEGER PRIMARY KEY AUTOINCREMENT,
             cliente_id             INTEGER NOT NULL,
@@ -129,7 +111,6 @@ function createTestPdo(): PDO
             eliminado_en           TEXT    DEFAULT NULL
         );
 
-        -- ── historial_cliente ─────────────────────────────────────────────────
         CREATE TABLE historial_cliente (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             cliente_id  INTEGER NOT NULL,
@@ -140,7 +121,6 @@ function createTestPdo(): PDO
             fecha       TEXT    DEFAULT (datetime('now'))
         );
 
-        -- ── notificaciones ────────────────────────────────────────────────────
         CREATE TABLE notificaciones (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             agente_id   INTEGER NOT NULL,
@@ -149,7 +129,6 @@ function createTestPdo(): PDO
             creada_en   TEXT    DEFAULT (datetime('now'))
         );
 
-        -- ── mail_queue ────────────────────────────────────────────────────────
         CREATE TABLE mail_queue (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             to_address     TEXT    NOT NULL,
@@ -171,13 +150,6 @@ function createTestPdo(): PDO
     return $pdo;
 }
 
-// ── 5. Inyectar la conexión de testing en la clase Connection ─────────────────
-//
-// Si Database\Connection tiene un método setConnection() (lo agregamos abajo),
-// lo usamos. Si no, parchamos la clase en runtime usando el autoloader.
-// La solución más limpia: agregar setTestConnection() a Connection en producción.
-// Ver Database/Connection.php — ya incluye este método en la versión mejorada.
-
-if (method_exists(Database\Connection::class, 'setTestConnection')) {
-    Database\Connection::setTestConnection(createTestPdo());
-}
+// ── 5. Inyectar en Connection ─────────────────────────────────────────────────
+// Usamos FQCN directamente — sin `use`, evita conflictos de importación.
+\Database\Connection::setTestConnection(createTestPdo());
