@@ -22,19 +22,25 @@ const PLANES = {
         plans: [
             {
                 nombre: 'Básico', tagline: 'Lo esencial por la ley.',
-                precio: '3,200', popular: false,
+                precio: '3,200', popular: false, popularTag: '',
                 incluidas: ['Daños a terceros', 'Asistencia vial 24/7'],
                 excluidas: ['Robo total', 'Daños materiales', 'Auto sustituto'],
             },
             {
                 nombre: 'Amplio', tagline: 'Equilibrio ideal entre cobertura y precio.',
-                precio: '6,800', popular: true,
+                precio: '6,800', popular: false, popularTag: '',
                 incluidas: ['Robo total', 'Daños a terceros y materiales', 'Asistencia vial 24/7', 'Gastos médicos ocupantes'],
                 excluidas: ['Auto sustituto y cero deducible'],
             },
             {
+                nombre: 'Amplio Total', tagline: 'Todo lo esencial más protección real ante imprevistos.',
+                precio: '8,900', popular: true, popularTag: '⭐ Mejor relación',
+                incluidas: ['Todo lo del plan Amplio', 'Auto sustituto (hasta 10 días)', 'Cero deducible en cristales', 'RC ampliada (mayor suma)'],
+                excluidas: ['Cobertura en EUA y Canadá'],
+            },
+            {
                 nombre: 'Premium', tagline: 'Tranquilidad total, sin sorpresas.',
-                precio: '11,500', popular: false,
+                precio: '11,500', popular: false, popularTag: '',
                 incluidas: ['Todo lo del plan Amplio', 'Auto sustituto durante reparación', 'Cero deducible en cristales', 'Cobertura en EUA y Canadá'],
                 excluidas: [],
             },
@@ -119,9 +125,11 @@ function renderPlanes(tipo) {
     const data = PLANES[tipo];
     if (!data) return;
     if (notaEl) notaEl.textContent = `${data.nota}. Los precios son referenciales y dependen de marca, modelo, año, uso y código postal.`;
-    container.innerHTML = data.plans.map(plan => `
+    container.innerHTML = data.plans.map(plan => {
+        const tag = plan.popularTag || (plan.popular ? '★ Lo más elegido' : '');
+        return `
         <div class="plan-card${plan.popular ? ' popular' : ''}">
-            ${plan.popular ? '<span class="plan-popular-tag">★ Lo más elegido</span>' : ''}
+            ${tag ? `<span class="plan-popular-tag">${tag}</span>` : ''}
             <div class="plan-name">${plan.nombre}</div>
             <p class="plan-tagline">${plan.tagline}</p>
             <div class="plan-price">
@@ -134,68 +142,91 @@ function renderPlanes(tipo) {
                 ${plan.excluidas.map(f => `<li class="excluded">${SVG_X} ${f}</li>`).join('')}
             </ul>
             <a href="#cotizar" class="plan-cta">Cotizar ${plan.nombre}</a>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
+}
+
+// Alias: sincroniza los campos del formulario y el estado visual al cambiar tipo de vehículo
+function updateFormForTipo(tipo) {
+    switchFieldGroup(tipo);
 }
 
 // ── Form cotizador (hero) ─────────────────────────────────────────────────────
 
-/**
- * Configuración de campos adicionales según tipo de vehículo
- * Permite mostrar/ocultar el campo "Número de unidades" solo para flotillas
- */
-const QUOTE_FORM_CONFIG = {
-    auto:     { marcaLabel: 'Marca', modeloLabel: 'Modelo', showUnidades: false },
-    moto:     { marcaLabel: 'Marca', modeloLabel: 'Modelo', showUnidades: false },
-    camion:   { marcaLabel: 'Marca / Tipo', modeloLabel: 'Modelo / Tonelaje', showUnidades: false },
-    flotilla: { marcaLabel: 'Marca principal', modeloLabel: 'Tipo de vehículos', showUnidades: true },
+// ── Switching de bloques de campos por tipo de vehículo ───────────────────────
+const FIELD_GROUPS = {
+    auto:     '.quote-fields-auto',
+    moto:     '.quote-fields-moto',
+    camion:   '.quote-fields-camion',
+    flotilla: '.quote-fields-flotilla',
 };
 
-function updateFormForTipo(tipo) {
+function switchFieldGroup(tipo) {
     const form = document.getElementById('formCotizadorAutos');
     if (!form) return;
-    const cfg = QUOTE_FORM_CONFIG[tipo] || QUOTE_FORM_CONFIG['auto'];
-
-    const marcaLabel  = form.querySelector('[data-label="marca"]');
-    const modeloLabel = form.querySelector('[data-label="modelo"]');
-    const unidadesRow = form.querySelector('.quote-unidades-row');
-
-    if (marcaLabel)  marcaLabel.textContent  = cfg.marcaLabel;
-    if (modeloLabel) modeloLabel.textContent = cfg.modeloLabel;
-    if (unidadesRow) unidadesRow.style.display = cfg.showUnidades ? '' : 'none';
+    Object.values(FIELD_GROUPS).forEach(sel => {
+        const el = form.querySelector(sel);
+        if (el) el.style.display = 'none';
+    });
+    const active = form.querySelector(FIELD_GROUPS[tipo] || FIELD_GROUPS['auto']);
+    if (active) active.style.display = '';
 }
 
 function initFormCotizador() {
     const form = document.getElementById('formCotizadorAutos');
     if (!form) return;
 
-    // Inyectar fila de "Número de unidades" para flotillas
-    const unidadesHTML = `
-        <div class="quote-form-row quote-unidades-row" style="display:none;">
-            <div class="quote-form-group" style="grid-column:1/-1">
-                <label>Número de unidades</label>
-                <input type="number" name="num_unidades" min="3" placeholder="Mínimo 3 unidades">
-            </div>
-        </div>`;
-    const submitBtn = form.querySelector('[type=submit]');
-    if (submitBtn) submitBtn.closest('[type=submit]') && submitBtn.insertAdjacentHTML('beforebegin', unidadesHTML);
+    // Mostrar bloque inicial
+    switchFieldGroup('auto');
 
     form.addEventListener('submit', function(e) {
         e.preventDefault();
 
-        const nombre   = (form.querySelector('[name="nombre"]')?.value   || '').trim();
-        const marca    = (form.querySelector('[name="marca"]')?.value    || '').trim();
-        const modelo   = (form.querySelector('[name="modelo"]')?.value   || '').trim();
-        const anio     = (form.querySelector('[name="anio"]')?.value     || '').trim();
-        const telefono = (form.querySelector('[name="telefono"]')?.value || '').trim();
-        const correo   = (form.querySelector('[name="correo"]')?.value   || '').trim();
-        const tipoVeh  = (form.querySelector('[name="tipo_vehiculo"]')?.value || 'auto');
+        const tipoVeh     = (form.querySelector('[name="tipo_vehiculo"]')?.value || 'auto');
+        const nombre      = (form.querySelector('[name="nombre"]')?.value        || '').trim();
+        const telefono    = (form.querySelector('[name="telefono"]')?.value      || '').trim();
+        const correo      = (form.querySelector('[name="correo"]')?.value        || '').trim();
+        const nacimiento  = (form.querySelector('[name="fecha_nacimiento"]')?.value || '');
+        const domicilio   = (form.querySelector('[name="domicilio"]')?.value     || '').trim();
+        const cp          = (form.querySelector('[name="cp"]')?.value            || '').trim();
 
-        if (!marca || !modelo || !anio || !telefono || !correo) {
-            alert('Por favor completa todos los campos requeridos.'); return;
+        // Campos por tipo
+        let marca = '', modelo = '', submarca = '', version = '', anio = '', extra = {};
+
+        if (tipoVeh === 'auto') {
+            marca    = (form.querySelector('[name="marca"]')?.value    || '').trim();
+            submarca = (form.querySelector('[name="submarca"]')?.value || '').trim();
+            modelo   = (form.querySelector('[name="modelo"]')?.value   || '').trim();
+            version  = (form.querySelector('[name="version"]')?.value  || '').trim();
+            anio     = (form.querySelector('[name="anio"]')?.value     || '').trim();
+        } else if (tipoVeh === 'moto') {
+            marca    = (form.querySelector('[name="marca_moto"]')?.value    || '').trim();
+            submarca = (form.querySelector('[name="submarca_moto"]')?.value || '').trim();
+            modelo   = (form.querySelector('[name="modelo_moto"]')?.value   || '').trim();
+            version  = (form.querySelector('[name="version_moto"]')?.value  || '').trim();
+            anio     = (form.querySelector('[name="anio_moto"]')?.value     || '').trim();
+            extra.costo = (form.querySelector('[name="costo_moto"]')?.value || '').trim();
+        } else if (tipoVeh === 'camion') {
+            marca    = (form.querySelector('[name="marca_camion"]')?.value    || '').trim();
+            submarca = (form.querySelector('[name="submarca_camion"]')?.value || '').trim();
+            modelo   = (form.querySelector('[name="modelo_camion"]')?.value   || '').trim();
+            version  = (form.querySelector('[name="version_camion"]')?.value  || '').trim();
+            anio     = (form.querySelector('[name="anio_camion"]')?.value     || '').trim();
+            extra.uso = (form.querySelector('[name="uso_camion"]')?.value    || '').trim();
+        } else if (tipoVeh === 'flotilla') {
+            extra.empresa      = (form.querySelector('[name="empresa"]')?.value              || '').trim();
+            extra.num_unidades = (form.querySelector('[name="num_unidades"]')?.value         || '').trim();
+            extra.tipo_flota   = (form.querySelector('[name="tipo_vehiculos_flotilla"]')?.value || '').trim();
+        }
+
+        if (!nombre || !telefono || !correo || !cp) {
+            alert('Por favor completa nombre, teléfono, correo y código postal.'); return;
         }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
             alert('Ingresa un correo electrónico válido.'); return;
+        }
+        if (tipoVeh !== 'flotilla' && (!marca || !modelo)) {
+            alert('Por favor indica la marca y modelo del vehículo.'); return;
         }
 
         const btn = form.querySelector('[type=submit]');
@@ -206,11 +237,14 @@ function initFormCotizador() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 nombre, correo,
-                telefono: '+52' + telefono.replace(/\D/g, ''),
-                ramo: 'autos',
-                marca, modelo, anio,
-                tipo_vehiculo: tipoVeh,
-                fecha_preferida: ''
+                telefono:       '+52' + telefono.replace(/\D/g, ''),
+                ramo:           'autos',
+                tipo_vehiculo:  tipoVeh,
+                fecha_nacimiento: nacimiento,
+                domicilio, cp,
+                marca, submarca, modelo, version, anio,
+                fecha_preferida: '',
+                ...extra,
             })
         })
         .then(r => r.json())
@@ -218,20 +252,20 @@ function initFormCotizador() {
             if (d.ok) {
                 form.innerHTML = `<div style="text-align:center;padding:32px 16px;">
                     <div style="font-size:52px;margin-bottom:10px;">✅</div>
-                    <h3 style="color:#f3c332;margin-bottom:8px;">¡Solicitud recibida!</h3>
+                    <h3 style="color:var(--accent);margin-bottom:8px;">¡Solicitud recibida!</h3>
                     <p style="color:#555;max-width:400px;margin:0 auto;">
                         Un asesor de Seguros Lux te contactará por WhatsApp y correo
-                        con tu cotización personalizada para tu <strong>${marca} ${modelo} ${anio}</strong>.
+                        con tu cotización personalizada.
                     </p>
                 </div>`;
             } else {
                 alert('Error: ' + (d.msg || 'Intenta de nuevo.'));
-                if (btn) { btn.disabled = false; btn.textContent = 'Cotizar gratis'; }
+                if (btn) { btn.disabled = false; btn.textContent = 'Cotiza ahora'; }
             }
         })
         .catch(() => {
             alert('Error de conexión. Intenta de nuevo.');
-            if (btn) { btn.disabled = false; btn.textContent = 'Cotizar gratis'; }
+            if (btn) { btn.disabled = false; btn.textContent = 'Cotiza ahora'; }
         });
     });
 }
