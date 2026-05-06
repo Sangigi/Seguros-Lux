@@ -606,31 +606,31 @@
   </div>
 </section>
 
-<!-- CASO REAL: Ricardo -->
+<!-- 3 EJEMPLOS MEMBRESÍA MÉDICA MÓVIL -->
 <section class="caso-section">
   <div class="container">
     <div class="caso-card">
-      <div class="caso-eyebrow">📖 Caso real · Médica Móvil</div>
-      <h3>Ricardo evitó <em>3 visitas al doctor</em> con su Membresía Médica Móvil</h3>
-      <p class="intro">Médica Móvil es un beneficio incluido. Ricardo lo usó tres veces en un año, ahorrando tiempo y dinero, sin afectar su póliza.</p>
+      <div class="caso-eyebrow">📱 Membresía Médica Móvil</div>
+      <h3>3 ejemplos de cómo usar tu <em>membresía móvil</em></h3>
+      <p class="intro">Tu membresía incluye tres tipos de atención disponibles 24/7, sin afectar tu póliza y sin costo adicional.</p>
       <div class="caso-events">
         <div class="caso-event">
-          <div class="caso-event-emoji">🤧</div>
-          <h5>Síntomas de resfriado</h5>
-          <p>Atendido vía orientación telefónica. Le recomendaron antiinflamatorios sin necesidad de visita presencial.</p>
-          <span class="caso-savings">Ahorró ~$700 en consulta</span>
+          <div class="caso-event-emoji">💻</div>
+          <h5>Atención médica por videollamada</h5>
+          <p>Consulta con un médico certificado desde tu teléfono o computadora. Ideal para síntomas leves, seguimientos y recetas digitales sin salir de casa.</p>
+          <span class="caso-savings">Disponible 24/7</span>
         </div>
         <div class="caso-event">
-          <div class="caso-event-emoji">🦶</div>
-          <h5>Esguince de tobillo</h5>
-          <p>Videollamada con el médico, derivado al hospital en convenio para revisión sin cobro adicional.</p>
-          <span class="caso-savings">Sin cobro de honorarios</span>
+          <div class="caso-event-emoji">🏠</div>
+          <h5>Atención médica a domicilio</h5>
+          <p>Un médico va hasta donde estás. Para casos que requieren revisión presencial pero no ameritan urgencias. Sin filas, sin salas de espera.</p>
+          <span class="caso-savings">A tu puerta</span>
         </div>
         <div class="caso-event">
-          <div class="caso-event-emoji">🌙</div>
-          <h5>Gastroenteritis nocturna</h5>
-          <p>Orientación médica inmediata a las 2am sin necesidad de moverse de casa ni hacer fila en urgencias.</p>
-          <span class="caso-savings">Atención en minutos</span>
+          <div class="caso-event-emoji">🚑</div>
+          <h5>Servicio de ambulancia</h5>
+          <p>En una emergencia real, el servicio de traslado médico está disponible para llevarte al hospital de la red más cercano con atención especializada.</p>
+          <span class="caso-savings">Emergencias reales</span>
         </div>
       </div>
     </div>
@@ -674,7 +674,7 @@
         <div class="emoji">👁️</div>
         <div>
           <h5>Asistencia Visión</h5>
-          <p>Lentes anuales sin costo y descuentos en ópticas Devlyn.</p>
+          <p>Lentes anuales sin costo y descuentos en ópticas participantes (la red varía según aseguradora y región).</p>
         </div>
       </div>
       <div class="asistencia-mini">
@@ -743,12 +743,56 @@
             <input type="tel" id="gmm-telefono" name="telefono" required inputmode="numeric" maxlength="10" autocomplete="tel-national" placeholder="55 1234 5678">
           </div>
           <div class="form-group">
+            <label for="gmm-nacimiento">Fecha de nacimiento *</label>
+            <input type="date" id="gmm-nacimiento" name="fecha_nacimiento" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="gmm-correo">Correo electrónico</label>
+            <input type="email" id="gmm-correo" name="correo" placeholder="tu@correo.com" autocomplete="email">
+          </div>
+          <div class="form-group">
             <label for="gmm-edad">Edad *</label>
             <input type="number" id="gmm-edad" name="edad" required min="18" max="80" placeholder="35">
           </div>
         </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label for="gmm-hospitales">¿En qué hospitales te has atendido? *</label>
+            <input type="text" id="gmm-hospitales" name="hospitales" required placeholder="Ej. Hospital ABC, Ángeles, IMSS, Médica Sur...">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label for="gmm-comentarios">Comentarios adicionales</label>
+            <textarea id="gmm-comentarios" name="comentarios" style="width:100%;padding:14px 16px;border:1.5px solid var(--gray-200);border-radius:10px;font-family:inherit;font-size:15px;resize:vertical;min-height:80px;" placeholder="Cuéntanos más: antecedentes médicos, personas a asegurar, dudas específicas..."></textarea>
+          </div>
+        </div>
+
+        <!-- Fecha preferida + semáforo de urgencia -->
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="form-group">
+            <label for="gmm-fecha">Fecha preferida de contacto</label>
+            <input type="date" id="gmm-fecha" name="fecha_preferida">
+          </div>
+          <div class="form-group">
+            <label>Nivel de urgencia</label>
+            <div style="display:flex;gap:8px;margin-top:4px;">
+              <label style="flex:1;cursor:pointer;">
+                <input type="radio" name="urgencia" value="urgente" style="display:none;" onchange="document.querySelectorAll('.urgencia-btn').forEach(b=>b.style.background='');this.closest('label').querySelector('.urgencia-btn').style.background='#fef2f2';this.closest('label').querySelector('.urgencia-btn').style.borderColor='#ef4444';">
+                <span class="urgencia-btn" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 10px;border:1.5px solid var(--gray-200);border-radius:10px;font-size:13px;font-weight:700;transition:all .2s;text-align:center;">🔴 Urgente</span>
+              </label>
+              <label style="flex:1;cursor:pointer;">
+                <input type="radio" name="urgencia" value="despues" style="display:none;" checked onchange="document.querySelectorAll('.urgencia-btn').forEach(b=>b.style.background='');this.closest('label').querySelector('.urgencia-btn').style.background='#f0fdf4';this.closest('label').querySelector('.urgencia-btn').style.borderColor='#22c55e';">
+                <span class="urgencia-btn" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 10px;border:1.5px solid var(--gray-200);border-radius:10px;font-size:13px;font-weight:700;transition:all .2s;text-align:center;">🟢 Sin prisa</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
         <button type="submit" class="btn btn-primary form-submit">
-          Solicitar cotización
+          Cotizar ahora
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
         </button>
         <p class="form-extra-note">Al enviar aceptas que un asesor te contacte por WhatsApp. Sin compromiso, sin spam.</p>
@@ -796,10 +840,10 @@
 <!-- CTA FINAL -->
 <section class="cta-final" id="contacto">
   <div class="container">
-    <h2>El mejor, <em>quién busca lo mejor para ti.</em></h2>
+    <h2>Buscamos la <em>solución para ti.</em></h2>
     <p>Mismo precio que ir directo. Asesoría real cuando más importa.</p>
     <div class="cta-final-actions">
-      <a href="#cotizar" class="btn btn-primary">Cotizar gratis</a>
+      <a href="#cotizar" class="btn btn-primary">Cotizar ahora</a>
       <a href="tel:+525541232311" class="btn btn-ghost">Hablar con asesor</a>
     </div>
   </div>

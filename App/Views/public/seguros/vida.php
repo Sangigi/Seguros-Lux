@@ -337,14 +337,42 @@
   </div>
   <div class="container">
     <div class="sub-hero-eyebrow">Seguro de Vida</div>
-    <h1>Protege el <em>futuro</em> de tu familia</h1>
-    <p class="lead">Asegura la tranquilidad de quienes más amas con coberturas flexibles y la mejor asesoría personalizada.</p>
+    <h1>Protegemos lo que <em>más quieres</em></h1>
+    <p class="lead">Tu familia merece seguridad sin importar lo que pase. Coberturas flexibles, asesoría real y un equipo que está contigo cuando más lo necesitas.</p>
     <div class="sub-hero-ctas">
       <a href="#agendar" class="btn btn-primary">
         Agendar Asesoría Gratis
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
       </a>
       <a href="tel:+525541232311" class="btn btn-ghost">55 4123 2311</a>
+    </div>
+  </div>
+</section>
+
+<!-- ¿POR QUÉ UN SEGURO DE VIDA? -->
+<section style="padding:70px 0;background:var(--white);border-bottom:1px solid var(--gray-100);">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">La razón más importante</div>
+      <h2>¿Por qué tener un <em>seguro de vida?</em></h2>
+      <p>No se trata de pensar en lo peor. Se trata de ser responsable con quienes dependen de ti.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;max-width:960px;margin:0 auto;">
+      <div style="background:var(--gray-50);border-radius:var(--radius-xl);padding:32px 26px;border-left:4px solid var(--vida-primary);">
+        <div style="font-size:36px;margin-bottom:14px;">🏠</div>
+        <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Protege el patrimonio</h4>
+        <p style="font-size:14px;color:var(--gray-600);line-height:1.6;">Si algo te llegara a pasar, tu familia podría mantener su estilo de vida, cubrir la hipoteca y los gastos del hogar sin depender de nadie.</p>
+      </div>
+      <div style="background:var(--gray-50);border-radius:var(--radius-xl);padding:32px 26px;border-left:4px solid var(--vida-primary);">
+        <div style="font-size:36px;margin-bottom:14px;">🎓</div>
+        <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Garantiza la educación</h4>
+        <p style="font-size:14px;color:var(--gray-600);line-height:1.6;">El futuro de tus hijos no depende de lo que pase contigo. Una póliza bien elegida garantiza que sus estudios sigan adelante pase lo que pase.</p>
+      </div>
+      <div style="background:var(--gray-50);border-radius:var(--radius-xl);padding:32px 26px;border-left:4px solid var(--vida-primary);">
+        <div style="font-size:36px;margin-bottom:14px;">💰</div>
+        <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Construye ahorro</h4>
+        <p style="font-size:14px;color:var(--gray-600);line-height:1.6;">Muchos planes de vida incluyen un componente de ahorro o inversión a mediano y largo plazo. Proteges a tu familia y generas capital al mismo tiempo.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -394,34 +422,90 @@
 <section class="plans-section">
   <div class="container">
     <div class="section-head">
-      <div class="section-eyebrow">Coberturas</div>
-      <h2>Planes de <em>Seguro de Vida</em></h2>
-      <p>Elige el plan que mejor se adapte a las necesidades de tu familia.</p>
+      <div class="section-eyebrow">Objetivos de vida</div>
+      <h2>Planes para cada <em>etapa de tu vida</em></h2>
+      <p>Elige el objetivo que mejor describe lo que buscas. Tu asesor te orientará en el plan ideal según tu perfil.</p>
     </div>
-    <div class="table-wrap">
-      <table class="plans-table">
-        <thead>
-          <tr>
-            <th style="text-align:left;">Cobertura</th>
-            <th>Esencial</th>
-            <th class="recommended">Familiar</th>
-            <th>Premium</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td>Fallecimiento por cualquier causa</td><td class="yes">✔</td><td class="yes">✔</td><td class="yes">✔</td></tr>
-          <tr><td>Muerte accidental (doble indemnización)</td><td class="no">✖</td><td class="yes">✔</td><td class="yes">✔</td></tr>
-          <tr><td>Invalidez total y permanente</td><td class="no">✖</td><td class="yes">✔</td><td class="yes">✔</td></tr>
-          <tr><td>Enfermedades graves</td><td class="no">✖</td><td class="no">✖</td><td class="yes">✔</td></tr>
-          <tr><td>Fondo de ahorro</td><td class="no">✖</td><td class="yes">✔</td><td class="yes">✔</td></tr>
-          <tr><td>Gastos funerarios</td><td class="yes">✔</td><td class="yes">✔</td><td class="yes">✔</td></tr>
-          <tr><td>Asistencia médica telefónica</td><td class="no">✖</td><td class="yes">✔</td><td class="yes">✔</td></tr>
-        </tbody>
-      </table>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:22px;max-width:960px;margin:0 auto 32px;">
+      <!-- Retiro -->
+      <div style="background:var(--white);border:2px solid var(--gray-200);border-radius:var(--radius-xl);padding:32px 28px;transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 20px 50px rgba(0,0,0,0.1)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
+        <div style="font-size:40px;margin-bottom:14px;">🏖️</div>
+        <h3 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--primary);margin-bottom:8px;">Plan de Retiro</h3>
+        <p style="font-size:14px;color:var(--gray-600);line-height:1.6;margin-bottom:18px;">Asegura tu tranquilidad financiera para cuando dejes de trabajar. Combina protección de vida con un fondo de retiro que crece con el tiempo.</p>
+        <ul style="list-style:none;margin-bottom:22px;">
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Suma asegurada en caso de fallecimiento</li>
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Ahorro acumulado a largo plazo</li>
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Deducible fiscal en ISR</li>
+        </ul>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <a href="#agendar" class="btn btn-primary" style="flex:1;text-align:center;justify-content:center;">Cotizar ahora</a>
+          <a href="tel:+525541232311" class="btn" style="flex:1;text-align:center;padding:12px 18px;border:2px solid var(--vida-primary);color:var(--vida-primary);border-radius:999px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Llamar
+          </a>
+        </div>
+      </div>
+
+      <!-- Ahorro -->
+      <div style="background:var(--white);border:2px solid var(--vida-primary);border-radius:var(--radius-xl);padding:32px 28px;position:relative;transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 20px 50px rgba(225,29,72,0.15)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
+        <span style="position:absolute;top:-12px;left:28px;background:var(--vida-primary);color:var(--white);font-size:11px;font-weight:800;padding:4px 14px;border-radius:999px;letter-spacing:1px;text-transform:uppercase;">★ Más elegido</span>
+        <div style="font-size:40px;margin-bottom:14px;">💎</div>
+        <h3 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--primary);margin-bottom:8px;">Plan de Ahorro</h3>
+        <p style="font-size:14px;color:var(--gray-600);line-height:1.6;margin-bottom:18px;">El equilibrio perfecto entre proteger a tu familia hoy y construir un patrimonio para el futuro. Ideal para mediano y largo plazo.</p>
+        <ul style="list-style:none;margin-bottom:22px;">
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Cobertura por fallecimiento e invalidez</li>
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Fondo de ahorro con rendimientos</li>
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Opción de rescate parcial</li>
+        </ul>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <a href="#agendar" class="btn btn-primary" style="flex:1;text-align:center;justify-content:center;">Cotizar ahora</a>
+          <a href="tel:+525541232311" class="btn" style="flex:1;text-align:center;padding:12px 18px;border:2px solid var(--vida-primary);color:var(--vida-primary);border-radius:999px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Llamar
+          </a>
+        </div>
+      </div>
+
+      <!-- Educativo -->
+      <div style="background:var(--white);border:2px solid var(--gray-200);border-radius:var(--radius-xl);padding:32px 28px;transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 20px 50px rgba(0,0,0,0.1)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
+        <div style="font-size:40px;margin-bottom:14px;">🎓</div>
+        <h3 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--primary);margin-bottom:8px;">Plan Educativo</h3>
+        <p style="font-size:14px;color:var(--gray-600);line-height:1.6;margin-bottom:18px;">Garantiza que la educación de tus hijos no se detenga pase lo que pase. El plan crece junto con ellos.</p>
+        <ul style="list-style:none;margin-bottom:22px;">
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Capital garantizado a la fecha de ingreso a universidad</li>
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> El plan no se cancela si el padre fallece</li>
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Exención de primas por invalidez</li>
+        </ul>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <a href="#agendar" class="btn btn-primary" style="flex:1;text-align:center;justify-content:center;">Cotizar ahora</a>
+          <a href="tel:+525541232311" class="btn" style="flex:1;text-align:center;padding:12px 18px;border:2px solid var(--vida-primary);color:var(--vida-primary);border-radius:999px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Llamar
+          </a>
+        </div>
+      </div>
+
+      <!-- Mediano y largo plazo -->
+      <div style="background:var(--white);border:2px solid var(--gray-200);border-radius:var(--radius-xl);padding:32px 28px;transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 20px 50px rgba(0,0,0,0.1)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
+        <div style="font-size:40px;margin-bottom:14px;">📈</div>
+        <h3 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--primary);margin-bottom:8px;">Mediano y Largo Plazo</h3>
+        <p style="font-size:14px;color:var(--gray-600);line-height:1.6;margin-bottom:18px;">Para quienes buscan protección combinada con una estrategia de inversión que genere resultados en horizontes de 10, 15 o 20 años.</p>
+        <ul style="list-style:none;margin-bottom:22px;">
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Flexibilidad en plazos y aportaciones</li>
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Cobertura por fallecimiento todo el tiempo</li>
+          <li style="padding:5px 0;font-size:14px;color:var(--primary);display:flex;gap:10px;align-items:flex-start;"><span style="color:var(--vida-primary);font-weight:700;">✓</span> Aportaciones deducibles de ISR</li>
+        </ul>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <a href="#agendar" class="btn btn-primary" style="flex:1;text-align:center;justify-content:center;">Cotizar ahora</a>
+          <a href="tel:+525541232311" class="btn" style="flex:1;text-align:center;padding:12px 18px;border:2px solid var(--vida-primary);color:var(--vida-primary);border-radius:999px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Llamar
+          </a>
+        </div>
+      </div>
     </div>
-    <div style="text-align: center; margin-top: 24px;">
-      <a href="#agendar" class="btn btn-primary">Agendar Mi Asesoría</a>
-    </div>
+
+    <p style="text-align:center;font-size:13px;color:var(--gray-400);max-width:680px;margin:0 auto;">La aseguradora determina el tipo de seguro y condiciones específicas según el perfil médico y financiero de cada solicitante. Aplican restricciones y condiciones según aseguradora. Tu asesor Lux te guiará en el proceso sin costo adicional.</p>
   </div>
 </section>
 
@@ -438,6 +522,10 @@
     </div>
 
     <div class="form-wrap">
+      <div style="background:linear-gradient(135deg,var(--vida-primary),var(--vida-dark));color:var(--white);border-radius:var(--radius-md);padding:18px 22px;margin-bottom:24px;font-size:14px;line-height:1.55;">
+        <strong style="display:block;font-size:15px;margin-bottom:4px;">💡 ¿Cómo funciona la elección del plan?</strong>
+        La aseguradora analiza tu perfil —edad, salud, objetivos y situación financiera— para recomendarte el tipo de seguro que mejor se adapta a ti. Tu asesor Lux te acompaña en todo el proceso y pelea por las mejores condiciones. <strong>Sin costo adicional.</strong>
+      </div>
       <form id="formVida">
 
         <div class="form-row full">
@@ -474,12 +562,11 @@
         </div>
 
         <button type="submit" class="btn btn-primary form-submit">
-          Solicitar Asesoría
+          Cotizar ahora
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
             <path d="M5 12h14M13 5l7 7-7 7"/>
           </svg>
         </button>
-
       </form>
     </div>
 

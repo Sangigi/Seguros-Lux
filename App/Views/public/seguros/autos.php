@@ -238,7 +238,7 @@
   @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
   .plan-cards {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px;
     margin-bottom: 30px;
   }
   .plan-card {
@@ -481,43 +481,190 @@
           <button class="quote-tab" data-quote="camion">🚚 Camión</button>
           <button class="quote-tab" data-quote="flotilla">🚐 Flotilla</button>
         </div>
-        <form id="formCotizadorAutos">
+        <form id="formCotizadorAutos" novalidate>
           <input type="hidden" name="tipo_vehiculo" value="auto">
+
+          <!-- ── CAMPOS COMUNES ── -->
           <div class="quote-form-row">
             <div class="quote-form-group">
-              <label>Nombre Completo</label>
-              <input type="text" name="nombre" placeholder="Ej. Juan" required>
+              <label>Nombre completo *</label>
+              <input type="text" name="nombre" placeholder="Ej. Juan García" required>
             </div>
             <div class="quote-form-group">
-              <label>Marca</label>
-              <input type="text" name="marca" placeholder="Ej. Honda" required>
-            </div>
-            <div class="quote-form-group">
-              <label>Modelo</label>
-              <input type="text" name="modelo" placeholder="Ej. CB500" required>
+              <label>Fecha de nacimiento *</label>
+              <input type="date" name="fecha_nacimiento" required>
             </div>
           </div>
           <div class="quote-form-row">
             <div class="quote-form-group">
-              <label>Año</label>
-              <select name="anio" required>
-                <option value="">Selecciona</option>
-                <option>2026</option><option>2025</option><option>2024</option>
-                <option>2023</option><option>2022</option><option>2021</option>
-                <option>2020 o anterior</option>
-              </select>
-            </div>
-            <div class="quote-form-group">
-              <label>Telefono</label>
+              <label>Teléfono / WhatsApp *</label>
               <input type="tel" name="telefono" placeholder="55 1234 5678" required>
             </div>
-          </div>
-          <div class="quote-form-row full">
             <div class="quote-form-group">
-              <label>Correo electrónico</label>
+              <label>Correo electrónico *</label>
               <input type="email" name="correo" placeholder="tu@correo.com" required>
             </div>
           </div>
+          <div class="quote-form-row">
+            <div class="quote-form-group">
+              <label>Domicilio (calle y número)</label>
+              <input type="text" name="domicilio" placeholder="Ej. Av. Insurgentes 123">
+            </div>
+            <div class="quote-form-group">
+              <label>Código postal *</label>
+              <input type="text" name="cp" placeholder="Ej. 06600" maxlength="5" inputmode="numeric" required>
+            </div>
+          </div>
+
+          <!-- ── CAMPOS AUTO ── -->
+          <div class="quote-fields-auto">
+            <div class="quote-form-row">
+              <div class="quote-form-group">
+                <label data-label="marca">Marca *</label>
+                <input type="text" name="marca" placeholder="Ej. Toyota" required>
+              </div>
+              <div class="quote-form-group">
+                <label>Submarca</label>
+                <input type="text" name="submarca" placeholder="Ej. Sedán, Sport">
+              </div>
+            </div>
+            <div class="quote-form-row">
+              <div class="quote-form-group">
+                <label data-label="modelo">Modelo *</label>
+                <input type="text" name="modelo" placeholder="Ej. Corolla" required>
+              </div>
+              <div class="quote-form-group">
+                <label>Versión</label>
+                <input type="text" name="version" placeholder="Ej. XLE, Base, Premium">
+              </div>
+            </div>
+            <div class="quote-form-row">
+              <div class="quote-form-group" style="grid-column:1/-1">
+                <label>Año *</label>
+                <select name="anio" required>
+                  <option value="">Selecciona el año</option>
+                  <option>2026</option><option>2025</option><option>2024</option>
+                  <option>2023</option><option>2022</option><option>2021</option>
+                  <option>2020</option><option>2019</option><option>2018</option>
+                  <option>2017 o anterior</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── CAMPOS MOTO ── -->
+          <div class="quote-fields-moto" style="display:none;">
+            <div class="quote-form-row">
+              <div class="quote-form-group">
+                <label>Marca *</label>
+                <input type="text" name="marca_moto" placeholder="Ej. Honda">
+              </div>
+              <div class="quote-form-group">
+                <label>Submarca</label>
+                <input type="text" name="submarca_moto" placeholder="Ej. Sport, Naked">
+              </div>
+            </div>
+            <div class="quote-form-row">
+              <div class="quote-form-group">
+                <label>Modelo *</label>
+                <input type="text" name="modelo_moto" placeholder="Ej. CB500F">
+              </div>
+              <div class="quote-form-group">
+                <label>Versión</label>
+                <input type="text" name="version_moto" placeholder="Ej. ABS, Estándar">
+              </div>
+            </div>
+            <div class="quote-form-row">
+              <div class="quote-form-group">
+                <label>Año *</label>
+                <select name="anio_moto">
+                  <option value="">Selecciona el año</option>
+                  <option>2026</option><option>2025</option><option>2024</option>
+                  <option>2023</option><option>2022</option><option>2021</option>
+                  <option>2020</option><option>2019</option><option>2018</option>
+                  <option>2017 o anterior</option>
+                </select>
+              </div>
+              <div class="quote-form-group">
+                <label>Costo aproximado (MXN)</label>
+                <input type="text" name="costo_moto" placeholder="Ej. $85,000" inputmode="numeric">
+              </div>
+            </div>
+          </div>
+
+          <!-- ── CAMPOS CAMIÓN ── -->
+          <div class="quote-fields-camion" style="display:none;">
+            <div class="quote-form-row">
+              <div class="quote-form-group">
+                <label>Marca *</label>
+                <input type="text" name="marca_camion" placeholder="Ej. Freightliner">
+              </div>
+              <div class="quote-form-group">
+                <label>Submarca</label>
+                <input type="text" name="submarca_camion" placeholder="Ej. Cascadia, M2">
+              </div>
+            </div>
+            <div class="quote-form-row">
+              <div class="quote-form-group">
+                <label>Modelo *</label>
+                <input type="text" name="modelo_camion" placeholder="Ej. M2 106">
+              </div>
+              <div class="quote-form-group">
+                <label>Versión</label>
+                <input type="text" name="version_camion" placeholder="Ej. Turbo, 6×4">
+              </div>
+            </div>
+            <div class="quote-form-row">
+              <div class="quote-form-group">
+                <label>Año *</label>
+                <select name="anio_camion">
+                  <option value="">Selecciona el año</option>
+                  <option>2026</option><option>2025</option><option>2024</option>
+                  <option>2023</option><option>2022</option><option>2021</option>
+                  <option>2020</option><option>2019</option><option>2018</option>
+                  <option>2017 o anterior</option>
+                </select>
+              </div>
+              <div class="quote-form-group">
+                <label>Tipo de uso *</label>
+                <select name="uso_camion">
+                  <option value="">Selecciona</option>
+                  <option value="pasajeros">Transporte de pasajeros</option>
+                  <option value="carga">Transporte de carga</option>
+                  <option value="grua">Grúa / Arrastre</option>
+                  <option value="mixto">Mixto</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── CAMPOS FLOTILLA ── -->
+          <div class="quote-fields-flotilla" style="display:none;">
+            <div class="quote-form-row">
+              <div class="quote-form-group">
+                <label>Nombre de la empresa *</label>
+                <input type="text" name="empresa" placeholder="Ej. Transportes García S.A.">
+              </div>
+              <div class="quote-form-group">
+                <label>Número de vehículos *</label>
+                <input type="number" name="num_unidades" min="3" placeholder="Mínimo 3">
+              </div>
+            </div>
+            <div class="quote-form-row">
+              <div class="quote-form-group" style="grid-column:1/-1">
+                <label>Tipo principal de vehículos</label>
+                <select name="tipo_vehiculos_flotilla">
+                  <option value="">Selecciona</option>
+                  <option>Autos / SUVs</option>
+                  <option>Camionetas pickup</option>
+                  <option>Vans de carga</option>
+                  <option>Camiones</option>
+                  <option>Mixto</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <button type="submit" class="btn btn-primary quote-submit">
             Cotiza ahora
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
@@ -648,6 +795,29 @@
             <li class="excluded"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Auto sustituto y cero deducible</li>
           </ul>
           <a href="#cotizar" class="plan-cta">Cotizar Amplio</a>
+          <a href="tel:+525541232311" class="plan-call-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Llamar ahora
+          </a>
+        </div>
+        <!-- AMPLIO TOTAL — intermedio entre Amplio y Premium -->
+        <div class="plan-card popular" style="border-color:var(--accent-dark);--popular-bg:var(--accent-dark);">
+          <span class="plan-popular-tag" style="background:var(--accent-dark);color:var(--white);">⭐ Mejor relación</span>
+          <div class="plan-name">Amplio Total</div>
+          <p class="plan-tagline">Todo lo esencial más protección real ante imprevistos.</p>
+          <div class="plan-price">
+            <div class="plan-price-label">Desde</div>
+            <div class="plan-price-amount"><em>$</em>8,900<em style="font-size:14px;">/año</em></div>
+            <div class="plan-price-note">*precio referencial sedán 2020</div>
+          </div>
+          <ul class="plan-features">
+            <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Todo lo del plan Amplio</li>
+            <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Auto sustituto (hasta 10 días)</li>
+            <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Cero deducible en cristales</li>
+            <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> RC ampliada (mayor suma)</li>
+            <li class="excluded"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Cobertura en EUA y Canadá</li>
+          </ul>
+          <a href="#cotizar" class="plan-cta" style="background:var(--accent-dark);color:var(--white);">Cotizar Amplio Total</a>
           <a href="tel:+525541232311" class="plan-call-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             Llamar ahora

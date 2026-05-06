@@ -13,16 +13,25 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        const nombre   = form.querySelector('[name="nombre"]')?.value.trim()   || '';
-        const telefono = form.querySelector('[name="telefono"]')?.value.trim() || '';
-        const edad     = form.querySelector('[name="edad"]')?.value.trim()     || '';
-        const correo   = form.querySelector('[name="correo"]')?.value.trim()   || '';
+        const nombre       = form.querySelector('[name="nombre"]')?.value.trim()         || '';
+        const telefono     = form.querySelector('[name="telefono"]')?.value.trim()        || '';
+        const edad         = form.querySelector('[name="edad"]')?.value.trim()            || '';
+        const correo       = form.querySelector('[name="correo"]')?.value.trim()          || '';
+        const nacimiento   = form.querySelector('[name="fecha_nacimiento"]')?.value       || '';
+        const hospitales   = form.querySelector('[name="hospitales"]')?.value.trim()      || '';
+        const comentarios  = form.querySelector('[name="comentarios"]')?.value.trim()     || '';
+        const fechaPref    = form.querySelector('[name="fecha_preferida"]')?.value        || '';
+        const urgencia     = form.querySelector('[name="urgencia"]:checked')?.value       || 'despues';
 
-        if (!nombre || !telefono || !edad) {
-            showMsg('error', 'Por favor completa nombre, WhatsApp y edad.');
+        if (!nombre || !telefono || !nacimiento) {
+            showMsg('error', 'Por favor completa nombre, WhatsApp y fecha de nacimiento.');
             return;
         }
-        if (parseInt(edad) < 18 || parseInt(edad) > 80) {
+        if (!hospitales) {
+            showMsg('error', 'Por favor indica en qué hospitales te has atendido.');
+            return;
+        }
+        if (edad && (parseInt(edad) < 18 || parseInt(edad) > 80)) {
             showMsg('error', 'La edad debe estar entre 18 y 80 años.');
             return;
         }
@@ -30,10 +39,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = form.querySelector('[type=submit]');
         if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
 
-        // Fecha preferida = 2 días hábiles desde hoy
-        const fechaPref = new Date();
-        fechaPref.setDate(fechaPref.getDate() + 2);
-        const fechaStr = fechaPref.toISOString().split('T')[0];
+        const fechaEnvio = fechaPref || (() => {
+            const d = new Date();
+            d.setDate(d.getDate() + 2);
+            return d.toISOString().split('T')[0];
+        })();
 
         try {
             const res = await fetch('/api/vida-solicitud', {
@@ -45,7 +55,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     correo:          correo || `sin-correo-${Date.now()}@noreply.seguroslux.mx`,
                     telefono:        telefono.replace(/\D/g, ''),
                     edad,
-                    fecha_preferida: fechaStr,
+                    fecha_nacimiento: nacimiento,
+                    hospitales,
+                    comentarios,
+                    fecha_preferida: fechaEnvio,
+                    urgencia,
                 })
             });
 
@@ -63,11 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>`;
             } else {
                 showMsg('error', data.msg || 'Ocurrió un error. Intenta de nuevo.');
-                if (btn) { btn.disabled = false; btn.textContent = 'Solicitar cotización'; }
+                if (btn) { btn.disabled = false; btn.textContent = 'Cotizar ahora'; }
             }
         } catch {
             showMsg('error', 'Error de conexión. Intenta de nuevo o llámanos al 55 4123 2311.');
-            if (btn) { btn.disabled = false; btn.textContent = 'Solicitar cotización'; }
+            if (btn) { btn.disabled = false; btn.textContent = 'Cotizar ahora'; }
         }
     });
 
