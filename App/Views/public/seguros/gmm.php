@@ -892,7 +892,7 @@
       </div>
     </div>
     <div class="footer-bottom">
-      <div>© 2026 Seguros Lux. Intermediario autorizado por la CNSF. Todos los derechos reservados.</div>
+      <div>©Seguros Lux. Intermediario autorizado por la CNSF. Todos los derechos reservados.</div>
       <div>Powered by <strong style="color: #fff">GrupoIdeas</strong></div>
     </div>
   </div>

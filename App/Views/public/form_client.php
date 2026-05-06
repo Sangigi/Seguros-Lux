@@ -445,7 +445,7 @@ $nonce = SessionManager::nonce();
     </main>
 </div>
 
-<div style="text-align:center;padding:20px;font-size:13px;color:#94a3b8;">© 2026 LUX Seguros. Todos los derechos reservados.</div>
+<div style="text-align:center;padding:20px;font-size:13px;color:#94a3b8;">©LUX Seguros. Todos los derechos reservados.</div>
 
 <script src="/js/formulario_cliente.js"></script>
 

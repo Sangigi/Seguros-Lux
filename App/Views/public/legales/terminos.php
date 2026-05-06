@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/logo.png">
 <link rel="stylesheet" href="css/landing.css">
 <style>
   .legal-hero {
@@ -323,7 +324,7 @@
       </div>
     </div>
     <div class="footer-bottom">
-      <div>© 2026 Seguros Lux. Intermediario autorizado por la CNSF. Todos los derechos reservados.</div>
+      <div>©Seguros Lux. Intermediario autorizado por la CNSF. Todos los derechos reservados.</div>
       <div>Powered by <strong style="color:#fff">GrupoIdeas</strong></div>
     </div>
   </div>
