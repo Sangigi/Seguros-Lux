@@ -88,17 +88,6 @@ class AgentModel extends BaseModel
         $this->update($id, ['activo' => 1]);
     }
 
-    /**
-     * Reemplaza el hash de contraseña almacenado para un agente.
-     * Se usa para rehashing transparente cuando el algoritmo/costo cambia.
-     */
-    public function actualizarHash(int $id, string $hash): void
-    {
-        $this->db()
-            ->prepare('UPDATE agentes SET contrasena = ? WHERE id = ?')
-            ->execute([$hash, $id]);
-    }
-
     // ── Estadísticas ──────────────────────────────────────────────────────────
 
     public function getStatsGlobales(): array
