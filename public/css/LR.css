@@ -1,0 +1,444 @@
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap"');
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+.w{
+  height: 100vh;
+  background:#f5f4f1;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  font-family:'Google Sans',sans-serif;
+  overflow:hidden;
+  position:relative;
+  border-radius:16px;
+}
+
+/* ── PANEL IZQUIERDO ── */
+.left{
+  position:relative;
+  background:#111110;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  padding:44px 48px;
+}
+
+/* SVG de líneas cinéticas */
+#kinetic-svg{position:absolute;inset:0;width:100%;height:100%}
+
+.left-logo{
+  position:relative;
+  z-index:2;
+}
+.left-logo-mark{
+  display:flex;align-items:center;gap:10px;
+}
+.logo-square{
+  width:28px;height:28px;
+  border:1.5px solid rgba(255,255,255,0.8);
+  position:relative;
+}
+.logo-square::after{
+  content:'';position:absolute;
+  bottom:-5px;right:-5px;
+  width:12px;height:12px;
+  background:#fff;
+}
+.logo-wordmark{
+  font-family:'Google Sans',serif;
+  font-size:18px;
+  color:#fff;
+  letter-spacing:0.02em;
+}
+
+.left-content{
+  position:relative;z-index:2;
+}
+.left-tag{
+  font-size:10px;
+  letter-spacing:0.18em;
+  text-transform:uppercase;
+  color:rgba(255,255,255,0.35);
+  margin-bottom:20px;
+  display:flex;align-items:center;gap:10px;
+}
+.left-tag::before{content:'';width:20px;height:1px;background:rgba(255,255,255,0.3);}
+
+.left-headline{
+  font-family:'Google Sans',serif;
+  font-size:38px;
+  line-height:1.1;
+  color:#fff;
+  font-weight:400;
+}
+.left-headline em{
+  font-style:italic;
+  color:rgba(255,255,255,0.45);
+}
+
+.left-foot{
+  position:relative;z-index:2;
+  font-size:11px;
+  color:rgba(255,255,255,0.2);
+  letter-spacing:0.06em;
+}
+
+/* ── PANEL DERECHO ── */
+.right{
+  padding:52px 52px 48px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  position:relative;
+  background:#f5f4f1;
+}
+
+/* Número de fondo decorativo */
+.bg-num{
+  position:absolute;
+  top:-20px;right: 10px;
+  font-family:'Google Sans',serif;
+  font-size:160px;
+  color:rgba(0,0,0,0.04);
+  font-weight:400;
+  line-height:1;
+  pointer-events:none;
+  user-select:none;
+}
+
+.form-header{margin-bottom:40px;}
+.form-eyebrow{
+  font-size:10px;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  color:rgba(0,0,0,0.3);
+  margin-bottom:12px;
+}
+.form-title{
+  font-family:'Google Sans',serif;
+  font-size:30px;
+  color:#111110;
+  font-weight:400;
+  line-height:1.1;
+}
+
+/* ── CAMPOS ── */
+.field{
+  margin-bottom:24px;
+  position:relative;
+}
+
+.field-inner{
+  position:relative;
+  border-bottom:1.5px solid rgba(0,0,0,0.15);
+  transition:border-color 0.4s;
+}
+.field-inner.active{border-color:#111110;}
+
+.field-label{
+  position:absolute;
+  left:0;
+  top:14px;
+  font-size:13px;
+  color:rgba(0,0,0,0.35);
+  pointer-events:none;
+  transition:all 0.35s cubic-bezier(0.4,0,0.2,1);
+  letter-spacing:0.01em;
+}
+.field-label.up{
+  top:-2px;
+  font-size:10px;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  color:rgba(0,0,0,0.5);
+}
+
+.field-inp{
+  width:100%;
+  background:transparent;
+  border:none;
+  outline:none;
+  font-family:'Google Sans',sans-serif;
+  font-size:15px;
+  font-weight:400;
+  color:#111110;
+  padding:12px 32px 10px 0;
+  caret-color:#111110;
+}
+
+/* Barra de progreso animada */
+.field-bar{
+  position:absolute;
+  bottom:-1.5px;left:0;
+  height:1.5px;
+  width:0;
+  background:#111110;
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+}
+.field-inner.active .field-bar{width:100%;}
+
+.eye-btn{
+  position:absolute;right:0;top:10px;
+  background:none;border:none;cursor:pointer;
+  color:rgba(0,0,0,0.3);
+  transition:color 0.3s;
+  padding:4px;
+  line-height:0;
+}
+.eye-btn:hover{color:#111110;}
+
+/* ── ALERT ── */
+.alert{
+  background:rgba(220,50,50,0.07);
+  border-left:2px solid #dc3232;
+  border-radius:4px;
+  padding:10px 14px;
+  font-size:12px;
+  color:#b02020;
+  margin-bottom:20px;
+  display:none;
+  align-items:center;
+  gap:8px;
+  animation:slideIn 0.3s ease;
+}
+.alert.show{display:flex;}
+@keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── BOTÓN ── */
+.btn-wrap{margin-top:36px;position:relative;}
+
+.btn-submit{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;
+  padding:16px 22px;
+  background:#111110;
+  border:none;border-radius:6px;
+  color:#f5f4f1;
+  font-family:'Google Sans',sans-serif;
+  font-size:13px;
+  font-weight:500;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  cursor:pointer;
+  position:relative;
+  overflow:hidden;
+  transition:all 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* Fondo que crece desde el centro */
+.btn-submit::before{
+  content:'';
+  position:absolute;inset:0;
+  background:#2a2a28;
+  transform:scaleX(0);
+  transform-origin:left;
+  transition:transform 0.45s cubic-bezier(0.4,0,0.2,1);
+}
+.btn-submit:hover::before{transform:scaleX(1);}
+.btn-submit:active{transform:scale(0.99);}
+
+.btn-text-wrap{
+  position:relative;z-index:1;
+  display:flex;align-items:center;gap:8px;
+}
+.btn-arrow{
+  position:relative;z-index:1;
+  transition:transform 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+.btn-submit:hover .btn-arrow{transform:translateX(4px);}
+
+/* Loader */
+.btn-dots{
+  display:none;
+  position:absolute;inset:0;z-index:2;
+  align-items:center;justify-content:center;
+  gap:5px;background:#111110;
+}
+.btn-dots.show{display:flex;}
+.dot{
+  width:5px;height:5px;border-radius:50%;
+  background:#f5f4f1;
+  animation:dp 1s ease-in-out infinite;
+}
+.dot:nth-child(2){animation-delay:.15s}
+.dot:nth-child(3){animation-delay:.3s}
+@keyframes dp{0%,80%,100%{transform:scale(0.6);opacity:.3}40%{transform:scale(1);opacity:1}}
+
+/* ── STATS BOTTOM ── */
+.stats-row{
+  display:flex;gap:24px;
+  margin-top:40px;
+  padding-top:28px;
+  border-top:1px solid rgba(0,0,0,0.08);
+}
+.stat{flex:1}
+.stat-n{
+  font-family:'Google Sans',serif;
+  font-size:20px;
+  color:#111110;
+  line-height:1;
+  margin-bottom:4px;
+}
+.stat-l{
+  font-size:10px;
+  color:rgba(0,0,0,0.3);
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+}
+
+/* ── CURSOR LIGHT EN PANEL IZQ ── */
+.cursor-light{
+  position:absolute;
+  width:300px;height:300px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,0.06) 0%,transparent 70%);
+  pointer-events:none;
+  transform:translate(-50%,-50%);
+  transition:left 0.8s ease,top 0.8s ease;
+  z-index:1;
+}
+
+/*Boton Regresar Login*/
+
+.back-home {
+    margin-top: 16px;
+    text-align: center;
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: rgba(0,0,0,0.3);
+    text-decoration: none;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: 'Google Sans', sans-serif;
+    transition: color 0.2s ease;
+}
+
+.back-link:hover {
+    color: #111110;
+    gap: 6px;
+}
+
+.back-link svg {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.back-link:hover svg {
+    transform: translateX(-2px);
+}
+
+/* ════════════════════════════════════════════════
+   TIPOGRAFÍA RESPONSIVA — LOGIN
+════════════════════════════════════════════════ */
+
+/* ───────────────
+   Desktop grande (≥1280px)
+   Más presencia, menos vacío
+──────────────── */
+@media (min-width: 1280px) {
+
+  .logo-wordmark { font-size: 25px; }
+
+  .left-headline {
+    font-size: 72px;
+  }
+
+  .left-tag {
+    font-size: 15px;
+  }
+
+  .form-title {
+    font-size: 42px;
+  }
+
+  .field-inp {
+    font-size: 16px;
+  }
+
+  .field-label {
+    font-size: 14px;
+  }
+
+  .btn-submit {
+    font-size: 14px;
+  }
+
+  .stat-n {
+    font-size: 22px;
+  }
+
+  .form-eyebrow {
+    font-size: 12.5px;
+  }
+}
+
+
+/* ───────────────
+   Laptop / Tablet grande (1024px – 1279px)
+   Estado actual (no se toca)
+──────────────── */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  /* Intencionalmente vacío */
+}
+
+
+/* ───────────────
+   Tablet / Móvil (≤1023px)
+   Más compacto
+──────────────── */
+@media (max-width: 1023px) {
+
+  .left-headline {
+    font-size: 30px;
+  }
+
+  .form-title {
+    font-size: 26px;
+  }
+
+  .field-inp {
+    font-size: 14px;
+  }
+
+  .btn-submit {
+    font-size: 12px;
+  }
+}
+
+
+/* ───────────────
+   Móvil pequeño (≤480px)
+   Máxima densidad visual
+──────────────── */
+@media (max-width: 480px) {
+
+  .left {
+    padding: 32px 28px;
+  }
+
+  .right {
+    padding: 40px 28px;
+  }
+
+  .left-headline {
+    font-size: 26px;
+  }
+
+  .form-title {
+    font-size: 24px;
+  }
+
+  .field-inp {
+    font-size: 13px;
+  }
+
+  .stat-n {
+    font-size: 18px;
+  }
+}

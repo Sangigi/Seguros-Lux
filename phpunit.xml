@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    phpunit.xml — Configuración de PHPUnit para Seguros Lux CRM
+    Versión: PHPUnit 10.x / 11.x
+
+    SUITES:
+      unit        → Tests sin BD real (mocks + SQLite L1)   — rápidos, < 1 s
+      integration → Tests con SQLite en memoria              — medios, < 5 s
+      security    → Tests de seguridad (RateLimiter, CSRF)  — medios, < 5 s
+
+    EJECUTAR:
+      vendor/bin/phpunit                          # todas las suites
+      vendor/bin/phpunit -\-testsuite unit        # solo unit
+      vendor/bin/phpunit -\-testsuite integration # solo integration
+      vendor/bin/phpunit -\-coverage-html build/coverage   # con cobertura HTML
+
+    COBERTURA:
+      Requiere Xdebug 3 o PCOV:
+        php -d xdebug.mode=coverage vendor/bin/phpunit -\-coverage-text
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         failOnEmptyTestSuite="true"
+         failOnRisky="false"
+         failOnWarning="false">
+
+    <!-- ── Suites ─────────────────────────────────────────────────────────── -->
+
+    <testsuites>
+        <!-- Tests unitarios: sin BD real, usan mocks o L1 cache -->
+        <testsuite name="unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+
+        <!-- Tests de integración: SQLite en memoria (bootstrap.php) -->
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+
+        <!-- Tests de seguridad: RateLimiter, CSRF, SessionManager -->
+        <testsuite name="security">
+            <directory>tests/Security</directory>
+        </testsuite>
+    </testsuites>
+
+    <!-- ── Fuentes para análisis de cobertura ──────────────────────────────── -->
+
+    <source>
+        <include>
+            <directory suffix=".php">App/Models</directory>
+            <directory suffix=".php">App/Services</directory>
+            <directory suffix=".php">App/Security</directory>
+            <directory suffix=".php">App/Controllers</directory>
+            <directory suffix=".php">Core</directory>
+            <directory suffix=".php">Database</directory>
+        </include>
+        <exclude>
+            <!-- Excluir Bots (demasiado acoplados a APIs externas) -->
+            <file>App/Controllers/TelegramBot.php</file>
+            <file>App/Controllers/WhatsAppBot.php</file>
+            <!-- Excluir scripts de cron (sin lógica testeble unitariamente) -->
+            <directory>App/Cron</directory>
+            <!-- Excluir vistas -->
+            <directory>App/Views</directory>
+        </exclude>
+    </source>
+
+    <!-- ── Variables de entorno para tests ────────────────────────────────── -->
+
+    <php>
+        <env name="APP_ENV"      value="testing"/>
+        <env name="DB_HOST"      value=""/>
+        <env name="DB_USER"      value=""/>
+        <env name="DB_PASS"      value=""/>
+        <env name="DB_NAME"      value=""/>
+        <env name="SMTP_HOST"    value=""/>
+        <env name="SMTP_USER"    value=""/>
+        <env name="SMTP_PASS"    value=""/>
+        <env name="REDIS_HOST"   value="127.0.0.1"/>
+        <env name="REDIS_PORT"   value="6379"/>
+        <env name="ASSET_PREFIX" value=""/>
+    </php>
+
+</phpunit>

@@ -1,0 +1,66 @@
+Options -Indexes
+RewriteEngine On
+
+# ── Redirigir HTTP → HTTPS en producción ──────────────────────────────────────
+# Descomenta estas líneas cuando tengas SSL activo:
+# RewriteCond %{HTTPS} off
+# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# ── Servir archivos y directorios reales ──────────────────────────────────────
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# ── Front controller ──────────────────────────────────────────────────────────
+RewriteRule ^ index.php [QSA,L]
+
+# ── Bloquear acceso directo a archivos sensibles ──────────────────────────────
+
+# Configuración y entorno
+<Files ".env.php">
+    Require all denied
+</Files>
+<Files ".env">
+    Require all denied
+</Files>
+<Files "composer.json">
+    Require all denied
+</Files>
+<Files "composer.lock">
+    Require all denied
+</Files>
+
+# Logs de seguridad — nunca deben ser públicos
+<IfModule mod_rewrite.c>
+    RewriteRule ^logs/         - [F,L]
+    RewriteRule ^storage/      - [F,L]
+</IfModule>
+
+# Bloquear archivos de configuración y backup comunes
+<FilesMatch "\.(sql|bak|log|sh|env|ini|phar|git)$">
+    Require all denied
+</FilesMatch>
+
+# Bloquear acceso directo a cualquier archivo PHP fuera del front-controller
+# (opcional — comenta si alguna vista necesita ser accesible directamente)
+<FilesMatch "\.php$">
+    <If "%{REQUEST_URI} != '/index.php'">
+        Require all denied
+    </If>
+</FilesMatch>
+
+# ── Cabeceras de seguridad adicionales vía Apache ─────────────────────────────
+# (como respaldo a las que emite PHP; si usas nginx, muévelas al server block)
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    # Activar HSTS solo cuando HTTPS esté confirmado y estable:
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
+# ── Proteger directorios sensibles ────────────────────────────────────────────
+<IfModule mod_rewrite.c>
+    RewriteRule ^Core/          - [F,L]
+    RewriteRule ^App/           - [F,L]
+</IfModule>
