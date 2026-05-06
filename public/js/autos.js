@@ -55,6 +55,12 @@ const PLANES = {
                 incluidas: ['Responsabilidad Civil', 'Robo total', 'Daños materiales', 'Asistencia vial 24/7', 'Gastos médicos piloto'],
                 excluidas: ['Equipo premium y accesorios'],
             },
+             {
+                nombre: 'Amplio', tagline: 'Cobertura completa para tu moto.',
+                precio: '3,500', popular: true,
+                incluidas: ['Responsabilidad Civil', 'Robo total', 'Daños materiales', 'Asistencia vial 24/7', 'Gastos médicos piloto'],
+                excluidas: ['Equipo premium y accesorios'],
+            },
             {
                 nombre: 'Premium', tagline: 'Máxima protección para motociclistas.',
                 precio: '5,800', popular: false,
