@@ -779,13 +779,14 @@
           <div class="form-group">
             <label>Nivel de urgencia</label>
             <div style="display:flex;gap:8px;margin-top:4px;">
-              <label style="flex:1;cursor:pointer;">
-                <input type="radio" name="urgencia" value="urgente" style="display:none;" onchange="document.querySelectorAll('.urgencia-btn').forEach(b=>b.style.background='');this.closest('label').querySelector('.urgencia-btn').style.background='#fef2f2';this.closest('label').querySelector('.urgencia-btn').style.borderColor='#ef4444';">
-                <span class="urgencia-btn" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 10px;border:1.5px solid var(--gray-200);border-radius:10px;font-size:13px;font-weight:700;transition:all .2s;text-align:center;">🔴 Urgente</span>
+              <label class="urgencia-label">
+                <input type="radio" name="urgencia" value="urgente">
+                <span class="urgencia-btn">🔴 Urgente</span>
               </label>
-              <label style="flex:1;cursor:pointer;">
-                <input type="radio" name="urgencia" value="despues" style="display:none;" checked onchange="document.querySelectorAll('.urgencia-btn').forEach(b=>b.style.background='');this.closest('label').querySelector('.urgencia-btn').style.background='#f0fdf4';this.closest('label').querySelector('.urgencia-btn').style.borderColor='#22c55e';">
-                <span class="urgencia-btn" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 10px;border:1.5px solid var(--gray-200);border-radius:10px;font-size:13px;font-weight:700;transition:all .2s;text-align:center;">🟢 Sin prisa</span>
+
+              <label class="urgencia-label">
+                <input type="radio" name="urgencia" value="despues" checked>
+                <span class="urgencia-btn">🟢 Sin prisa</span>
               </label>
             </div>
           </div>
@@ -903,5 +904,31 @@
 
 <script src="../js/landing.js" defer></script>
 <script src="../js/gmm.js" defer></script>
+
+<script nonce="<?= $cspNonce ?>">
+  document.addEventListener('DOMContentLoaded', () => {
+  const radios = document.querySelectorAll('input[name="urgencia"]');
+  const botones = document.querySelectorAll('.urgencia-btn');
+
+  radios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      botones.forEach(b => {
+        b.style.background = '';
+        b.style.borderColor = 'var(--gray-200)';
+      });
+
+      const btn = radio.closest('label').querySelector('.urgencia-btn');
+
+      if (radio.value === 'urgente') {
+        btn.style.background = '#fef2f2';
+        btn.style.borderColor = '#ef4444';
+      } else {
+        btn.style.background = '#f0fdf4';
+        btn.style.borderColor = '#22c55e';
+      }
+    });
+  });
+});
+</script>
 </body>
 </html>
