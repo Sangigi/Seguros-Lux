@@ -33,6 +33,12 @@ const PLANES = {
                 excluidas: ['Auto sustituto y cero deducible'],
             },
             {
+                nombre: 'Amplio', tagline: 'Equilibrio ideal entre cobertura y precio.',
+                precio: '6,800', popular: true,
+                incluidas: ['Robo total', 'Daños a terceros y materiales', 'Asistencia vial 24/7', 'Gastos médicos ocupantes'],
+                excluidas: ['Auto sustituto y cero deducible'],
+            },
+            {
                 nombre: 'Premium', tagline: 'Tranquilidad total, sin sorpresas.',
                 precio: '11,500', popular: false,
                 incluidas: ['Todo lo del plan Amplio', 'Auto sustituto durante reparación', 'Cero deducible en cristales', 'Cobertura en EUA y Canadá'],
@@ -50,12 +56,6 @@ const PLANES = {
                 excluidas: ['Robo total', 'Daños a la moto', 'Equipo del piloto'],
             },
             {
-                nombre: 'Amplio', tagline: 'Cobertura completa para tu moto.',
-                precio: '3,500', popular: true,
-                incluidas: ['Responsabilidad Civil', 'Robo total', 'Daños materiales', 'Asistencia vial 24/7', 'Gastos médicos piloto'],
-                excluidas: ['Equipo premium y accesorios'],
-            },
-             {
                 nombre: 'Amplio', tagline: 'Cobertura completa para tu moto.',
                 precio: '3,500', popular: true,
                 incluidas: ['Responsabilidad Civil', 'Robo total', 'Daños materiales', 'Asistencia vial 24/7', 'Gastos médicos piloto'],
