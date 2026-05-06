@@ -383,6 +383,34 @@ $nonce = SessionManager::nonce();
                 </div>
                 <div id="mensajePersonalizado" style="display:none;"></div>
                 <div class="section-divider"></div>
+
+                <!-- Leyenda + canales extra (solo flujo vehicular con cita; se muestra por JS) -->
+                <div id="confCanalesExtras" style="display:none;margin-bottom:20px;">
+                    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:14px 18px;margin-bottom:14px;font-size:0.92rem;line-height:1.55;color:#0f172a;text-align:center;">
+                        <strong>Revisa tu correo.</strong> Te enviamos los datos de tu cita por email.
+                        Si además quieres recibir la información o gestionar tu cita por <strong>WhatsApp</strong> o <strong>Telegram</strong>, usa los botones de abajo (según lo que hayas elegido al confirmar).
+                    </div>
+                    <!--
+                        Botones de WhatsApp y Telegram:
+                        Se muestran cuando el usuario eligió ese canal en el paso 6.
+                        Si el servidor devuelve whatsapp_link / telegram_link, se usa ese URL; si no, fallbacks en JS.
+                    -->
+                    <div id="whatsappBotSection" style="display:none;">
+                        <a id="whatsappBotBtn" href="#" target="_blank" rel="noopener" class="bot-btn wa-bot-btn"
+                           style="display:flex;align-items:center;gap:10px;justify-content:center;padding:12px 20px;background:#25d366;color:#fff;border-radius:12px;text-decoration:none;font-weight:600;font-size:.95rem;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                            Abrir WhatsApp para gestionar mi cita
+                        </a>
+                    </div>
+                    <div id="telegramSection" style="display:none;margin-top:10px;">
+                        <a id="telegramBtn" href="#" target="_blank" rel="noopener" class="bot-btn tg-bot-btn"
+                           style="display:flex;align-items:center;gap:10px;justify-content:center;padding:12px 20px;background:#0088cc;color:#fff;border-radius:12px;text-decoration:none;font-weight:600;font-size:.95rem;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.94z"/></svg>
+                            Abrir Telegram para gestionar mi cita
+                        </a>
+                    </div>
+                </div>
+
                 <div class="confirmation-summary" id="confSummary">
                     <div class="conf-section" id="confPersonal">
                         <h4 class="conf-section-title"><i class="bi bi-person"></i> Datos Personales</h4>
@@ -412,28 +440,6 @@ $nonce = SessionManager::nonce();
                         <div class="conf-row"><span class="conf-label">Hora:</span><span class="conf-value" id="conf-hora">-</span></div>
                         <div class="conf-row"><span class="conf-label">Canal(es):</span><span class="conf-value" id="conf-canal">-</span></div>
                     </div>
-                </div>
-
-                <!--
-                    Botones de WhatsApp y Telegram:
-                    Se muestran SIEMPRE que el usuario eligió ese canal,
-                    independientemente de si el servidor devolvió un link.
-                    Si el servidor devuelve whatsapp_link / telegram_link,
-                    se usa ese URL. Si no, se usan los fallbacks hardcoded.
-                -->
-                <div id="whatsappBotSection" style="display:none;margin-top:16px;">
-                    <a id="whatsappBotBtn" href="#" target="_blank" rel="noopener" class="bot-btn wa-bot-btn"
-                       style="display:flex;align-items:center;gap:10px;justify-content:center;padding:12px 20px;background:#25d366;color:#fff;border-radius:12px;text-decoration:none;font-weight:600;font-size:.95rem;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                        Abrir WhatsApp para gestionar mi cita
-                    </a>
-                </div>
-                <div id="telegramSection" style="display:none;margin-top:10px;">
-                    <a id="telegramBtn" href="#" target="_blank" rel="noopener" class="bot-btn tg-bot-btn"
-                       style="display:flex;align-items:center;gap:10px;justify-content:center;padding:12px 20px;background:#0088cc;color:#fff;border-radius:12px;text-decoration:none;font-weight:600;font-size:.95rem;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.94z"/></svg>
-                        Abrir Telegram para gestionar mi cita
-                    </a>
                 </div>
 
                 <div style="margin-top:20px;text-align:center;">
@@ -940,6 +946,8 @@ function mostrarConfirmacionVehicular(d, nombre, apPat, apMat, correo, telefono,
         var el = document.getElementById(id); if (el) el.style.display = 'none';
     });
     document.getElementById('ramoConfirmacion').style.display = 'block';
+    var extrasWrap = document.getElementById('confCanalesExtras');
+    if (extrasWrap) extrasWrap.style.display = 'block';
 
     function setConf(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
 
@@ -1097,7 +1105,7 @@ function showConfirmacionVidaGmm(p) {
     });
     document.getElementById('ramoConfirmacion').style.display = 'block';
     // Ocultar secciones irrelevantes
-    ['confVehiculo', 'confCita', 'confDireccion', 'conf-row-sexo', 'conf-row-ecivil', 'whatsappBotSection', 'telegramSection'].forEach(function (id) {
+    ['confVehiculo', 'confCita', 'confDireccion', 'conf-row-sexo', 'conf-row-ecivil', 'confCanalesExtras'].forEach(function (id) {
         var el = document.getElementById(id); if (el) el.style.display = 'none';
     });
 
@@ -1165,7 +1173,7 @@ function showConfirmacionSimple(nombre, correo, telefono) {
     });
     document.getElementById('ramoConfirmacion').style.display = 'block';
     ['confVehiculo', 'confCita', 'confDireccion', 'conf-row-edad', 'conf-row-sexo', 'conf-row-ecivil',
-     'whatsappBotSection', 'telegramSection'].forEach(function (id) {
+     'confCanalesExtras'].forEach(function (id) {
         var el = document.getElementById(id); if (el) el.style.display = 'none';
     });
     var tit = document.getElementById('tituloConfirmacion');

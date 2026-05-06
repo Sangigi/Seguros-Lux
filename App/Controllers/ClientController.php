@@ -5,6 +5,7 @@ namespace App\Controllers;
 
 use App\Models\{ClientModel, CitaModel};
 use App\Security\SessionManager;
+use App\Services\MailQueue;
 use RuntimeException;
 use Throwable;
 
@@ -254,7 +255,8 @@ class ClientController
         ?string $mensaje = null
     ): void {
         $canales = self::parseCanalesNotificacion($canalNotificacion);
-        if (in_array('email', $canales, true) && $correo !== '' && $citaData) {
+        // Siempre encolar confirmación por correo si hay cita y email válido (no depende de que el usuario marque "email" en el paso 6).
+        if ($citaData !== null && $citaData !== [] && filter_var($correo, FILTER_VALIDATE_EMAIL)) {
             self::enviarConfirmacionEmail($nombreCompleto, $correo, $citaData, $canales);
         }
 
@@ -288,6 +290,11 @@ class ClientController
         array $citaData,
         array $canalesElegidos = ['email']
     ): void {
+
+      if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
         try {
             $empresaNombre = self::EMPRESA_NOMBRE;
             $fecha      = $citaData['fecha'] ?? '';
@@ -428,17 +435,63 @@ HTML;
 </html>
 HTML;
 
-            $headers  = "MIME-Version: 1.0\r\n";
-            $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-            $headers .= "From: " . self::EMPRESA_NOMBRE . " <" . self::EMPRESA_EMAIL . ">\r\n";
-            $headers .= "Reply-To: " . self::ASESOR_EMAIL . "\r\n";
+            try {
+                MailQueue::push(
+                    $correo,
+                    $nombre,
+                    $asunto,
+                    $cuerpo,
+                    self::ASESOR_EMAIL,
+                );
+            } catch (\Throwable $e) {
+                error_log('ClientController::MailQueue cliente: ' . $e->getMessage());
+                self::enviarConfirmacionEmailViaPhpMailCliente($correo, $asunto, $cuerpo);
+            }
 
-            mail($correo,          $asunto,       $cuerpo,       $headers);
-            mail(self::ASESOR_EMAIL, $asuntoAsesor, $cuerpoAsesor, $headers);
+            try {
+                MailQueue::push(
+                    self::ASESOR_EMAIL,
+                    self::EMPRESA_NOMBRE,
+                    $asuntoAsesor,
+                    $cuerpoAsesor,
+                    $correo,
+                );
+            } catch (\Throwable $e) {
+                error_log('ClientController::MailQueue asesor: ' . $e->getMessage());
+                self::enviarConfirmacionEmailViaPhpMailAsesor($correo, $asuntoAsesor, $cuerpoAsesor);
+            }
 
         } catch (\Throwable $e) {
             error_log('ClientController::enviarConfirmacionEmail error: ' . $e->getMessage());
         }
+    }
+
+    /** Fallback `mail()` al cliente. */
+    private static function enviarConfirmacionEmailViaPhpMailCliente(
+        string $correo,
+        string $asuntoCliente,
+        string $cuerpoCliente
+    ): void {
+        $headers  = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $headers .= 'From: ' . self::EMPRESA_NOMBRE . ' <' . self::EMPRESA_EMAIL . ">\r\n";
+        $headers .= 'Reply-To: ' . self::ASESOR_EMAIL . "\r\n";
+
+        @mail($correo, $asuntoCliente, $cuerpoCliente, $headers);
+    }
+
+    /** Fallback `mail()` al asesor (Reply-To = correo del cliente). */
+    private static function enviarConfirmacionEmailViaPhpMailAsesor(
+        string $correoCliente,
+        string $asuntoAsesor,
+        string $cuerpoAsesor
+    ): void {
+        $headers  = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $headers .= 'From: ' . self::EMPRESA_NOMBRE . ' <' . self::EMPRESA_EMAIL . ">\r\n";
+        $headers .= 'Reply-To: ' . $correoCliente . "\r\n";
+
+        @mail(self::ASESOR_EMAIL, $asuntoAsesor, $cuerpoAsesor, $headers);
     }
 
     private static function formatFecha(string $fecha): string

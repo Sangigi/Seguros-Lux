@@ -744,7 +744,7 @@
     <div class="section-head">
       <div class="section-eyebrow">Compara y elige</div>
       <h2>Planes que <em>se adaptan a ti</em></h2>
-      <p>Tres niveles de protección para cada tipo de vehículo.</p>
+      <p>Cuatro niveles de protección para cada tipo de vehículo.</p>
     </div>
 
     <!-- <div class="vehicle-tabs">
@@ -778,8 +778,7 @@
             Llamar ahora
           </a>
         </div>
-        <div class="plan-card popular">
-          <span class="plan-popular-tag">★ Lo más elegido</span>
+        <div class="plan-card">
           <div class="plan-name">Amplio</div>
           <p class="plan-tagline">Equilibrio ideal entre cobertura y precio.</p>
           <div class="plan-price">
