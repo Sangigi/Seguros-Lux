@@ -5,7 +5,7 @@ namespace App\Controllers;
 
 use App\Models\{ClientModel, CitaModel};
 use App\Security\SessionManager;
-use App\Services\MailQueue;
+use App\Services\MailService;
 use RuntimeException;
 use Throwable;
 
@@ -435,63 +435,27 @@ HTML;
 </html>
 HTML;
 
-            try {
-                MailQueue::push(
-                    $correo,
-                    $nombre,
-                    $asunto,
-                    $cuerpo,
-                    self::ASESOR_EMAIL,
-                );
-            } catch (\Throwable $e) {
-                error_log('ClientController::MailQueue cliente: ' . $e->getMessage());
-                self::enviarConfirmacionEmailViaPhpMailCliente($correo, $asunto, $cuerpo);
-            }
+            // ── Email al cliente ──────────────────────────────────────────────
+            MailService::send(
+                $correo,
+                $nombre,
+                $asunto,
+                $cuerpo,
+                self::ASESOR_EMAIL,
+            );
 
-            try {
-                MailQueue::push(
-                    self::ASESOR_EMAIL,
-                    self::EMPRESA_NOMBRE,
-                    $asuntoAsesor,
-                    $cuerpoAsesor,
-                    $correo,
-                );
-            } catch (\Throwable $e) {
-                error_log('ClientController::MailQueue asesor: ' . $e->getMessage());
-                self::enviarConfirmacionEmailViaPhpMailAsesor($correo, $asuntoAsesor, $cuerpoAsesor);
-            }
+            // ── Email al asesor ───────────────────────────────────────────────
+            MailService::send(
+                self::ASESOR_EMAIL,
+                self::EMPRESA_NOMBRE,
+                $asuntoAsesor,
+                $cuerpoAsesor,
+                $correo,
+            );
 
         } catch (\Throwable $e) {
             error_log('ClientController::enviarConfirmacionEmail error: ' . $e->getMessage());
         }
-    }
-
-    /** Fallback `mail()` al cliente. */
-    private static function enviarConfirmacionEmailViaPhpMailCliente(
-        string $correo,
-        string $asuntoCliente,
-        string $cuerpoCliente
-    ): void {
-        $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $headers .= 'From: ' . self::EMPRESA_NOMBRE . ' <' . self::EMPRESA_EMAIL . ">\r\n";
-        $headers .= 'Reply-To: ' . self::ASESOR_EMAIL . "\r\n";
-
-        @mail($correo, $asuntoCliente, $cuerpoCliente, $headers);
-    }
-
-    /** Fallback `mail()` al asesor (Reply-To = correo del cliente). */
-    private static function enviarConfirmacionEmailViaPhpMailAsesor(
-        string $correoCliente,
-        string $asuntoAsesor,
-        string $cuerpoAsesor
-    ): void {
-        $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $headers .= 'From: ' . self::EMPRESA_NOMBRE . ' <' . self::EMPRESA_EMAIL . ">\r\n";
-        $headers .= 'Reply-To: ' . $correoCliente . "\r\n";
-
-        @mail(self::ASESOR_EMAIL, $asuntoAsesor, $cuerpoAsesor, $headers);
     }
 
     private static function formatFecha(string $fecha): string

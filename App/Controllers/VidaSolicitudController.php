@@ -2,7 +2,7 @@
 declare(strict_types=1);
 namespace App\Controllers;
 
-use App\Services\MailQueue;
+use App\Services\MailService;
 use Database\Connection;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -92,7 +92,7 @@ class VidaSolicitudController
         // ── Encolar correos (ASÍNCRONO — no bloquea la respuesta HTTP) ─────────
         // Los emails se guardan en mail_queue y el cron los despacha cada minuto.
         // Si la tabla no existe aún, logeamos y seguimos (no falla la solicitud).
-        self::encolarCorreos(
+        self::enviarCorreos(
             $nombre,
             $correo ?: self::ASESOR_EMAIL,
             $telefono,
@@ -137,10 +137,9 @@ class VidaSolicitudController
     // ── Cola de correos (ASÍNCRONA) ───────────────────────────────────────────
 
     /**
-     * Encola los emails en mail_queue — operación rápida (INSERT en BD, < 5 ms).
-     * El despacho real ocurre en App/Cron/CronMail.php (cada minuto).
+     * Envía los correos vía MailService (intenta cola, cae a SMTP síncrono si falla).
      */
-    private static function encolarCorreos(
+    private static function enviarCorreos(
         string $nombre, string $correo, string $telefono, string $fechaPref, string $ramo,
         string $edadGmm, string $depGmm, string $comentarios,
         string $empresa = '', string $empleados = '', string $servicios = '',
@@ -202,8 +201,8 @@ class VidaSolicitudController
 
             $correoDisplay = $clienteCorreo ?? '(no proporcionado)';
 
-            // ── Email al asesor ───────────────────────────────────────────────
-            MailQueue::push(
+        // ── Email al asesor ───────────────────────────────────────────────
+            MailService::send(
                 to:      self::ASESOR_EMAIL,
                 toName:  self::EMPRESA_NOMBRE,
                 subject: '[' . self::EMPRESA_NOMBRE . "] Nueva solicitud de {$ramoLabel} — {$nombre}",
@@ -217,7 +216,7 @@ class VidaSolicitudController
 
             // ── Email al cliente ──────────────────────────────────────────────
             if ($clienteCorreo) {
-                MailQueue::push(
+                MailService::send(
                     to:      $clienteCorreo,
                     toName:  $nombre,
                     subject: '✅ Tu solicitud fue recibida — ' . self::EMPRESA_NOMBRE,
