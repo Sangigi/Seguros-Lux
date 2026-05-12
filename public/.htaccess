@@ -41,10 +41,8 @@ RewriteRule ^ index.php [QSA,L]
     Require all denied
 </FilesMatch>
 
-# ── Bloquear acceso directo a PHP del dominio principal ───────────────────────
-# IMPORTANTE: Se usa mod_rewrite (no FilesMatch+If) para poder excluir /blog/
-# correctamente. La regla anterior con <FilesMatch><If URI != '/index.php'>
-# bloqueaba wp-admin, wp-login.php, etc. porque <FilesMatch> no entiende URIs.
+# Bloquear acceso directo a cualquier archivo PHP fuera del front-controller
+# (opcional — comenta si alguna vista necesita ser accesible directamente)
 <IfModule mod_rewrite.c>
     RewriteCond %{REQUEST_URI} !^/blog/
     RewriteCond %{REQUEST_URI} !^/index\.php$
@@ -53,10 +51,10 @@ RewriteRule ^ index.php [QSA,L]
 </IfModule>
 
 # ── Cabeceras de seguridad adicionales vía Apache ─────────────────────────────
+# (como respaldo a las que emite PHP; si usas nginx, muévelas al server block)
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"
-    # SAMEORIGIN en vez de DENY para que WordPress admin pueda usar iframes propios
-    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Frame-Options "DENY"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     # Activar HSTS solo cuando HTTPS esté confirmado y estable:
     # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
