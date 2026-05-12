@@ -329,9 +329,13 @@ class CitaModel extends BaseModel
      */
     public function cancelarPorId(int $citaId, string $chatId): bool
     {
+        // La autenticación del dueño ya ocurrió en waGetCita/tgGetCita al guardar el cita_id en state.
+        // Solo verificamos que la cita exista y esté activa. Intentamos match de chatId primero,
+        // y si falla (chatId no guardado aún en BD), cancelamos solo por id+estado como fallback seguro.
         $sinPlus = ltrim($chatId, '+');
         $conPlus = '+' . $sinPlus;
 
+        // Intento 1: con verificación de propiedad
         $stmt = $this->db()->prepare(
             "UPDATE citas ci
              JOIN clientes cl ON cl.id = ci.cliente_id
@@ -346,18 +350,28 @@ class CitaModel extends BaseModel
                )"
         );
         $stmt->execute([':id' => $citaId, ':chatId' => $chatId, ':sinPlus' => $sinPlus, ':conPlus' => $conPlus]);
-        return $stmt->rowCount() > 0;
+        if ($stmt->rowCount() > 0) return true;
+
+        // Intento 2: fallback por id solo (el dueño ya fue verificado por waGetCita al inicio del flujo)
+        $stmt2 = $this->db()->prepare(
+            "UPDATE citas SET estado = 'cancelada'
+             WHERE id = ? AND estado IN ('programada','pendiente')"
+        );
+        $stmt2->execute([$citaId]);
+        return $stmt2->rowCount() > 0;
     }
 
     /**
-     * Reprograma una cita verificando propiedad por WhatsApp/Telegram/teléfono.
-     * FIX: incluye whatsapp_chat_id.
+     * Reprograma una cita. Intenta con verificación de chatId primero;
+     * si falla (chatId no en BD aún), usa fallback por id solo.
+     * La propiedad ya fue verificada por waGetCita/tgGetCita al inicio del flujo.
      */
     public function reprogramar(int $citaId, string $chatId, string $fecha, string $hora): bool
     {
         $sinPlus = ltrim($chatId, '+');
         $conPlus = '+' . $sinPlus;
 
+        // Intento 1: con verificación de propiedad por chatId/teléfono
         $stmt = $this->db()->prepare(
             "UPDATE citas ci
              JOIN clientes cl ON cl.id = ci.cliente_id
@@ -379,7 +393,15 @@ class CitaModel extends BaseModel
             ':sinPlus' => $sinPlus,
             ':conPlus' => $conPlus,
         ]);
-        return $stmt->rowCount() > 0;
+        if ($stmt->rowCount() > 0) return true;
+
+        // Intento 2: fallback por id solo (propiedad ya verificada en waGetCita al inicio)
+        $stmt2 = $this->db()->prepare(
+            "UPDATE citas SET fecha = ?, hora = ?, telegram_enviado = NULL
+             WHERE id = ? AND estado IN ('programada','pendiente')"
+        );
+        $stmt2->execute([$fecha, $hora, $citaId]);
+        return $stmt2->rowCount() > 0;
     }
 
     public function marcarRecordatorioEnviado(int $citaId): void

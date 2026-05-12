@@ -238,8 +238,20 @@ $alias=[
 if(isset($alias[$textNorm])) $text=$alias[$textNorm];
 
 // Top-level commands reset flow
+// EXCEPCIÓN: /cancelar desde dentro de un flujo de cita activo → ir directo al confirm_cancel
 $toplevel=['/micita','/cancelar','/reprog','/salir','/menu','/auto','/vida','/gmm','/asesor'];
-if(!empty($state)&&in_array($text,$toplevel,true)){waSetState($phone,[]);$state=[];$step='';}
+$flujoCita=['confirm_cancel','reprog_fecha','reprog_hora'];
+if(!empty($state)&&in_array($text,$toplevel,true)){
+    // Si el usuario pide cancelar estando en un flujo de cita, conservar el cita_id
+    if($text==='/cancelar'&&in_array($step,$flujoCita,true)&&!empty($state['cita_id'])){
+        $citaId=$state['cita_id'];
+        waSetState($phone,['step'=>'confirm_cancel','cita_id'=>$citaId]);
+        $state=['step'=>'confirm_cancel','cita_id'=>$citaId]; $step='confirm_cancel';
+        // No hacemos return aquí; dejamos caer al bloque confirm_cancel abajo
+    } else {
+        waSetState($phone,[]); $state=[]; $step='';
+    }
+}
 
 // ── /salir ────────────────────────────────────────────────────────────────────
 if($text==='/salir'){
