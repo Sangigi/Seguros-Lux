@@ -14,6 +14,13 @@ class FileController
         'png'  => 'image/png',
         'webp' => 'image/webp',
         'gif'  => 'image/gif',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'doc'  => 'application/msword',
+        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'xls'  => 'application/vnd.ms-excel',
+        'xml'  => 'application/xml',
+        'txt'  => 'text/plain',
+        'zip'  => 'application/zip',
     ];
 
     public static function handle(): void
@@ -59,9 +66,12 @@ class FileController
             return;
         }
 
+        $inlineMimes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'text/plain'];
+        $disposition = in_array($mime, $inlineMimes, true) ? 'inline' : 'attachment';
+
         header('Content-Type: ' . $mime);
         header('Content-Length: ' . filesize($fullPath));
-        header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+        header('Content-Disposition: ' . $disposition . '; filename="' . basename($fullPath) . '"');
         header('Cache-Control: private, max-age=3600');
         readfile($fullPath);
     }
