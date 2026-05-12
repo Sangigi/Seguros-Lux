@@ -68,6 +68,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $stPol->execute([$polizaId, $clienteId]);
         $pol = $stPol->fetch(\PDO::FETCH_ASSOC);
         if (!$pol) { echo json_encode(['ok'=>false,'msg'=>'Póliza no encontrada.']); exit; }
+        // Anti-spam: bloquear si ya hay solicitud pendiente para esta póliza (últimos 30 días)
+        $stDup = $db->prepare(
+            "SELECT COUNT(*) FROM historial_cliente
+             WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'
+               AND descripcion LIKE ?
+               AND fecha >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+        );
+        $stDup->execute([$clienteId, "%#{$pol['numero_poliza']}%"]);
+        if ((int)$stDup->fetchColumn() > 0) {
+            echo json_encode(['ok'=>false,'msg'=>'Ya hay una solicitud de renovación pendiente para esta póliza. El coordinador la gestionará pronto.']); exit;
+        }
         // Registrar solicitud de renovación como nota en historial
         $detalle = "Renovación solicitada — Póliza #{$pol['numero_poliza']} ({$pol['compania']})";
         if ($comentarios) $detalle .= " | Nota: {$comentarios}";

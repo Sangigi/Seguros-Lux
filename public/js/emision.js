@@ -239,14 +239,17 @@
             }
 
             let urlLocal = null;
-            if (tieneDoc && !doc.idrive_borrado) {
-                // archivo_relative puede ser '' (falsy) aunque nombre_archivo exista,
-                // especialmente en comprobantes de pago sintéticos desde cotizacion_pagos.
-                const relRaw = (doc.archivo_relative && String(doc.archivo_relative).trim())
-                    ? String(doc.archivo_relative).replace(/^\/+/, '')
-                    : (doc.nombre_archivo
-                        ? `cotizaciones/${doc.cotizacion_id}/${doc.nombre_archivo}`
-                        : '');
+            if (tieneDoc) {
+                // Construir ruta: primero archivo_relative (alias de `ruta` en BD),
+                // luego fallback a cotizaciones/{id}/{nombre_archivo}
+                let relRaw = '';
+                if (doc.archivo_relative && String(doc.archivo_relative).trim()) {
+                    relRaw = String(doc.archivo_relative).trim().replace(/^\/+/, '');
+                } else if (doc.nombre_archivo) {
+                    relRaw = `cotizaciones/${doc.cotizacion_id}/${doc.nombre_archivo}`;
+                }
+                // Quitar prefijo "uploads/" si lo incluye, porque /archivo ya lo gestiona
+                relRaw = relRaw.replace(/^uploads\//, '');
                 if (relRaw) {
                     urlLocal = `/archivo?file=${encodeURI(relRaw)}`;
                 }

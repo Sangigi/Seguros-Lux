@@ -600,53 +600,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         })(),
 
         // ── Renovación: actualizar datos de póliza ────────────────────────────
-        'renov_actualizar_poliza' => (function() use ($db, $agenteId) {
+        'renov_actualizar_poliza' => (function() use ($agenteId) {
+            $db          = \Database\Connection::getConnection();
             $polizaId    = (int)($_POST['poliza_id']   ?? 0);
             $clienteId   = (int)($_POST['cliente_id']  ?? 0);
             $fechaInicio = trim($_POST['fecha_inicio']  ?? '');
             $fechaFin    = trim($_POST['fecha_fin']     ?? '');
             $frecuencia  = trim($_POST['frecuencia']    ?? 'anual');
             $nuevoNumero = trim($_POST['nuevo_numero']  ?? '');
-            $notas       = trim($_POST['notas']        ?? '');
+            $notas       = trim($_POST['notas']         ?? '');
             if (!$polizaId || !$fechaFin) {
-                return json_encode(['ok'=>false,'msg'=>'Faltan datos obligatorios.']);
+                echo json_encode(['ok'=>false,'msg'=>'Faltan datos obligatorios.']); exit;
             }
             $frecuenciasValidas = ['semanal','mensual','trimestral','anual'];
             if (!in_array($frecuencia, $frecuenciasValidas, true)) $frecuencia = 'anual';
 
-            $sets  = ['estado = ?', 'fecha_fin = ?', 'frecuencia_renovacion = ?', 'renovacion_notificada = 0', 'actualizado_en = NOW()'];
-            $vals  = ['vigente', $fechaFin ?: null, $frecuencia];
+            $sets = ['estado = ?', 'fecha_fin = ?', 'frecuencia_renovacion = ?', 'renovacion_notificada = 0', 'actualizado_en = NOW()'];
+            $vals = ['vigente', $fechaFin, $frecuencia];
             if ($fechaInicio) { $sets[] = 'fecha_inicio = ?'; $vals[] = $fechaInicio; }
             if ($nuevoNumero) { $sets[] = 'numero_poliza = ?'; $vals[] = $nuevoNumero; }
-            if ($notas)       { $sets[] = 'notas = ?'; $vals[] = $notas; }
+            if ($notas)       { $sets[] = 'notas = ?';         $vals[] = $notas; }
             $vals[] = $polizaId;
 
-            $db->prepare('UPDATE polizas SET '.implode(', ',$sets).' WHERE id = ?')->execute($vals);
+            $db->prepare('UPDATE polizas SET '.implode(', ', $sets).' WHERE id = ?')->execute($vals);
 
-            // Registrar en historial del cliente
             if ($clienteId) {
                 $desc = 'Renovada por coordinador.' . ($nuevoNumero ? " Nueva póliza: {$nuevoNumero}." : '') . ($notas ? " Nota: {$notas}" : '');
                 $db->prepare(
                     "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha)
                      VALUES (?, ?, 'nota', '✅ Póliza renovada', ?, NOW())"
                 )->execute([$clienteId, $agenteId, $desc]);
+                // Marcar solicitudes de renovación pendientes como gestionadas
+                $db->prepare(
+                    "UPDATE historial_cliente SET titulo = '✅ Renovación gestionada'
+                     WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'"
+                )->execute([$clienteId]);
             }
-            return json_encode(['ok'=>true]);
+            echo json_encode(['ok'=>true]); exit;
         })(),
 
         // ── Renovación: marcar solicitud como gestionada ──────────────────────
-        'renov_marcar_gestionada' => (function() use ($db, $agenteId) {
+        'renov_marcar_gestionada' => (function() {
+            $db        = \Database\Connection::getConnection();
             $clienteId = (int)($_POST['cliente_id'] ?? 0);
             $fecha     = trim($_POST['fecha'] ?? '');
-            if (!$clienteId) return json_encode(['ok'=>false,'msg'=>'ID inválido.']);
-            // Cambiar título para que salga del filtro de renovaciones pendientes
+            if (!$clienteId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
             $db->prepare(
                 "UPDATE historial_cliente
                  SET titulo = '✅ Renovación gestionada'
                  WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'
-                   AND fecha = ?"
-            )->execute([$clienteId, $fecha]);
-            return json_encode(['ok'=>true]);
+                   AND DATE(fecha) = DATE(?)"
+            )->execute([$clienteId, $fecha ?: date('Y-m-d')]);
+            echo json_encode(['ok'=>true]); exit;
         })(),
 
         default => json_encode(['ok'=>false,'msg'=>'Acción desconocida.']),

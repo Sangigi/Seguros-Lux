@@ -38,6 +38,8 @@ switch ($a) {
         $stDocs = $db->prepare(
             "SELECT id, cotizacion_id, tipo_documento,
                     nombre_original, nombre_archivo,
+                    ruta AS archivo_relative,
+                    subido_en,
                     idrive_subido, idrive_borrado
              FROM cotizacion_archivos
              WHERE cotizacion_id = ? AND eliminado_en IS NULL
