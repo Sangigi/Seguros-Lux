@@ -52,8 +52,9 @@ class CitaModel extends BaseModel
 
     public function getHorasDisponibles(int $agenteId, string $fecha): array
     {
+        // Horario real: mañana 9-14h, tarde 16-18h (sin 13:30, 14:30 que no existen)
         $todas    = ['09:00','09:30','10:00','10:30','11:00','11:30',
-                     '12:00','12:30','13:00','13:30','14:00','14:30',
+                     '12:00','12:30','13:00','13:30','14:00',
                      '16:00','16:30','17:00','17:30'];
         $ocupadas = $this->getHorasOcupadas($agenteId, $fecha);
         return array_values(array_diff($todas, $ocupadas));

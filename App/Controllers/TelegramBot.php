@@ -449,6 +449,13 @@ if ($step === 'esperando_fecha') {
     }
 
     $horas = $citaModel->getHorasDisponibles((int) $state['agente_id'], $fechaNueva);
+    // Filtrar horas pasadas si la fecha es hoy
+    if ($fechaNueva === date('Y-m-d')) {
+        $limiteMin = time() + 30 * 60;
+        $horas = array_values(array_filter($horas, function($h) use ($limiteMin, $fechaNueva) {
+            return strtotime($fechaNueva . ' ' . $h . ':00') > $limiteMin;
+        }));
+    }
     if (empty($horas)) {
         tgSend($chatId,
             "😔 No hay horarios disponibles el <b>" . tgFormatFecha($fechaNueva) . "</b>.\n\n¿Quieres intentar con otra fecha?",
@@ -457,7 +464,7 @@ if ($step === 'esperando_fecha') {
         return;
     }
 
-    tgSetState($chatId, array_merge($state, ['step' => 'esperando_hora', 'fecha_nueva' => $fechaNueva]));
+    tgSetState($chatId, array_merge($state, ['step' => 'esperando_hora', 'fecha_nueva' => $fechaNueva, 'horas_disponibles' => array_values($horas)]));
     $grupos   = array_chunk($horas, 4);
     $grupos[] = ['🚪 Salir'];
     tgSend($chatId,
@@ -471,6 +478,19 @@ if ($step === 'esperando_fecha') {
 if ($step === 'esperando_hora') {
     if (!preg_match('/^\d{2}:\d{2}$/', $text)) {
         tgSend($chatId, "Por favor elige una de las horas disponibles usando los botones 👇", $BOT_TOKEN, [['🚪 Salir']]);
+        return;
+    }
+    // Verificar que la hora siga disponible (alguien más pudo tomarla)
+    if (!$citaModel->horaDisponible((int) $state['agente_id'], $state['fecha_nueva'], $text)) {
+        $horasAct = $citaModel->getHorasDisponibles((int) $state['agente_id'], $state['fecha_nueva']);
+        if (empty($horasAct)) {
+            tgSetState($chatId, array_merge($state, ['step' => 'esperando_fecha']));
+            tgSend($chatId, "😔 Esa hora ya fue tomada y no quedan más ese día.\nEscribe otra fecha (DD/MM/AAAA):", $BOT_TOKEN, [['🚪 Salir']]);
+        } else {
+            $grupos = array_chunk($horasAct, 4); $grupos[] = ['🚪 Salir'];
+            tgSetState($chatId, array_merge($state, ['horas_disponibles' => array_values($horasAct)]));
+            tgSend($chatId, "⚠️ Esa hora ya fue tomada. Elige otra:", $BOT_TOKEN, $grupos);
+        }
         return;
     }
     $ok = $citaModel->reprogramar((int) $state['cita_id'], $chatId, $state['fecha_nueva'], $text);

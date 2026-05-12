@@ -201,11 +201,13 @@ $phone = $msg['from'];
 $from  = $value['contacts'][0]['profile']['name'] ?? 'Cliente';
 wa_bot_debug_log("MSG {$phone} ({$from}): " . json_encode($msg));
 
-$text='';
+$text='';$interactiveId='';
 if($msg['type']==='text') $text=trim($msg['text']['body']??'');
 elseif($msg['type']==='interactive'){
     $it=$msg['interactive']['type']??'';
-    $text=trim($msg['interactive'][$it==='button_reply'?'button_reply':'list_reply']['title']??'');
+    $replyKey=$it==='button_reply'?'button_reply':'list_reply';
+    $text=trim($msg['interactive'][$replyKey]['title']??'');
+    $interactiveId=trim($msg['interactive'][$replyKey]['id']??'');
 }
 
 $state   =waGetState($phone);
@@ -409,18 +411,25 @@ if($text==='/reprog'){
 
 // Flujos multi-paso citas
 if($step==='confirm_cancel'){
-    if($text==='CONF_CANCEL'){
+    // Aceptar confirmación vía alias, textNorm o id de botón interactivo (b0/b1)
+    $esConfirmar=$text==='CONF_CANCEL'
+        || in_array($textNorm,['✅ sí, cancelar','sí, cancelar','si, cancelar','sí','si','confirmar','yes'],true)
+        || $interactiveId==='b0';
+    $esConservar=$text==='NO_CANCEL'
+        || in_array($textNorm,['❌ no, conservar','no, conservar','no','cancelar acción'],true)
+        || $interactiveId==='b1';
+    if($esConfirmar){
         $ok=$citaModel->cancelarPorId((int)$state['cita_id'],$phone);
         waSetState($phone,[]);
         waSend($phone,$ok?"✅ *Cita cancelada.*\n\n🌐 seguroslux.mx/formulario para nueva cita"
-            :"❌ No se pudo cancelar.",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']);
-    }elseif($text==='NO_CANCEL'){
+            :"❌ No se pudo cancelar. Intenta de nuevo o contacta a tu asesor.",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']);
+    }elseif($esConservar){
         waSetState($phone,[]);
         $c=waGetCita($phone,$_waDb);
         waSend($phone,"👍 Cita conservada.\n\n".($c?waResumen($c):''),$WA_PHONE_ID,$WA_TOKEN,
             ['📋 Ver mi cita','🔄 Reprogramar','🏠 Menú principal']);
     }else{
-        waSend($phone,"Usa los botones 👇",$WA_PHONE_ID,$WA_TOKEN,['✅ Sí, cancelar','❌ No, conservar']);
+        waSend($phone,"⚠️ Por favor usa los botones 👇",$WA_PHONE_ID,$WA_TOKEN,['✅ Sí, cancelar','❌ No, conservar']);
     }
     return;
 }
@@ -432,17 +441,48 @@ if($step==='reprog_fecha'){
     $fN="{$m[3]}-{$m[2]}-{$m[1]}"; $ts=strtotime($fN);
     if(!$ts||$ts<strtotime('today')){waSend($phone,"⚠️ La fecha debe ser futura.",$WA_PHONE_ID,$WA_TOKEN);return;}
     if(date('N',$ts)==7){waSend($phone,"⚠️ No atendemos domingos.",$WA_PHONE_ID,$WA_TOKEN);return;}
+    // Filtrar horas pasadas si la fecha es hoy
     $horas=$citaModel->getHorasDisponibles((int)$state['agente_id'],$fN);
-    if(empty($horas)){waSend($phone,"😔 Sin horarios el ".date('d/m/Y',$ts).". Escribe otra fecha:",$WA_PHONE_ID,$WA_TOKEN);return;}
-    waSetState($phone,array_merge($state,['step'=>'reprog_hora','fecha_nueva'=>$fN]));
+    if($fN===date('Y-m-d')){
+        $limiteMin=time()+30*60; // +30 min buffer
+        $horas=array_values(array_filter($horas,function($h) use($limiteMin,$fN){
+            return strtotime($fN.' '.$h.':00') > $limiteMin;
+        }));
+    }
+    if(empty($horas)){waSend($phone,"😔 Sin horarios el ".date('d/m/Y',$ts).". Escribe otra fecha (DD/MM/AAAA):",$WA_PHONE_ID,$WA_TOKEN);return;}
+    // Guardar horas en state para resolver list_reply por índice en reprog_hora
+    waSetState($phone,array_merge($state,['step'=>'reprog_hora','fecha_nueva'=>$fN,'horas_disponibles'=>array_values($horas)]));
     waList($phone,"✅ Fecha: ".date('d/m/Y',$ts),"Elige una hora disponible:","Ver horarios",$horas,$WA_PHONE_ID,$WA_TOKEN);
     return;
 }
 if($step==='reprog_hora'){
-    if(!preg_match('/^\d{2}:\d{2}$/',$text)){waSend($phone,"⚠️ Selecciona una hora de la lista 👇",$WA_PHONE_ID,$WA_TOKEN);return;}
-    $ok=$citaModel->reprogramar((int)$state['cita_id'],$phone,$state['fecha_nueva'],$text);
+    // Resolver hora: puede venir como "09:00" (texto) o vía list_reply id "o3" -> mapear al índice guardado
+    $horaFinal=$text;
+    if(!preg_match('/^\d{2}:\d{2}$/',$horaFinal) && preg_match('/^o(\d+)$/',$interactiveId,$mi)){
+        $horasGuardadas=$state['horas_disponibles']??[];
+        $horaFinal=$horasGuardadas[(int)$mi[1]]??'';
+    }
+    if(!preg_match('/^\d{2}:\d{2}$/',$horaFinal)){
+        waSend($phone,"⚠️ Selecciona una hora de la lista 👇",$WA_PHONE_ID,$WA_TOKEN);
+        return;
+    }
+    // Verificar que la hora siga disponible (alguien más pudo tomarla)
+    if(!$citaModel->horaDisponible((int)$state['agente_id'],$state['fecha_nueva'],$horaFinal)){
+        waSend($phone,"⚠️ Esa hora ya fue tomada. Elige otra:",$WA_PHONE_ID,$WA_TOKEN);
+        $horas=$citaModel->getHorasDisponibles((int)$state['agente_id'],$state['fecha_nueva']);
+        if(empty($horas)){
+            waSetState($phone,[]);
+            waSend($phone,"😔 No quedan horarios ese día. Escribe otra fecha (DD/MM/AAAA):",$WA_PHONE_ID,$WA_TOKEN);
+            waSetState($phone,array_merge($state,['step'=>'reprog_fecha']));
+        } else {
+            waSetState($phone,array_merge($state,['horas_disponibles'=>array_values($horas)]));
+            waList($phone,"Fecha: ".waFecha($state['fecha_nueva']),"Elige una hora disponible:","Ver horarios",$horas,$WA_PHONE_ID,$WA_TOKEN);
+        }
+        return;
+    }
+    $ok=$citaModel->reprogramar((int)$state['cita_id'],$phone,$state['fecha_nueva'],$horaFinal);
     waSetState($phone,[]);
-    waSend($phone,$ok?"✅ *¡Cita reprogramada!*\n\n📅 ".waFecha($state['fecha_nueva'])."\n🕐 {$text} hrs"
+    waSend($phone,$ok?"✅ *¡Cita reprogramada!*\n\n📅 ".waFecha($state['fecha_nueva'])."\n🕐 {$horaFinal} hrs"
         :"❌ No se pudo reprogramar.",$WA_PHONE_ID,$WA_TOKEN,['📋 Ver mi cita','🏠 Menú principal']);
     return;
 }
