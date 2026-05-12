@@ -240,9 +240,13 @@
 
             let urlLocal = null;
             if (tieneDoc && !doc.idrive_borrado) {
-                const relRaw = doc.archivo_relative
+                // archivo_relative puede ser '' (falsy) aunque nombre_archivo exista,
+                // especialmente en comprobantes de pago sintéticos desde cotizacion_pagos.
+                const relRaw = (doc.archivo_relative && String(doc.archivo_relative).trim())
                     ? String(doc.archivo_relative).replace(/^\/+/, '')
-                    : (`cotizaciones/${doc.cotizacion_id}/${doc.nombre_archivo || ''}`);
+                    : (doc.nombre_archivo
+                        ? `cotizaciones/${doc.cotizacion_id}/${doc.nombre_archivo}`
+                        : '');
                 if (relRaw) {
                     urlLocal = `/archivo?file=${encodeURI(relRaw)}`;
                 }

@@ -52,6 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $comentarios = trim($_POST['comentarios']  ?? '');
         $ramoActual  = trim($_POST['ramo']         ?? $ramo ?? 'autos');
         if (!$clienteId || !$fecha || !$hora) { echo json_encode(['ok'=>false,'msg'=>'Faltan campos.']); exit; }
+        // Límite: máx 20 citas por cliente (anti-spam)
+        $db_citas = \Database\Connection::getConnection();
+        $stCount = $db_citas->prepare('SELECT COUNT(*) FROM citas WHERE cliente_id = ?');
+        $stCount->execute([$clienteId]);
+        if ((int)$stCount->fetchColumn() >= 20) {
+            echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene 20 citas registradas (límite máximo).']); exit;
+        }
         $citaModel->crear($clienteId, $agenteId, $tipo, $fecha, $hora, $comentarios, $ramoActual);
         $historialModel->registrar($clienteId, $agenteId, 'cita', 'Cita programada — '.ucfirst($tipo), "$fecha a las $hora");
         echo json_encode(['ok' => true]); exit;
@@ -320,10 +327,7 @@ $pageTitle = 'Clientes';
                             <tr>
                                 <th style="width:40px;text-align:center;">#</th>
                                 <th>Cliente</th>
-                                <th>Ramo / Detalle</th>
-                                <th>Ciudad</th>
                                 <th>Estado</th>
-                                <th>Seguro</th>
                                 <th>Registro</th>
                                 <th>Acciones</th>
                             </tr>
@@ -359,26 +363,7 @@ $pageTitle = 'Clientes';
                                         </div>
                                     </div>
                                 </td>
-                                <td>
-                                    <div style="display:flex;align-items:center;gap:6px;">
-                                        <span style="font-size:15px;"><?php echo $ramoEmoji; ?></span>
-                                        <div>
-                                            <div style="font-size:11px;font-weight:700;color:var(--accent-color);"><?php echo $ramoLbl; ?></div>
-                                            <?php if ($detalle): ?>
-                                            <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($detalle); ?></div>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td><?php echo htmlspecialchars($cliente['ciudad'] ?: '—'); ?></td>
                                 <td><span class="badge <?php echo $estadoInfo['class']; ?>"><?php echo $estadoInfo['label']; ?></span></td>
-                                <td>
-                                    <?php if ($cliente['asegurado']): ?>
-                                    <span class="badge badge-success">Sí</span>
-                                    <?php else: ?>
-                                    <span class="badge badge-danger">No</span>
-                                    <?php endif; ?>
-                                </td>
                                 <td style="font-size:12px;color:var(--text-secondary);"><?php echo date('d/m/Y', strtotime($cliente['fecha_registro'])); ?></td>
                                 <td>
                                     <div class="action-buttons">

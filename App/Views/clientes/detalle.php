@@ -45,9 +45,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $tipo=$_POST['tipo']??'llamada'; $fecha=$_POST['fecha']??''; $hora=$_POST['hora']??'';
         $com=$_POST['comentarios']??''; $enlace=$_POST['enlace_meet']??'';
         if (!$fecha||!$hora) { echo json_encode(['ok'=>false,'msg'=>'Indica fecha y hora.']); exit; }
+        // Límite: máx 20 citas por cliente (anti-spam)
+        $dbCitaChk = \Database\Connection::getConnection();
+        $stCitaCount = $dbCitaChk->prepare('SELECT COUNT(*) FROM citas WHERE cliente_id = ?');
+        $stCitaCount->execute([$clienteId]);
+        if ((int)$stCitaCount->fetchColumn() >= 20) {
+            echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene 20 citas registradas (límite máximo).']); exit;
+        }
         if ($tipo==='videollamada'&&$enlace) $com=($com?$com."\n":'').'🎥 Enlace: '.$enlace;
         $citaModel->crear($clienteId,$agenteId,$tipo,$fecha,$hora,$com,SessionManager::getRamo());
         $historialModel->registrar($clienteId,$agenteId,'cita','Cita programada — '.ucfirst($tipo),"$fecha a las $hora");
+        echo json_encode(['ok'=>true]); exit;
+    }
+
+    if ($_POST['accion'] === 'solicitar_renovacion') {
+        $polizaId   = (int)($_POST['poliza_id'] ?? 0);
+        $comentarios = trim($_POST['comentarios'] ?? '');
+        if (!$polizaId) { echo json_encode(['ok'=>false,'msg'=>'Póliza no indicada.']); exit; }
+        $db = \Database\Connection::getConnection();
+        // Verificar que la póliza pertenece al cliente
+        $stPol = $db->prepare('SELECT id, numero_poliza, compania, fecha_fin FROM polizas WHERE id=? AND cliente_id=?');
+        $stPol->execute([$polizaId, $clienteId]);
+        $pol = $stPol->fetch(\PDO::FETCH_ASSOC);
+        if (!$pol) { echo json_encode(['ok'=>false,'msg'=>'Póliza no encontrada.']); exit; }
+        // Registrar solicitud de renovación como nota en historial
+        $detalle = "Renovación solicitada — Póliza #{$pol['numero_poliza']} ({$pol['compania']})";
+        if ($comentarios) $detalle .= " | Nota: {$comentarios}";
+        $historialModel->registrar($clienteId, $agenteId, 'nota', '🔄 Solicitud de renovación', $detalle);
+        // Marcar póliza como por_vencer si aún está vigente, para que aparezca en alertas
+        $db->prepare("UPDATE polizas SET estado='por_vencer', notas=CONCAT(IFNULL(notas,''), '\n['.NOW().'] Renovación solicitada por asesor.') WHERE id=?")->execute([$polizaId]);
         echo json_encode(['ok'=>true]); exit;
     }
 
@@ -593,6 +619,15 @@ $pageTitle=$nombreCompleto;
                                     <?php elseif ($urlP): ?>
                                     <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Archivo en custodia</span>
                                     <?php endif; ?>
+                                    <!-- Botón de Renovación: visible siempre para el asesor -->
+                                    <button class="btn btn-sm btn-outline"
+                                            style="color:var(--accent-color);border-color:var(--accent-color);"
+                                            data-action="det-solicitarRenovacion"
+                                            data-poliza-id="<?php echo (int)$pol['id']; ?>"
+                                            data-poliza-num="<?php echo htmlspecialchars($pol['numero_poliza'] ?? 'Sin número'); ?>"
+                                            title="Solicitar renovación de póliza">
+                                        🔄 Renovar
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -947,6 +982,33 @@ $pageTitle=$nombreCompleto;
 </div>
 <?php endif; ?>
 
+<!-- ── Modal: Solicitar Renovación de Póliza ─────────────────────────── -->
+<div class="modal-overlay" id="modalRenovacion">
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-header">
+            <h3 class="modal-title">🔄 Solicitar Renovación de Póliza</h3>
+            <button class="modal-close" data-close="modalRenovacion">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="renovPolizaId" value="">
+            <div style="background:var(--info-light,#eff6ff);border:1px solid var(--info-color,#3b82f6);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;">
+                <strong>📄 Póliza:</strong> <span id="renovPolizaNum" style="color:var(--accent-color);font-weight:600;"></span>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;line-height:1.55;">
+                Al solicitar la renovación, esta póliza quedará marcada como <strong>Por vencer</strong> y se registrará en el historial del cliente para darle seguimiento.
+            </p>
+            <div class="form-group">
+                <label class="form-label">Comentario adicional (opcional)</label>
+                <textarea class="form-input" id="renovComentarios" rows="3" placeholder="Ej: Cliente interesado en ampliar cobertura, cambio de vehículo…" style="resize:vertical;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" data-close="modalRenovacion">Cancelar</button>
+            <button class="btn btn-primary" id="btnConfirmarRenovacion" onclick="confirmarRenovacion()">🔄 Confirmar Renovación</button>
+        </div>
+    </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 <script nonce="<?= $cspNonce ?>">
 const clienteId = <?php echo $cliente['id']; ?>;
@@ -1288,7 +1350,7 @@ document.getElementById('pagoComprobanteFile')?.addEventListener('change', funct
                     </select></div>
                 <div class="form-group"><label class="form-label">Intención de compra</label>
                     <select class="form-select" id="ec_tiempo_compra">
-                        <?php foreach(['inmediata'=>'Inmediata','1_mes'=>'1 mes','3_meses'=>'3 meses','6_meses'=>'6 meses','sin_definir'=>'Sin definir'] as $v=>$l): ?>
+                        <?php foreach(['inmediato'=>'Inmediato','esta_semana'=>'Esta semana','este_mes'=>'Este mes','solo_cotizando'=>'Solo cotizando'] as $v=>$l): ?>
                         <option value="<?php echo $v; ?>" <?php echo ($cliente['tiempo_compra']??'')===$v?'selected':''; ?>><?php echo $l; ?></option>
                         <?php endforeach; ?>
                     </select></div>
@@ -1415,6 +1477,15 @@ document.addEventListener('click', function(e) {
             try { editarPoliza && editarPoliza(JSON.parse(el.dataset.pol)); }
             catch(err) { console.error('editarPoliza', err); }
             break;
+        case 'det-solicitarRenovacion': {
+            const polId  = el.dataset.polizaId;
+            const polNum = el.dataset.polizaNum;
+            document.getElementById('renovPolizaId').value = polId;
+            document.getElementById('renovPolizaNum').textContent = polNum;
+            document.getElementById('renovComentarios').value = '';
+            if (typeof openModal === 'function') openModal('modalRenovacion');
+            break;
+        }
         case 'det-abrirPago':
             try { abrirModalPago && abrirModalPago(JSON.parse(el.dataset.cot)); }
             catch(err) { console.error('abrirModalPago', err); }
@@ -1427,6 +1498,37 @@ document.addEventListener('click', function(e) {
             break;
     }
 });
+
+function confirmarRenovacion() {
+    const btn  = document.getElementById('btnConfirmarRenovacion');
+    const polizaId   = document.getElementById('renovPolizaId').value;
+    const comentarios= document.getElementById('renovComentarios').value.trim();
+    if (!polizaId) { showToast('Error: no hay póliza seleccionada', 'error'); return; }
+    btn.disabled = true;
+    btn.textContent = 'Procesando…';
+    const fd = new FormData();
+    fd.append('accion', 'solicitar_renovacion');
+    fd.append('poliza_id', polizaId);
+    fd.append('comentarios', comentarios);
+    fetch(`/cliente/${clienteId}`, { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            btn.textContent = '🔄 Confirmar Renovación';
+            if (d.ok) {
+                showToast('Renovación registrada en el historial del cliente', 'success');
+                if (typeof closeModal === 'function') closeModal('modalRenovacion');
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                showToast(d.msg || 'Error al registrar renovación', 'error');
+            }
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.textContent = '🔄 Confirmar Renovación';
+            showToast('Error de conexión', 'error');
+        });
+}
 </script>
 </body>
 </html>
