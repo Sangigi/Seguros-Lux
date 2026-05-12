@@ -72,8 +72,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $detalle = "Renovación solicitada — Póliza #{$pol['numero_poliza']} ({$pol['compania']})";
         if ($comentarios) $detalle .= " | Nota: {$comentarios}";
         $historialModel->registrar($clienteId, $agenteId, 'nota', '🔄 Solicitud de renovación', $detalle);
-        // Marcar póliza como por_vencer si aún está vigente, para que aparezca en alertas
-        $db->prepare("UPDATE polizas SET estado='por_vencer', notas=CONCAT(IFNULL(notas,''), '\n['.NOW().'] Renovación solicitada por asesor.') WHERE id=?")->execute([$polizaId]);
+        // Marcar póliza como por_vencer para que aparezca en alertas del coordinador
+        $fechaAhora = date('Y-m-d H:i');
+        $notaRenovacion = "\n[{$fechaAhora}] Renovación solicitada por asesor.";
+        $db->prepare(
+            "UPDATE polizas SET estado='por_vencer', notas=CONCAT(IFNULL(notas,''), ?) WHERE id=?"
+        )->execute([$notaRenovacion, $polizaId]);
         echo json_encode(['ok'=>true]); exit;
     }
 
