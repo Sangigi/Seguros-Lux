@@ -1,0 +1,421 @@
+# Translation of Plugins - WPS Limit Login - Stable (latest release) in Spanish (Spain)
+# This file is distributed under the same license as the Plugins - WPS Limit Login - Stable (latest release) package.
+msgid ""
+msgstr ""
+"PO-Revision-Date: 2024-11-18 20:05:58+0000\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: GlotPress/4.0.1\n"
+"Language: es\n"
+"Project-Id-Version: Plugins - WPS Limit Login - Stable (latest release)\n"
+
+#: blocks/pub_wpboutik.php:211
+msgid "More about WPBoutik"
+msgstr "Más sobre WPBoutik"
+
+#: blocks/pub_wpboutik.php:210
+msgid "Discover WPBoutik"
+msgstr "Descubre WPBoutik"
+
+#: blocks/pub_wpboutik.php:200
+msgid "Your online store deserves a simple and effective solution: discover WPBoutik today."
+msgstr "Tu tienda online se merece una solución sencilla y eficaz: descubre WPBoutik hoy mismo."
+
+#: blocks/pub_wpboutik.php:199
+msgid "Online sales without complications? It's possible with WPBoutik on WordPress."
+msgstr "¿Ofertas online sin complicaciones? Es posible con WPBoutik en WordPress."
+
+#: blocks/pub_wpboutik.php:198
+msgid "Save time and energy with WPBoutik: the obvious choice for a stress-free online store."
+msgstr "Ahorra tiempo y energía con WPBoutik: la elección obvia para una tienda online sin estrés."
+
+#: blocks/pub_wpboutik.php:197
+msgid "WPBoutik: the lightweight and efficient solution for your WordPress e-commerce"
+msgstr "WPBoutik: la solución ligera y eficaz para tu comercio electrónico en WordPress"
+
+#: blocks/pub_wpboutik.php:196
+msgid "Ditch the bulky plugins! WPBoutik gives you the simplicity you need to sell online on WordPress."
+msgstr "¡Deshazte de los plugins voluminosos! WPBoutik te ofrece la simplicidad que necesitas para vender online en WordPress."
+
+#: blocks/pub_wpboutik.php:195
+msgid "Your online store deserves the best: choose WPBoutik for a hassle-free experience."
+msgstr "Tu tienda online se merece lo mejor: elige WPBoutik para una experiencia sin complicaciones."
+
+#: blocks/pub_wpboutik.php:194
+msgid "Maximum simplicity, optimal results: adopt WPBoutik for your WordPress e-commerce."
+msgstr "Máxima simplicidad, resultados óptimos: adopta WPBoutik para tu comercio electrónico en WordPress."
+
+#: blocks/pub_wpboutik.php:193
+msgid "Transform your WordPress site into a seamless sales platform with WPBoutik."
+msgstr "Transforma tu sitio WordPress en una plataforma de ventas sin fisuras con WPBoutik."
+
+#: blocks/pub_wpboutik.php:192
+msgid "Lightness and efficiency: discover the WPBoutik e-commerce plugin for WordPress."
+msgstr "Ligereza y eficacia: descubre el plugin de comercio electrónico WPBoutik para WordPress."
+
+#: blocks/pub_wpboutik.php:191
+msgid "Say goodbye to complications! WPBoutik simplifies online sales with WordPress."
+msgstr "¡Di adiós a las complicaciones! WPBoutik simplifica las ventas online con WordPress."
+
+#: blocks/pub_wpboutik.php:30
+msgid "Enable WPBoutik"
+msgstr "Activar WPBoutik"
+
+#: blocks/pub_wpboutik.php:18
+msgid "Install WPBoutik"
+msgstr "Instalar WPBoutik"
+
+#. Author of the plugin
+#: wps-limit-login.php
+msgid "WPServeur, NicolasKulka, wpformation"
+msgstr "WPServeur, NicolasKulka, wpformation"
+
+#: blocks/pub.php:45
+msgid "Enable"
+msgstr "Activar"
+
+#: blocks/pub.php:33
+msgid "Install"
+msgstr "Instalar"
+
+#: classes/plugin.php:1472
+msgid "Thanks :)"
+msgstr "Gracias :)"
+
+#: classes/plugin.php:1470
+msgid "If you like %1$s please leave us a %2$s rating. A huge thanks in advance!"
+msgstr "Si te gusta %1$s, por favor, déjanos una valoración de %2$s. ¡Muchas gracias por adelantado!"
+
+#: blocks/pub-wpserveur.php:71 blocks/pub.php:71
+msgid "More about %s"
+msgstr "Más sobre %s"
+
+#: classes/plugin.php:1428
+msgid "See all lockouts"
+msgstr "Ver todos los bloqueos"
+
+#: classes/plugin.php:1412
+msgid "List of the last 5 lockouts:"
+msgstr "Lista de los últimos 5 bloqueos"
+
+#: classes/plugin.php:1394 classes/plugin.php:1396
+msgid "Settings"
+msgstr "Ajustes"
+
+#. Author URI of the plugin
+#: wps-limit-login.php
+msgid "https://wpserveur.net"
+msgstr "https://wpserveur.net"
+
+#. Description of the plugin
+#: wps-limit-login.php
+msgid "Limit connection attempts by IP address"
+msgstr "Límite de intentos de conexión por dirección IP"
+
+#. Plugin Name of the plugin
+#: wps-limit-login.php classes/plugin.php:1471
+msgid "WPS Limit Login"
+msgstr "WPS Limit Login"
+
+#: classes/plugin.php:1151 classes/plugin.php:1169 classes/plugin.php:1187
+msgid "Options saved."
+msgstr "Opciones guardadas."
+
+#: classes/plugin.php:1122
+msgid "Cleared current lockouts"
+msgstr "Vaciados los bloqueos actuales"
+
+#: classes/plugin.php:1116
+msgid "Reset lockout count"
+msgstr "Restablecer el contador de bloqueos"
+
+#: classes/plugin.php:1110
+msgid "Cleared IP log"
+msgstr "Vaciado el registro de direcciones IP"
+
+#: classes/plugin.php:961
+msgid "WC Error"
+msgstr "Error WC"
+
+#: classes/plugin.php:938
+msgid "<strong>ERROR</strong>: Incorrect username or password."
+msgstr "<strong>ERROR</strong>: Nombre de usuario o contraseña incorrectos."
+
+#: classes/plugin.php:870
+msgid "Please try again in %d minute."
+msgid_plural "Please try again in %d minutes."
+msgstr[0] "Por favor, inténtalo de nuevo en %d minuto."
+msgstr[1] "Por favor, inténtalo de nuevo en %d minutos."
+
+#: classes/plugin.php:868
+msgid "Please try again in %d hour."
+msgid_plural "Please try again in %d hours."
+msgstr[0] "Por favor, inténtalo de nuevo en %d hora."
+msgstr[1] "Por favor, inténtalo de nuevo en %d horas."
+
+#: classes/plugin.php:860
+msgid "Please try again later."
+msgstr "Por favor, inténtalo más tarde."
+
+#: classes/plugin.php:670
+msgid "IP was blocked for %s"
+msgstr "La dirección IP ha sido bloqueada durante %s"
+
+#: classes/plugin.php:668
+msgid "IP was NOT blocked because of external whitelist."
+msgstr "La IP NO ha sido bloqueada debido a la lista blanca externa."
+
+#: classes/plugin.php:664
+msgid "Last user attempted: %s"
+msgstr "Ultimo intento del usuario: %s"
+
+#: classes/plugin.php:660
+msgid "%d failed login attempts (%d lockout(s)) from IP: %s"
+msgstr "%d intentos de acceso fallidos (%d bloqueo(s)) desde la IP: %s"
+
+#: classes/plugin.php:655
+msgid "[%s - WPS Limit Login] Too many failed login attempts"
+msgstr "[%s - WPS Limit Login] Demasiados intentos de acceso fallidos"
+
+#: classes/plugin.php:651
+msgid "[%s - WPS Limit Login] Failed login attempts from whitelisted IP"
+msgstr "[%s - WPS Limit Login] Intentos de acceso fallidos desde una IP de la lista blanca"
+
+#: classes/plugin.php:644
+msgid "%d minute"
+msgid_plural "%d minutes"
+msgstr[0] "%d minuto"
+msgstr[1] "%d minutos"
+
+#: classes/plugin.php:638
+msgid "%d hour"
+msgid_plural "%d hours"
+msgstr[0] "%d hora"
+msgstr[1] "%d horas"
+
+#: classes/plugin.php:320 classes/plugin.php:795 classes/plugin.php:856
+msgid "<strong>ERROR</strong>: Too many failed login attempts."
+msgstr "<strong>ERROR</strong>: Demasiados intentos de acceso fallidos."
+
+#: classes/plugin.php:267 classes/plugin.php:1010
+msgid "<strong>%d</strong> attempt remaining."
+msgid_plural "<strong>%d</strong> attempts remaining."
+msgstr[0] "<strong>%d</strong> intento restante."
+msgstr[1] "<strong>%d</strong> intentos restantes."
+
+#: blocks/whitelist.php:19
+msgid "which will add all ip between 88.88.88.86 and 88.88.88.90 in the whitelist"
+msgstr "que añadirá a la lista blanca todas las IP entre 88.88.88.86 y 88.88.88.90"
+
+#: blocks/whitelist.php:16
+msgid "Add your IP address (%s) to a whitelist."
+msgstr "Añade tu IP (%s) a la lista blanca."
+
+#: blocks/whitelist.php:15
+msgid "Sets a list of IP addresses that will have no attempt limit and will never be blocked. Be careful, you must put trusted IP addresses (example: the IP address of your home), you must never put the IP address of a public network (Internet cafe or other)."
+msgstr "Establece una lista de direcciones IP que no tendrán límite de intentos de acceso y nunca serán bloqueadas. Ten cuidado y añade solo direcciones IP de confianza (por ejemplo, la dirección IP de tu casa). Nunca debes añadir direcciones IP de redes públicas (por ejemplo, de cibercafés o similares)."
+
+#: blocks/settings.php:87
+msgid "Reset the original settings"
+msgstr "Restablecer los ajustes originales"
+
+#: blocks/settings.php:80
+msgid "Show credit link"
+msgstr "Mostrar el enlace de acreditación"
+
+#: blocks/settings.php:76
+msgid "This helps others know about the plugin so they can protect their blogs as well if they like. However, you can disable this message if you prefer."
+msgstr "Esto ayuda a otros a conocer el plugin, por lo que, si quieren, también pueden proteger sus blogs. Sin embargo, si lo prefieres, puedes desactivar este mensaje."
+
+#: blocks/settings.php:73 classes/plugin.php:1282
+msgid "Login form protected by"
+msgstr "Formulario de acceso protegido por"
+
+#: blocks/settings.php:71
+msgid "By default, WPS Limit Login will display the following message on the login form:"
+msgstr "Por defecto, WPS Limit Login mostrará el siguiente mensaje en el formulario de acceso:"
+
+#: blocks/settings.php:70
+msgid "Show Credit Link?"
+msgstr "¿Mostrar el enlace de acreditación?"
+
+#: blocks/settings.php:67
+msgid "lockouts"
+msgstr "bloqueos"
+
+#: blocks/settings.php:65
+msgid "Email to admin after"
+msgstr "Enviar un correo electrónico al administrador después de"
+
+#: blocks/settings.php:60
+msgid "hours"
+msgstr "horas"
+
+#: blocks/settings.php:58
+msgid "lockouts increase lockout time to"
+msgstr "bloqueos incrementan el tiempo de bloqueo en"
+
+#: blocks/settings.php:54
+msgid "hours until retries are reset"
+msgstr "horas hasta restablecer los reintentos"
+
+#: blocks/settings.php:50
+msgid "minutes"
+msgstr "minutos"
+
+#: blocks/settings.php:48
+msgid "for a period of"
+msgstr "por un período de"
+
+#: blocks/settings.php:48
+msgid "allowed retries"
+msgstr "reintentos permitidos"
+
+#: blocks/settings.php:27
+msgid "Use global settings"
+msgstr "Usar los ajustes globales"
+
+#: blocks/settings.php:23
+msgid "If disabled, the global settings will be forcibly applied to the entire network."
+msgstr "Si se desactiva, los ajustes globales se aplicarán a toda la red."
+
+#: blocks/settings.php:22
+msgid "Let network sites use their own settings"
+msgstr "Permitir que los sitios de la red usen sus propios ajustes"
+
+#: blocks/pub-wpserveur.php:67
+msgid "Subscribe to WPServeur"
+msgstr "Suscripción a WPServeur"
+
+#: blocks/pub-wpserveur.php:63
+msgid "(-10% discount on your subscription with the promo code <strong>WPSC&T</strong>)"
+msgstr "(-10% de descuento en tu suscripción con el código promocional <strong>WPSC&T</strong>)"
+
+#: blocks/pub-wpserveur.php:62
+msgid "We only do WordPress but we do it well!"
+msgstr "Solo hacemos WordPress, pero ¡lo hacemos bien!"
+
+#: blocks/pub-wpserveur.php:61
+msgid "For fast, secure and efficient hosting."
+msgstr "Para un alojamiento rápido, seguro y eficiente."
+
+#: blocks/pub-wpserveur.php:60
+msgid "Discover the specialized WordPress hosting with WPServeur!"
+msgstr "¡Descubre el alojamiento especializado para WordPress con WPServeur!"
+
+#: blocks/pub-wpserveur.php:35
+msgid "Enable Migrate Guru"
+msgstr "Activar Migrate Guru"
+
+#: blocks/pub-wpserveur.php:23
+msgid "Install Migrate Guru"
+msgstr "Instalar Migrate Guru"
+
+#: blocks/menu.php:56
+msgid "Log"
+msgstr "Registro"
+
+#: blocks/menu.php:30 blocks/whitelist.php:14
+msgid "Whitelist"
+msgstr "Lista Blanca"
+
+#: blocks/menu.php:17 blocks/settings.php:15
+msgid "Configuration"
+msgstr "Configuración"
+
+#: blocks/log.php:82 blocks/log.php:108
+msgid "Unlocked"
+msgstr "Desbloqueado"
+
+#: blocks/log.php:80
+msgid "Unlock"
+msgstr "Desbloquear"
+
+#: blocks/log.php:75 classes/plugin.php:1421
+msgid "lockout"
+msgid_plural "lockouts"
+msgstr[0] "bloqueo"
+msgstr[1] "bloqueos"
+
+#: blocks/log.php:67 blocks/log.php:76
+msgid "Gateway"
+msgstr "Pasarela"
+
+#: blocks/log.php:66 blocks/log.php:75
+msgid "Users"
+msgstr "Usuarios"
+
+#: blocks/log.php:65 blocks/log.php:74
+msgctxt "Internet address"
+msgid "IP"
+msgstr "IP"
+
+#: blocks/log.php:64 blocks/log.php:73
+msgid "Date"
+msgstr "Fecha"
+
+#: blocks/log.php:57
+msgid "Clear Log"
+msgstr "Vaciar el registro"
+
+#: blocks/log.php:46
+msgid "You can unlock an IP address individually (by clicking on \"Unlock\" red button)."
+msgstr "Puedes desbloquear individualmente una dirección IP (pulsando el botón rojo «Desbloquear»)."
+
+#: blocks/log.php:44
+msgid "Lockout log"
+msgstr "Registro de bloqueos"
+
+#: blocks/log.php:34
+msgid "Restore Lockouts"
+msgstr "Restaurar los bloqueos"
+
+#: blocks/log.php:30
+msgid "Reset Counter"
+msgstr "Restablecer el contador"
+
+#: blocks/log.php:25
+msgid "%d IP is currently blocked from trying to log in"
+msgid_plural "%d IP are currently blocked from trying to log in"
+msgstr[0] "%d dirección IP está bloqueada para intentar acceder"
+msgstr[1] "%d direcciones IP están bloqueadas para intentar acceder"
+
+#: blocks/log.php:21 blocks/log.php:48 classes/plugin.php:1407
+msgid "No lockouts yet"
+msgstr "No hay bloqueos"
+
+#: blocks/log.php:17
+msgid "%d lockout since last reset"
+msgid_plural "%d lockouts since last reset"
+msgstr[0] "%d bloqueo desde el último restablecimiento"
+msgstr[1] "%d bloqueos desde el último restablecimiento"
+
+#: blocks/log.php:11
+msgid "Statistics"
+msgstr "Estadísticas"
+
+#: blocks/blacklist.php:19 blocks/settings.php:84 blocks/whitelist.php:22
+msgid "Save"
+msgstr "Guardar"
+
+#: blocks/blacklist.php:16
+msgid "which will block all ip between 88.88.88.86 and 88.88.88.90"
+msgstr "que bloqueará todas las IP entre 88.88.88.86 y 88.88.88.90"
+
+#: blocks/blacklist.php:14 blocks/whitelist.php:17
+msgid "One IP range (88.88.88.86/90) or IP(88.88.88.86) per line"
+msgstr "Un rango de direcciones IP (88.88.88.86/90) o una dirección IP (88.88.88.86) por línea"
+
+#: blocks/blacklist.php:13
+msgid "Defines a list of IP addresses for which you want to completely block access to the login page."
+msgstr "Define una lista de direcciones IP a las que quieres bloquear completamente el acceso a la página de acceso."
+
+#: blocks/blacklist.php:12 blocks/menu.php:43
+msgid "Blacklist"
+msgstr "Lista negra"
+
+#: admin_page/options.php:9
+msgid "WPS Limit Login limits attempts to connect to your WordPress administration."
+msgstr "WPS Limit Login limita los intentos de conexión a tu administración de WordPress."
