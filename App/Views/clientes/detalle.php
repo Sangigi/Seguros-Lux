@@ -1004,7 +1004,7 @@ $pageTitle=$nombreCompleto;
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalRenovacion">Cancelar</button>
-            <button class="btn btn-primary" id="btnConfirmarRenovacion" onclick="confirmarRenovacion()">🔄 Confirmar Renovación</button>
+            <button class="btn btn-primary" id="btnConfirmarRenovacion" data-action="det-confirmarRenovacion">🔄 Confirmar Renovación</button>
         </div>
     </div>
 </div>
@@ -1486,6 +1486,9 @@ document.addEventListener('click', function(e) {
             if (typeof openModal === 'function') openModal('modalRenovacion');
             break;
         }
+        case 'det-confirmarRenovacion':
+            confirmarRenovacion();
+            break;
         case 'det-abrirPago':
             try { abrirModalPago && abrirModalPago(JSON.parse(el.dataset.cot)); }
             catch(err) { console.error('abrirModalPago', err); }
