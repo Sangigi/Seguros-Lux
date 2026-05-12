@@ -199,6 +199,8 @@ try {
 $msg   = $value['messages'][0];
 $phone = $msg['from'];
 $from  = $value['contacts'][0]['profile']['name'] ?? 'Cliente';
+// LOG FORZADO (diagnóstico) — eliminar después de confirmar fix
+file_put_contents(WA_LOG_PATH, date('Y-m-d H:i:s') . " RAW {$phone}: " . json_encode($msg) . "\n", FILE_APPEND);
 wa_bot_debug_log("MSG {$phone} ({$from}): " . json_encode($msg));
 
 $text='';$interactiveId='';
@@ -213,6 +215,8 @@ elseif($msg['type']==='interactive'){
 $state   =waGetState($phone);
 $textNorm=mb_strtolower(trim($text));
 $step    =$state['step']??'';
+// LOG FORZADO (diagnóstico)
+file_put_contents(WA_LOG_PATH, date('Y-m-d H:i:s') . " STATE phone={$phone} step=[{$step}] text=[{$text}] iid=[{$interactiveId}] state=" . json_encode($state) . "\n", FILE_APPEND);
 
 // Aliases
 $alias=[
@@ -411,6 +415,7 @@ if($text==='/reprog'){
 
 // Flujos multi-paso citas
 if($step==='confirm_cancel'){
+    file_put_contents(WA_LOG_PATH, date('Y-m-d H:i:s') . " CANCEL_FLOW text=[{$text}] norm=[{$textNorm}] iid=[{$interactiveId}]\n", FILE_APPEND);
     // Aceptar confirmación vía alias, textNorm o id de botón interactivo (b0/b1)
     $esConfirmar=$text==='CONF_CANCEL'
         || in_array($textNorm,['✅ sí, cancelar','sí, cancelar','si, cancelar','sí','si','confirmar','yes'],true)
@@ -456,6 +461,7 @@ if($step==='reprog_fecha'){
     return;
 }
 if($step==='reprog_hora'){
+    file_put_contents(WA_LOG_PATH, date('Y-m-d H:i:s') . " REPROG_HORA text=[{$text}] norm=[{$textNorm}] iid=[{$interactiveId}] horas=" . json_encode($state['horas_disponibles'] ?? []) . "\n", FILE_APPEND);
     // Resolver hora: puede venir como "09:00" (texto) o vía list_reply id "o3" -> mapear al índice guardado
     $horaFinal=$text;
     if(!preg_match('/^\d{2}:\d{2}$/',$horaFinal) && preg_match('/^o(\d+)$/',$interactiveId,$mi)){
