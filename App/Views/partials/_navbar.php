@@ -34,7 +34,7 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
 /* ── Sidebar CRM ─────────────────────────────────────────────────────────── */
 .crm-sidebar {
     width: 240px;
-    min-height: 100vh;
+    height: 100vh;           /* ← fijo en 100vh, no min-height */
     background: #0f172a;
     display: flex;
     flex-direction: column;
@@ -43,6 +43,7 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
     left: 0;
     z-index: 100;
     transition: transform .25s ease;
+    overflow: hidden;        /* ← el sidebar en sí no scrollea */
 }
 .crm-sidebar + .main-content,
 .crm-sidebar ~ .main-content {
@@ -55,6 +56,7 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
     align-items: center;
     gap: 10px;
     text-decoration: none;
+    flex-shrink: 0;          /* ← nunca se comprime */
 }
 .sidebar-logo-icon {
     width: 36px;
@@ -83,9 +85,17 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
 
 /* Nav links */
 .sidebar-nav {
-    flex: 1;
+    flex: 1;                 /* ocupa todo el espacio restante */
+    min-height: 0;           /* ← CLAVE: permite que flex shrink funcione */
     padding: 14px 10px;
-    overflow-y: auto;
+    overflow-y: auto;        /* scroll propio cuando el contenido excede */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,.15) transparent;
+}
+.sidebar-nav::-webkit-scrollbar { width: 4px; }
+.sidebar-nav::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.15);
+    border-radius: 4px;
 }
 .sidebar-section-label {
     font-size: 10px;
@@ -150,6 +160,7 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
 .sidebar-footer {
     padding: 14px 10px;
     border-top: 1px solid rgba(255,255,255,.08);
+    flex-shrink: 0;          /* ← nunca se comprime ni desaparece */
 }
 .sidebar-user {
     display: flex;
