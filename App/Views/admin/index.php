@@ -599,6 +599,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             echo json_encode(['ok'=>true,'reasignados'=>$n]);
         })(),
 
+        // ── Renovación: actualizar datos de póliza ────────────────────────────
+        'renov_actualizar_poliza' => (function() use ($db, $agenteId) {
+            $polizaId    = (int)($_POST['poliza_id']   ?? 0);
+            $clienteId   = (int)($_POST['cliente_id']  ?? 0);
+            $fechaInicio = trim($_POST['fecha_inicio']  ?? '');
+            $fechaFin    = trim($_POST['fecha_fin']     ?? '');
+            $frecuencia  = trim($_POST['frecuencia']    ?? 'anual');
+            $nuevoNumero = trim($_POST['nuevo_numero']  ?? '');
+            $notas       = trim($_POST['notas']        ?? '');
+            if (!$polizaId || !$fechaFin) {
+                return json_encode(['ok'=>false,'msg'=>'Faltan datos obligatorios.']);
+            }
+            $frecuenciasValidas = ['semanal','mensual','trimestral','anual'];
+            if (!in_array($frecuencia, $frecuenciasValidas, true)) $frecuencia = 'anual';
+
+            $sets  = ['estado = ?', 'fecha_fin = ?', 'frecuencia_renovacion = ?', 'renovacion_notificada = 0', 'actualizado_en = NOW()'];
+            $vals  = ['vigente', $fechaFin ?: null, $frecuencia];
+            if ($fechaInicio) { $sets[] = 'fecha_inicio = ?'; $vals[] = $fechaInicio; }
+            if ($nuevoNumero) { $sets[] = 'numero_poliza = ?'; $vals[] = $nuevoNumero; }
+            if ($notas)       { $sets[] = 'notas = ?'; $vals[] = $notas; }
+            $vals[] = $polizaId;
+
+            $db->prepare('UPDATE polizas SET '.implode(', ',$sets).' WHERE id = ?')->execute($vals);
+
+            // Registrar en historial del cliente
+            if ($clienteId) {
+                $desc = 'Renovada por coordinador.' . ($nuevoNumero ? " Nueva póliza: {$nuevoNumero}." : '') . ($notas ? " Nota: {$notas}" : '');
+                $db->prepare(
+                    "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha)
+                     VALUES (?, ?, 'nota', '✅ Póliza renovada', ?, NOW())"
+                )->execute([$clienteId, $agenteId, $desc]);
+            }
+            return json_encode(['ok'=>true]);
+        })(),
+
+        // ── Renovación: marcar solicitud como gestionada ──────────────────────
+        'renov_marcar_gestionada' => (function() use ($db, $agenteId) {
+            $clienteId = (int)($_POST['cliente_id'] ?? 0);
+            $fecha     = trim($_POST['fecha'] ?? '');
+            if (!$clienteId) return json_encode(['ok'=>false,'msg'=>'ID inválido.']);
+            // Cambiar título para que salga del filtro de renovaciones pendientes
+            $db->prepare(
+                "UPDATE historial_cliente
+                 SET titulo = '✅ Renovación gestionada'
+                 WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'
+                   AND fecha = ?"
+            )->execute([$clienteId, $fecha]);
+            return json_encode(['ok'=>true]);
+        })(),
+
         default => json_encode(['ok'=>false,'msg'=>'Acción desconocida.']),
     };
     exit;
@@ -664,6 +714,29 @@ $atcData = $db->query(
     "SELECT clave, valor, descripcion FROM configuracion WHERE clave LIKE 'atc_%' ORDER BY clave"
 )->fetchAll();
 $atcMap  = array_column($atcData, null, 'clave');
+
+
+// ── Solicitudes de renovación (historial con título de renovación) ────────────
+$renovacionesPendientes = $db->query(
+    "SELECT h.cliente_id, h.descripcion, h.fecha,
+            CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',COALESCE(cl.apellido_materno,'')) AS cliente_nombre,
+            cl.correo AS cliente_correo, cl.telefono AS cliente_tel,
+            CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre,
+            a.id AS asesor_id,
+            p.id AS poliza_id, p.numero_poliza, p.compania,
+            p.fecha_fin, p.estado AS poliza_estado,
+            p.frecuencia_renovacion,
+            DATEDIFF(p.fecha_fin, CURDATE()) AS dias_vence
+     FROM historial_cliente h
+     JOIN clientes cl ON cl.id = h.cliente_id
+     JOIN agentes  a  ON a.id  = h.agente_id
+     LEFT JOIN polizas p ON p.cliente_id = h.cliente_id
+                        AND p.estado IN ('por_vencer','vencida')
+                        AND p.eliminado_en IS NULL
+     WHERE h.titulo = '🔄 Solicitud de renovación'
+     ORDER BY h.fecha DESC
+     LIMIT 100"
+)->fetchAll(\PDO::FETCH_ASSOC);
 
 $pageTitle = 'Panel de Coordinación';
 ?>
@@ -743,6 +816,7 @@ function closeModal(id){document.getElementById(id)?.classList.remove('active');
         'actividad'     => ['⚡','Actividad',false],
         'asesores'      => ['👥','Asesores',false],
         'emision'       => ['📄','Emisión',false],
+        'renovaciones'  => ['🔁','Renovaciones',false],
         'cotizaciones'  => ['📋','Cotizaciones',$isSuperadmin],
         'configuracion' => ['⚙️','Configuración',$isSuperadmin],
     ];
@@ -1159,6 +1233,285 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
 
 <?php elseif ($tab === 'emision'):
     require __DIR__ . '/_tab_emision.php'; ?>
+
+<?php elseif ($tab === 'renovaciones'): ?>
+
+<?php
+$totalRenov = count($renovacionesPendientes);
+$urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['dias_vence']) && (int)$r['dias_vence'] <= 7));
+?>
+
+<!-- KPIs -->
+<div class="kpi4" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+    <div class="stat-card warning">
+        <div class="stat-card-value"><?= $totalRenov ?></div>
+        <div class="stat-card-label">🔁 Solicitudes</div>
+    </div>
+    <div class="stat-card <?= $urgentes > 0 ? 'danger' : 'success' ?>">
+        <div class="stat-card-value"><?= $urgentes ?></div>
+        <div class="stat-card-label">🚨 Urgentes (≤7 días)</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-card-value"><?= $totalRenov - $urgentes ?></div>
+        <div class="stat-card-label">📋 En seguimiento</div>
+    </div>
+</div>
+
+<?php if (empty($renovacionesPendientes)): ?>
+<div class="card" style="text-align:center;padding:56px;">
+    <div style="font-size:48px;margin-bottom:12px;">✅</div>
+    <div style="font-size:16px;font-weight:700;color:var(--text-primary);">Sin solicitudes de renovación</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">Cuando un asesor solicite renovar una póliza de un cliente, aparecerá aquí.</div>
+</div>
+<?php else: ?>
+
+<!-- Buscador -->
+<div class="toolbar" style="margin-bottom:16px;">
+    <div class="search-bar" style="flex:1;">
+        <span class="search-bar-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" id="srchRenov" class="search-bar-input" placeholder="Buscar por cliente, asesor, compañía…">
+    </div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px;" id="renovLista">
+<?php foreach ($renovacionesPendientes as $r):
+    $dias   = isset($r['dias_vence']) ? (int)$r['dias_vence'] : null;
+    $urgente= $dias !== null && $dias <= 7;
+    $vencida= $dias !== null && $dias < 0;
+    $borderColor = $vencida ? 'var(--danger-color)' : ($urgente ? '#f59e0b' : 'var(--accent-color)');
+    $fechaSol = $r['fecha'] ? date('d/m/Y H:i', strtotime($r['fecha'])) : '—';
+    $fechaFin = !empty($r['fecha_fin']) && $r['fecha_fin'] !== '0000-00-00' ? date('d/m/Y', strtotime($r['fecha_fin'])) : null;
+    $polEstLabel = ['vigente'=>'Vigente','por_vencer'=>'Por vencer','vencida'=>'Vencida','cancelada'=>'Cancelada'][$r['poliza_estado'] ?? ''] ?? '—';
+    $polEstBadge = ['vigente'=>'badge-success','por_vencer'=>'badge-warning','vencida'=>'badge-danger','cancelada'=>'badge-neutral'][$r['poliza_estado'] ?? ''] ?? 'badge-neutral';
+?>
+<div class="card renov-card"
+     data-cliente="<?= strtolower($r['cliente_nombre']) ?>"
+     data-asesor="<?= strtolower($r['asesor_nombre']) ?>"
+     data-compania="<?= strtolower($r['compania'] ?? '') ?>"
+     style="border-left:4px solid <?= $borderColor ?>;">
+    <div class="card-body" style="padding:16px 20px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+
+            <!-- Info -->
+            <div style="flex:1;min-width:220px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                    <?php if ($vencida): ?>
+                    <span class="badge badge-danger">🚨 Póliza vencida</span>
+                    <?php elseif ($urgente): ?>
+                    <span class="badge badge-warning">⚠️ Urgente — <?= $dias ?>d restantes</span>
+                    <?php elseif ($dias !== null): ?>
+                    <span class="badge badge-info"><?= $dias ?>d para vencer</span>
+                    <?php endif; ?>
+                    <?php if (!empty($r['poliza_estado'])): ?>
+                    <span class="badge <?= $polEstBadge ?>" style="font-size:10px;"><?= $polEstLabel ?></span>
+                    <?php endif; ?>
+                </div>
+
+                <div style="font-size:15px;font-weight:700;margin-bottom:4px;"><?= htmlspecialchars($r['cliente_nombre']) ?></div>
+                <div style="font-size:12px;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
+                    <?php if ($r['cliente_correo']): ?><span>✉️ <?= htmlspecialchars($r['cliente_correo']) ?></span><?php endif; ?>
+                    <?php if ($r['cliente_tel']): ?><span>📞 <?= htmlspecialchars($r['cliente_tel']) ?></span><?php endif; ?>
+                    <span>👤 Asesor: <strong><?= htmlspecialchars($r['asesor_nombre']) ?></strong></span>
+                </div>
+
+                <?php if (!empty($r['numero_poliza']) || !empty($r['compania'])): ?>
+                <div style="font-size:12px;color:var(--text-secondary);display:flex;gap:10px;flex-wrap:wrap;">
+                    <?php if ($r['compania']): ?><span>🏢 <?= htmlspecialchars($r['compania']) ?></span><?php endif; ?>
+                    <?php if ($r['numero_poliza']): ?><span># <code style="font-size:11px;"><?= htmlspecialchars($r['numero_poliza']) ?></code></span><?php endif; ?>
+                    <?php if ($r['frecuencia_renovacion']): ?><span>🔄 <?= ucfirst($r['frecuencia_renovacion']) ?></span><?php endif; ?>
+                    <?php if ($fechaFin): ?><span>⏳ Vence: <strong><?= $fechaFin ?></strong></span><?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if (!empty($r['descripcion'])): ?>
+                <div style="margin-top:8px;padding:6px 10px;background:var(--bg-secondary);border-radius:6px;font-size:11px;color:var(--text-muted);">
+                    💬 <?= htmlspecialchars($r['descripcion']) ?>
+                </div>
+                <?php endif; ?>
+
+                <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">📅 Solicitado: <?= $fechaSol ?></div>
+            </div>
+
+            <!-- Acciones -->
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:190px;align-items:flex-end;">
+                <?php if ($r['cliente_id']): ?>
+                <a href="/cliente/<?= (int)$r['cliente_id'] ?>"
+                   class="btn btn-outline btn-sm" style="width:100%;text-align:center;">
+                    👁 Ver cliente
+                </a>
+                <?php endif; ?>
+                <?php if ($r['poliza_id']): ?>
+                <button class="btn btn-primary btn-sm"
+                        style="width:100%;"
+                        data-action="adm-renovGestionarPoliza"
+                        data-poliza-id="<?= (int)$r['poliza_id'] ?>"
+                        data-cliente-id="<?= (int)$r['cliente_id'] ?>"
+                        data-numero="<?= htmlspecialchars($r['numero_poliza'] ?? '', ENT_QUOTES) ?>"
+                        data-compania="<?= htmlspecialchars($r['compania'] ?? '', ENT_QUOTES) ?>"
+                        data-fecha-fin="<?= htmlspecialchars($r['fecha_fin'] ?? '', ENT_QUOTES) ?>"
+                        data-frecuencia="<?= htmlspecialchars($r['frecuencia_renovacion'] ?? 'anual', ENT_QUOTES) ?>">
+                    🔁 Gestionar renovación
+                </button>
+                <?php endif; ?>
+                <button class="btn btn-ghost btn-sm"
+                        style="width:100%;color:var(--success-color);"
+                        data-action="adm-renovMarcarGestionada"
+                        data-cliente-id="<?= (int)$r['cliente_id'] ?>"
+                        data-fecha="<?= htmlspecialchars($r['fecha'] ?? '', ENT_QUOTES) ?>">
+                    ✅ Marcar gestionada
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endforeach; ?>
+</div>
+<?php endif; ?>
+
+<!-- Modal: Gestionar Renovación -->
+<div class="modal-overlay" id="modalGestionarRenovacion">
+    <div class="modal" style="max-width:560px;">
+        <div class="modal-header">
+            <h3 class="modal-title">🔁 Gestionar Renovación</h3>
+            <button class="modal-close" data-close="modalGestionarRenovacion">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="grPolizaId">
+            <input type="hidden" id="grClienteId">
+            <div style="background:var(--info-light);border:1px solid var(--info-color,#3b82f6);border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:13px;">
+                <div><strong>Póliza:</strong> <span id="grNumero" style="font-family:monospace;color:var(--accent-color);"></span></div>
+                <div style="margin-top:4px;"><strong>Compañía:</strong> <span id="grCompania"></span></div>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.55;">
+                Actualiza los datos de la póliza renovada. Puedes cambiar las fechas de vigencia y, si es necesario, subir el nuevo documento desde el perfil del cliente → sección Pólizas.
+            </p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Nueva fecha de inicio</label>
+                    <input type="date" class="form-input" id="grFechaInicio">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nueva fecha de vencimiento</label>
+                    <input type="date" class="form-input" id="grFechaFin">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Frecuencia de renovación</label>
+                <select class="form-select" id="grFrecuencia">
+                    <option value="mensual">Mensual</option>
+                    <option value="trimestral">Trimestral</option>
+                    <option value="anual" selected>Anual</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Nuevo número de póliza (si cambió)</label>
+                <input type="text" class="form-input" id="grNuevoNumero" placeholder="Dejar vacío para mantener el actual">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Notas del coordinador</label>
+                <textarea class="form-input" id="grNotas" rows="2" placeholder="Ej: Renovada con misma cobertura, prima ajustada…" style="resize:vertical;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" data-close="modalGestionarRenovacion">Cancelar</button>
+            <button class="btn btn-primary" data-action="adm-confirmarRenovacion">💾 Guardar renovación</button>
+        </div>
+    </div>
+</div>
+
+<script nonce="<?= $cspNonce ?>">
+(function () {
+    // ── Buscador ──────────────────────────────────────────────────────────────
+    document.getElementById('srchRenov')?.addEventListener('input', function () {
+        const q = this.value.toLowerCase().trim();
+        document.querySelectorAll('#renovLista .renov-card').forEach(card => {
+            const txt = (card.dataset.cliente + ' ' + card.dataset.asesor + ' ' + card.dataset.compania);
+            card.closest('.card').style.display = (!q || txt.includes(q)) ? '' : 'none';
+        });
+    });
+
+    // ── Delegación de eventos del tab ─────────────────────────────────────────
+    document.addEventListener('click', function (e) {
+        const el = e.target.closest('[data-action]');
+        if (!el) return;
+
+        switch (el.dataset.action) {
+
+            case 'adm-renovGestionarPoliza': {
+                document.getElementById('grPolizaId').value   = el.dataset.polizaId;
+                document.getElementById('grClienteId').value  = el.dataset.clienteId;
+                document.getElementById('grNumero').textContent    = el.dataset.numero || '—';
+                document.getElementById('grCompania').textContent  = el.dataset.compania || '—';
+                document.getElementById('grFrecuencia').value      = el.dataset.frecuencia || 'anual';
+                document.getElementById('grNuevoNumero').value     = '';
+                document.getElementById('grNotas').value           = '';
+                // Pre-rellenar fechas: inicio = hoy, fin = hoy + 1 año
+                const hoy  = new Date();
+                const fin  = new Date(hoy); fin.setFullYear(fin.getFullYear() + 1);
+                document.getElementById('grFechaInicio').value = hoy.toISOString().split('T')[0];
+                document.getElementById('grFechaFin').value    = fin.toISOString().split('T')[0];
+                if (typeof openModal === 'function') openModal('modalGestionarRenovacion');
+                break;
+            }
+
+            case 'adm-confirmarRenovacion': {
+                const btn       = el;
+                const polizaId  = document.getElementById('grPolizaId').value;
+                const clienteId = document.getElementById('grClienteId').value;
+                const fd = new FormData();
+                fd.append('accion',       'renov_actualizar_poliza');
+                fd.append('poliza_id',    polizaId);
+                fd.append('cliente_id',   clienteId);
+                fd.append('fecha_inicio', document.getElementById('grFechaInicio').value);
+                fd.append('fecha_fin',    document.getElementById('grFechaFin').value);
+                fd.append('frecuencia',   document.getElementById('grFrecuencia').value);
+                fd.append('nuevo_numero', document.getElementById('grNuevoNumero').value.trim());
+                fd.append('notas',        document.getElementById('grNotas').value.trim());
+                btn.disabled = true; btn.textContent = 'Guardando…';
+                fetch('/admin', { method: 'POST', body: fd })
+                    .then(r => r.json())
+                    .then(d => {
+                        btn.disabled = false; btn.textContent = '💾 Guardar renovación';
+                        if (d.ok) {
+                            if (typeof showToast === 'function') showToast('Póliza actualizada y marcada como vigente', 'success');
+                            if (typeof closeModal === 'function') closeModal('modalGestionarRenovacion');
+                            setTimeout(() => location.reload(), 1200);
+                        } else {
+                            if (typeof showToast === 'function') showToast(d.msg || 'Error al guardar', 'error');
+                        }
+                    })
+                    .catch(() => {
+                        btn.disabled = false; btn.textContent = '💾 Guardar renovación';
+                        if (typeof showToast === 'function') showToast('Error de conexión', 'error');
+                    });
+                break;
+            }
+
+            case 'adm-renovMarcarGestionada': {
+                const clienteId = el.dataset.clienteId;
+                const fecha     = el.dataset.fecha;
+                if (!confirm('¿Marcar esta solicitud como gestionada? Desaparecerá de la lista.')) break;
+                const fd = new FormData();
+                fd.append('accion',     'renov_marcar_gestionada');
+                fd.append('cliente_id', clienteId);
+                fd.append('fecha',      fecha);
+                fetch('/admin', { method: 'POST', body: fd })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.ok) {
+                            el.closest('.card').remove();
+                            if (typeof showToast === 'function') showToast('Marcada como gestionada', 'success');
+                        } else {
+                            if (typeof showToast === 'function') showToast(d.msg || 'Error', 'error');
+                        }
+                    })
+                    .catch(() => { if (typeof showToast === 'function') showToast('Error de conexión', 'error'); });
+                break;
+            }
+        }
+    });
+}());
+</script>
 
 <?php elseif ($tab === 'cotizaciones' && $isSuperadmin): ?>
 <div class="toolbar">
