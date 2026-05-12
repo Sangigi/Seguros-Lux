@@ -94,13 +94,23 @@ function waFile(string $p): string
 }
 function waGetState(string $p): array
 {
-    $f=waFile($p); return file_exists($f)?(json_decode(file_get_contents($f),true)?:[]):[];
+    $f = waFile($p);
+    if (!file_exists($f)) return [];
+    $data = json_decode(file_get_contents($f), true) ?: [];
+    // Expirar sesión si lleva más de 30 minutos sin actividad
+    $maxIdle = 30 * 60;
+    if (!empty($data) && isset($data['_ts']) && (time() - $data['_ts']) > $maxIdle) {
+        unlink($f);
+        return [];
+    }
+    return $data;
 }
-function waSetState(string $p,array $s): void
+function waSetState(string $p, array $s): void
 {
-    $f=waFile($p);
-    if(empty($s)){if(file_exists($f))unlink($f);return;}
-    file_put_contents($f,json_encode($s));
+    $f = waFile($p);
+    if (empty($s)) { if (file_exists($f)) unlink($f); return; }
+    $s['_ts'] = time(); // timestamp de última actividad
+    file_put_contents($f, json_encode($s));
 }
 function waFecha(string $f): string
 {

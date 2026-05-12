@@ -34,13 +34,22 @@ function tgSessionFile(string $chatId): string
 function tgGetState(string $chatId): array
 {
     $f = tgSessionFile($chatId);
-    return file_exists($f) ? (json_decode(file_get_contents($f), true) ?: []) : [];
+    if (!file_exists($f)) return [];
+    $data = json_decode(file_get_contents($f), true) ?: [];
+    // Expirar sesión si lleva más de 30 minutos sin actividad
+    $maxIdle = 30 * 60;
+    if (!empty($data) && isset($data['_ts']) && (time() - $data['_ts']) > $maxIdle) {
+        unlink($f);
+        return [];
+    }
+    return $data;
 }
 
 function tgSetState(string $chatId, array $state): void
 {
     $f = tgSessionFile($chatId);
     if (empty($state)) { if (file_exists($f)) unlink($f); return; }
+    $state['_ts'] = time(); // timestamp de última actividad
     file_put_contents($f, json_encode($state));
 }
 
