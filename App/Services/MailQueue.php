@@ -55,16 +55,12 @@ final class MailQueue
         ?string $replyTo = null,
         int     $tries   = 3,
     ): void {
-        // Use a PHP-generated timestamp so this works on both MySQL and SQLite.
-        // MySQL's NOW() does not exist in SQLite (used by the test suite).
-        $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
-
         $db = Connection::getConnection();
         $db->prepare(
             'INSERT INTO mail_queue
              (to_address, to_name, subject, body, reply_to, max_tries, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)'
-        )->execute([$to, $toName, $subject, $body, $replyTo, $tries, $now]);
+             VALUES (?, ?, ?, ?, ?, ?, NOW())'
+        )->execute([$to, $toName, $subject, $body, $replyTo, $tries]);
     }
 
     /**

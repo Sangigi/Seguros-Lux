@@ -154,7 +154,7 @@
   .perfil-cta:hover { background: var(--accent); color: var(--primary); }
 
   .perfiles-note {
-    text-align: center; font-size: 14px; color: var(--gray-400);
+    text-align: center; font-size: 14px; color: var(--gray-600);font-weight: bold;
     margin-top: 30px;
   }
   .perfiles-note a { color: var(--accent-dark); font-weight: 700; border-bottom: 1px solid var(--accent); }
@@ -359,7 +359,7 @@
     font-weight: 700; font-size: 14px; color: var(--primary);
   }
   .red-note {
-    text-align: center; font-size: 13px; color: var(--gray-400);
+    text-align: center; font-size: 13px; color: var(--gray-600); font-weight: bold;
     max-width: 660px; margin: 0 auto;
   }
 
@@ -393,8 +393,8 @@
   .form-group input:focus { outline: 0; border-color: var(--accent); }
   .form-submit { width: 100%; margin-top: 10px; }
   .form-extra-note {
-    font-size: 12px; color: var(--gray-400); text-align: center;
-    margin-top: 14px; line-height: 1.5;
+    font-size: 12px; color: var(--gray-600); text-align: center;
+    margin-top: 14px; line-height: 1.5;font-weight: bold;
   }
 
   @media (max-width: 900px) {
@@ -486,7 +486,7 @@
       </div>
       <div class="hero-gmm-ctas">
         <a href="#cotizar" class="btn btn-primary">
-          Cotizar en ahora
+          Cotizar ahora
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
         </a>
         <a href="tel:+525541232311" class="btn btn-ghost">Hablar con asesor</a>
@@ -893,6 +893,7 @@
     </div>
     <div class="footer-bottom">
       <div>©Seguros Lux. Intermediario autorizado por la CNSF. Todos los derechos reservados.</div>
+      <div>Secure Sockets Layer (SSL)</div>
       <div>Powered by <strong style="color: #fff">GrupoIdeas</strong></div>
     </div>
   </div>

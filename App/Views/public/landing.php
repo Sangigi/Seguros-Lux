@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Seguros Lux | Protege lo que más importa</title>
-<meta name="description" content="Seguros Lux: atención personal, especialistas en vehículos y respuesta rapida. Cotiza tu seguro vehicular, de vida o gastos médicos mayores." />
+<meta name="description" content="Seguros Lux: atención personal, especialistas en vehículos y respuesta rápida. Cotiza tu seguro vehicular, de vida o gastos médicos mayores." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
@@ -359,7 +359,7 @@
       <div class="hero-eyebrow">Aseguradora #1 en México</div>
       <h1>Protege <em>lo que más</em> importa.</h1>
       <p class="lead">
-        Atención personal, especialistas en vehículos y respuesta rapida.
+        Atención personal, especialistas en vehículos y respuesta rápida.
         Así protegemos tu patrimonio, tu familia y tu salud.
       </p>
       <div class="hero-ctas">
@@ -445,7 +445,7 @@
         <div class="reason-icon">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </div>
-        <h3>Respuesta rapida</h3>
+        <h3>Respuesta rápida</h3>
         <p>Los imprevistos no esperan. Por eso te atendemos por teléfono o WhatsApp, cualquier día y a cualquier hora.</p>
       </div>
     </div>
@@ -538,7 +538,7 @@
         </div>
         <div class="seguro-body">
           <ul class="seguro-features">
-            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Hospitales en convenio, medicos certificados</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Hospitales en convenio, médicos certificados</li>
             <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Pago directo al hospital</li>
             <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Orientación médica 24/7</li>
             <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Cobertura nacional</li>
@@ -565,7 +565,7 @@
     <div class="testi-grid">
       <div class="testi-card reveal">
         <div class="testi-stars">★★★★★</div>
-        <p>"Tuve un percance y recibi atención pronta que me ayudo a resolver mi problema. Totalmente recomendados."</p>
+        <p>"Tuve un percance y recibí atención pronta que me ayudó a resolver mi problema. Totalmente recomendados."</p>
         <div class="testi-author">
           <div class="testi-avatar">MG</div>
           <div>
@@ -587,7 +587,7 @@
       </div>
       <div class="testi-card reveal">
         <div class="testi-stars">★★★★★</div>
-        <p>"Llevo 3 años con ellos y al momento de mi choque me atendieron y me senti respaldado. El seguro premium vale cada peso que pagas."</p>
+        <p>"Llevo 3 años con ellos y al momento de mi choque me atendieron y me sentí respaldado. El seguro premium vale cada peso que pagas."</p>
         <div class="testi-author">
           <div class="testi-avatar">AL</div>
           <div>
@@ -625,7 +625,7 @@
       </div>
     </div>
 
-    <p class="partners-note">Las coberturas, deducibles y condiciones estan sujetas a cada aseguradora.</p>
+    <p class="partners-note">Las coberturas, deducibles y condiciones están sujetas a cada aseguradora.</p>
   </div>
 </section>
 
@@ -690,7 +690,7 @@
       </details>
       <details class="faq-item">
         <summary>¿Cuánto tarda en activarse mi póliza?</summary>
-        <div class="faq-answer">Se activa inmediatamente después de realizar el pago. Recibirás tu póliza digital por correo electrónico en cuestión de rapida. Se aplican terminos y condiciones.</div>
+        <div class="faq-answer">Se activa inmediatamente después de realizar el pago. Recibirás tu póliza digital por correo electrónico. Se aplican términos y condiciones.</div>
       </details>
       <details class="faq-item">
         <summary>¿Puedo cancelar mi seguro?</summary>
@@ -706,7 +706,7 @@
       </details>
       <details class="faq-item">
         <summary>¿Tienes alguna opción para mi retiro?</summary>
-        <div class="faq-answer">Sí. Contamos con planes para tu retiro, donde tambien podemos ayudarte con la deducibilidad de impuestos.</div>
+        <div class="faq-answer">Sí. Contamos con planes para tu retiro, donde también podemos ayudarte con la deducibilidad de impuestos.</div>
       </details>
       <details class="faq-item">
         <summary>¿Cuentan con planes para la educación de mis hijos?</summary>
@@ -714,7 +714,7 @@
       </details>
       <details class="faq-item">
         <summary>¿Cuentan con planes para la salud?</summary>
-        <div class="faq-answer">Sí. Contamos con Seguros de Gastos Medicos Mayores con diferentes empresas, cubriendo tus necesidades y ajustandonos a tu presupuesto.</div>
+        <div class="faq-answer">Sí. Contamos con Seguros de Gastos Médicos Mayores con diferentes empresas, cubriendo tus necesidades y ajustándonos a tu presupuesto.</div>
       </details>
     </div>
   </div>
@@ -790,7 +790,7 @@
 <section class="cta-final">
   <div class="container">
     <h2>Protege lo que más <em>importa hoy</em></h2>
-    <p>Completa nuestro formulario rápido y recibe una cotización personalizada rapida. Sin compromiso, sin letra pequeña.</p>
+    <p>Completa nuestro formulario rápido y recibe una cotización personalizada rápida. Sin compromiso, sin letra pequeña.</p>
     <div class="cta-final-actions">
       <a href="/formulario" class="btn btn-primary">
         Llenar Formulario
@@ -853,7 +853,8 @@
       </div>
     </div>
     <div class="footer-bottom">
-      <div>© 2026 Seguros Lux. Todos los derechos reservados.</div>
+      <div>©Seguros Lux. Todos los derechos reservados.</div>
+      <div>Secure Sockets Layer (SSL)</div>
       <div>Powered by <strong style="color: #fff">GrupoIdeas</strong></div>
     </div>
   </div>

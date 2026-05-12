@@ -36,12 +36,6 @@
   .hero-vehiculo-img-wrap::after {
     content: '';
     position: absolute; inset: 0;
-    /* background: linear-gradient(
-      135deg,
-      rgba(15,23,42,0.88) 0%,
-      rgba(15,23,42,0.65) 55%,
-      rgba(27,50,80,0.75) 100%
-    ); */
   }
   .hero-vehiculo > .container {
     position: relative;
@@ -202,8 +196,6 @@
     object-fit: contain;
     object-position: center;
     display: block;
-    /* Invierte a blanco para que contraste con el fondo oscuro */
-    /* filter: brightness(0) invert(1); */
   }
   .moto-badge {
     position: absolute;
@@ -270,20 +262,6 @@
     margin-bottom: 4px;
   }
   .plan-tagline { font-size: 13px; color: var(--gray-600); margin-bottom: 18px; }
-  .plan-price {
-    padding: 16px 0;
-    border-top: 1px solid var(--gray-200);
-    border-bottom: 1px solid var(--gray-200);
-    margin-bottom: 18px;
-  }
-  .plan-price-label { font-size: 11px; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; }
-  .plan-price-amount {
-    font-family: var(--font-display);
-    font-size: 32px; font-weight: 900; color: var(--primary);
-    letter-spacing: -1px; line-height: 1; margin: 4px 0 2px;
-  }
-  .plan-price-amount em { font-style: italic; color: var(--accent-dark); font-weight: 500; font-size: 22px; }
-  .plan-price-note { font-size: 12px; color: var(--gray-400); }
   .plan-features { list-style: none; flex: 1; margin-bottom: 22px; }
   .plan-features li {
     padding: 7px 0; font-size: 14px;
@@ -314,8 +292,9 @@
   .plan-card.popular .plan-call-btn:hover { background: rgba(243,195,50,0.1); }
 
   .compare-note {
-    text-align: center; font-size: 13px; color: var(--gray-400);
+    text-align: center; font-size: 13px; color: var(--gray-600);
     margin-top: 16px;
+    font-weight: bold;
   }
 
   /* ===== TESTIMONIOS ESPECÍFICOS ===== */
@@ -747,24 +726,12 @@
       <p>Cuatro niveles de protección para cada tipo de vehículo.</p>
     </div>
 
-    <!-- <div class="vehicle-tabs">
-      <button class="plan-tab active" data-target="autos">🚗 Autos</button>
-      <button class="plan-tab" data-target="motos">🏍️ Motos</button>
-      <button class="plan-tab" data-target="camiones">🚚 Camiones</button>
-      <button class="plan-tab" data-target="flotillas">🚐 Flotillas</button>
-    </div> -->
-
-    <!-- Panel Vehiculos -->
+    <!-- Panel Autos -->
     <div class="plan-panel active" data-panel="autos">
       <div class="plan-cards">
         <div class="plan-card">
           <div class="plan-name">Básico</div>
           <p class="plan-tagline">Lo esencial por la ley.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>3,200<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*precio referencial sedán 2020</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Daños a terceros</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Asistencia vial 24/7</li>
@@ -781,11 +748,6 @@
         <div class="plan-card">
           <div class="plan-name">Amplio</div>
           <p class="plan-tagline">Equilibrio ideal entre cobertura y precio.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>6,800<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*precio referencial sedán 2020</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Robo total</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Daños a terceros y materiales</li>
@@ -799,16 +761,11 @@
             Llamar ahora
           </a>
         </div>
-        <!-- AMPLIO TOTAL — intermedio entre Amplio y Premium -->
+        <!-- AMPLIO TOTAL -->
         <div class="plan-card popular" style="border-color:var(--accent-dark);--popular-bg:var(--accent-dark);">
           <span class="plan-popular-tag" style="background:var(--accent-dark);color:var(--white);">⭐ Mejor relación</span>
           <div class="plan-name">Amplio Total</div>
           <p class="plan-tagline">Todo lo esencial más protección real ante imprevistos.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>8,900<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*precio referencial sedán 2020</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Todo lo del plan Amplio</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Auto sustituto (hasta 10 días)</li>
@@ -825,11 +782,6 @@
         <div class="plan-card">
           <div class="plan-name">Premium</div>
           <p class="plan-tagline">Tranquilidad total, sin sorpresas.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>11,500<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*precio referencial sedán 2020</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Todo lo del plan Amplio</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Auto sustituto durante reparación</li>
@@ -843,7 +795,7 @@
           </a>
         </div>
       </div>
-      <p class="compare-note">*Los precios mostrados son referenciales para sedán 2020 con cobertura mínima legal. Tu cotización personalizada depende de marca, modelo, año, uso y código postal.</p>
+      <p class="compare-note">*Tu cotización personalizada depende de marca, modelo, año, uso y código postal.</p>
     </div>
 
     <!-- Panel Motos -->
@@ -852,11 +804,6 @@
         <div class="plan-card">
           <div class="plan-name">Básico</div>
           <p class="plan-tagline">RC obligatoria + asistencia vial.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>1,800<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*moto 250cc, modelo 2022</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Responsabilidad civil (RC)</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Asistencia vial 24/7</li>
@@ -869,11 +816,6 @@
           <span class="plan-popular-tag">★ Recomendado</span>
           <div class="plan-name">Estándar</div>
           <p class="plan-tagline">Protección balanceada para motociclistas.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>3,900<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*moto 250cc, modelo 2022</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Robo total + RC + Daños propios</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Cobertura de casco y equipo</li>
@@ -885,11 +827,6 @@
         <div class="plan-card">
           <div class="plan-name">Premium</div>
           <p class="plan-tagline">Para motociclistas que viven sobre dos ruedas.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>6,400<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*moto 250cc, modelo 2022</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Todo lo del plan Estándar</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Cobertura de accesorios</li>
@@ -899,7 +836,7 @@
           <a href="#cotizar" class="plan-cta">Cotizar Premium</a>
         </div>
       </div>
-      <p class="compare-note">*Precios referenciales para moto de 250cc, modelo 2022. Tu cotización depende del cilindraje, antigüedad y uso.</p>
+      <p class="compare-note">*Tu cotización depende del cilindraje, antigüedad y uso.</p>
     </div>
 
     <!-- Panel Camiones -->
@@ -908,11 +845,6 @@
         <div class="plan-card">
           <div class="plan-name">Básico</div>
           <p class="plan-tagline">Para camiones y vans con uso ocasional.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>8,500<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*van de carga ligera</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> RC daños a terceros</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Asistencia vial pesada 24/7</li>
@@ -924,11 +856,6 @@
           <span class="plan-popular-tag">★ Recomendado</span>
           <div class="plan-name">Comercial</div>
           <p class="plan-tagline">Para reparto diario y carga regular.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>15,200<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*van de carga ligera</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Robo total + RC + Daños propios</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Cobertura de mercancía</li>
@@ -940,11 +867,6 @@
         <div class="plan-card">
           <div class="plan-name">Premium</div>
           <p class="plan-tagline">Cobertura total para carga de alto valor.</p>
-          <div class="plan-price">
-            <div class="plan-price-label">Desde</div>
-            <div class="plan-price-amount"><em>$</em>24,800<em style="font-size:14px;">/año</em></div>
-            <div class="plan-price-note">*van de carga ligera</div>
-          </div>
           <ul class="plan-features">
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Todo lo del plan Comercial</li>
             <li class="included"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> RC ampliada por carga</li>
@@ -953,7 +875,7 @@
           <a href="#cotizar" class="plan-cta">Cotizar Premium</a>
         </div>
       </div>
-      <p class="compare-note">*Precios referenciales para van de carga ligera. Cotización personalizada según peso, ruta y carga.</p>
+      <p class="compare-note">*Cotización personalizada según peso, ruta y carga.</p>
     </div>
 
     <!-- Panel Flotillas -->
@@ -965,7 +887,7 @@
           <div style="flex:1;min-width:220px;">
             <div style="font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Atención Personalizada</div>
             <h3 style="font-family:var(--font-display);font-size:22px;font-weight:800;margin-bottom:8px;">Seguros para flotillas y empresas</h3>
-            <p style="font-size:15px;color:rgba(255,255,255,0.82);line-height:1.5;">Cada empresa es diferente. Tu asesor José Luis revisa tu caso directamente para ofrecerte la propuesta más competitiva.</p>
+            <p style="font-size:15px;color:rgba(255,255,255,0.82);line-height:1.5;">Cada empresa es diferente. Tu asesor revisa tu caso directamente para ofrecerte la propuesta más competitiva.</p>
           </div>
           <div style="display:flex;flex-direction:column;gap:10px;">
             <a href="tel:+525541232311" class="btn btn-primary" style="background:var(--accent);color:var(--primary);display:inline-flex;align-items:center;gap:8px;">
@@ -989,7 +911,7 @@
           <div style="margin-bottom:22px;">
             <div style="font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent-dark);margin-bottom:8px;">Datos de la empresa</div>
             <h3 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--primary);">Cuéntanos sobre tu flotilla</h3>
-            <p style="font-size:14px;color:var(--gray-600);">José Luis revisará tu solicitud personalmente y te contactará con la mejor propuesta.</p>
+            <p style="font-size:14px;color:var(--gray-600);">Un asesor revisará tu solicitud personalmente y te contactará con la mejor propuesta.</p>
           </div>
           <form id="formCotizadorFlotilla">
             <input type="hidden" name="tipo_vehiculo" value="flotilla">
@@ -1046,12 +968,12 @@
               Enviar solicitud de flotilla
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
             </button>
-            <p style="text-align:center;font-size:12px;color:var(--gray-400);margin-top:12px;">Tu solicitud va directo a José Luis para seguimiento personalizado.</p>
+            <p style="text-align:center;font-size:12px;color:var(--gray-400);margin-top:12px;">Tu solicitud va directo a un asesor para seguimiento personalizado.</p>
           </form>
         </div>
 
       </div>
-      <p class="compare-note" style="margin-top:24px;">*Descuentos sobre tarifa individual. Aplican condiciones según composición y antigüedad de flotilla. Mínimo 3 vehículos.</p>
+      <p class="compare-note" style="margin-top:24px;">*Aplican condiciones según composición y antigüedad de flotilla. Mínimo 3 vehículos.</p>
     </div>
   </div>
 </section>
@@ -1236,6 +1158,7 @@
     </div>
     <div class="footer-bottom">
       <div>©Seguros Lux. Todos los derechos reservados.</div>
+      <div>Secure Sockets Layer (SSL)</div>
       <div>Powered by <strong style="color: #fff">GrupoIdeas</strong></div>
     </div>
   </div>

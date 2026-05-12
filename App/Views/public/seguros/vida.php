@@ -509,7 +509,7 @@
       </div>
     </div>
 
-    <p style="text-align:center;font-size:13px;color:var(--gray-400);max-width:680px;margin:0 auto;">La aseguradora determina el tipo de seguro y condiciones específicas según el perfil médico y financiero de cada solicitante. Aplican restricciones y condiciones según aseguradora. Tu asesor Lux te guiará en el proceso sin costo adicional.</p>
+    <p style="text-align:center;font-size:13px;color:var(--gray-600);font-weight: bold;max-width:680px;margin:0 auto;">La aseguradora determina el tipo de seguro y condiciones específicas según el perfil médico y financiero de cada solicitante. Aplican restricciones y condiciones según aseguradora. Tu asesor Lux te guiará en el proceso sin costo adicional.</p>
   </div>
 </section>
 
@@ -660,6 +660,7 @@
     </div>
     <div class="footer-bottom">
       <div>©Seguros Lux. Todos los derechos reservados.</div>
+      <div>Secure Sockets Layer (SSL)</div>
       <div>Powered by <strong style="color: #fff">GrupoIdeas</strong></div>
     </div>
   </div>

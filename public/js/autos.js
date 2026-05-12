@@ -18,29 +18,29 @@ const SVG_X = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"
 // ── Datos de planes por tipo de vehículo ──────────────────────────────────────
 const PLANES = {
     autos: {
-        nota: '*precio referencial sedán 2020',
+        nota: '',
         plans: [
             {
                 nombre: 'Básico', tagline: 'Lo esencial por la ley.',
-                precio: '3,200', popular: false, popularTag: '',
+                precio: '', popular: false, popularTag: '',
                 incluidas: ['Daños a terceros', 'Asistencia vial 24/7'],
                 excluidas: ['Robo total', 'Daños materiales', 'Auto sustituto'],
             },
             {
                 nombre: 'Amplio', tagline: 'Equilibrio ideal entre cobertura y precio.',
-                precio: '6,800', popular: false, popularTag: '',
+                precio: '', popular: false, popularTag: '',
                 incluidas: ['Robo total', 'Daños a terceros y materiales', 'Asistencia vial 24/7', 'Gastos médicos ocupantes'],
                 excluidas: ['Auto sustituto y cero deducible'],
             },
             {
                 nombre: 'Amplio Total', tagline: 'Todo lo esencial más protección real ante imprevistos.',
-                precio: '8,900', popular: true, popularTag: '⭐ Mejor relación',
+                precio: '', popular: true, popularTag: '⭐ Mejor relación',
                 incluidas: ['Todo lo del plan Amplio', 'Auto sustituto (hasta 10 días)', 'Cero deducible en cristales', 'RC ampliada (mayor suma)'],
                 excluidas: ['Cobertura en EUA y Canadá'],
             },
             {
                 nombre: 'Premium', tagline: 'Tranquilidad total, sin sorpresas.',
-                precio: '11,500', popular: false, popularTag: '',
+                precio: '', popular: false, popularTag: '',
                 incluidas: ['Todo lo del plan Amplio', 'Auto sustituto durante reparación', 'Cero deducible en cristales', 'Cobertura en EUA y Canadá'],
                 excluidas: [],
             },
@@ -124,7 +124,7 @@ function renderPlanes(tipo) {
     if (!container) return;
     const data = PLANES[tipo];
     if (!data) return;
-    if (notaEl) notaEl.textContent = `${data.nota}. Los precios son referenciales y dependen de marca, modelo, año, uso y código postal.`;
+    if (notaEl) notaEl.textContent = `${data.nota}Los precios son referenciales y dependen de marca, modelo, año, uso y código postal.`;
     container.innerHTML = data.plans.map(plan => {
         const tag = plan.popularTag || (plan.popular ? '★ Lo más elegido' : '');
         return `
@@ -133,8 +133,8 @@ function renderPlanes(tipo) {
             <div class="plan-name">${plan.nombre}</div>
             <p class="plan-tagline">${plan.tagline}</p>
             <div class="plan-price">
-                <div class="plan-price-label">Desde</div>
-                <div class="plan-price-amount"><em>$</em>${plan.precio}<em style="font-size:14px;">/año</em></div>
+                <div class="plan-price-label"></div>
+                <div class="plan-price-amount"><em></em>${plan.precio}<em style="font-size:14px;"></em></div>
                 <div class="plan-price-note">${data.nota}</div>
             </div>
             <ul class="plan-features">

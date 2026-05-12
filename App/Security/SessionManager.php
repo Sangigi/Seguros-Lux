@@ -90,24 +90,21 @@ class SessionManager
         header('Permissions-Policy: geolocation=(), camera=(), microphone=()');
 
         header(
-            "Content-Security-Policy: " .
-            "default-src 'self'; " .
+          "Content-Security-Policy: " .
+          "default-src 'self' https://blog.seguroslux.mx; " .
 
-            // 'unsafe-hashes' permite onclick="" y otros event handlers inline.
-            // El nonce cubre el <script> largo de formulario_cliente.php.
-            // El hash cubre el inline de autos.php.
-            "script-src 'self' 'unsafe-hashes' 'nonce-{$nonce}' '{$autosInlineHash}' cdn.jsdelivr.net; " .
+          "script-src 'self' 'unsafe-hashes' 'nonce-{$nonce}' '{$autosInlineHash}' https://cdn.jsdelivr.net https://blog.seguroslux.mx; " .
 
-            "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com; " .
-            "font-src 'self' fonts.gstatic.com cdn.jsdelivr.net; " .
+          "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; " .
+          "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; " .
 
-            // FIX: imágenes del blog WordPress
-            "img-src 'self' data: blob: https://blog.seguroslux.mx; " .
+          "img-src 'self' data: blob: https://blog.seguroslux.mx; " .
 
-            // FIX: fetch() al REST API del blog + sourcemap de Bootstrap CDN
-            "connect-src 'self' https://blog.seguroslux.mx https://cdn.jsdelivr.net; " .
+          "connect-src 'self' https://blog.seguroslux.mx https://cdn.jsdelivr.net; " .
+          "media-src 'self' https://blog.seguroslux.mx; " .
+          "frame-src 'self' https://blog.seguroslux.mx; " .
 
-            "frame-ancestors 'none';"
+          "frame-ancestors 'self';"
         );
     }
 

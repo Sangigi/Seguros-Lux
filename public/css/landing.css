@@ -15,9 +15,9 @@
   --accent-dark: #a68620;
 
   /* Vida Colors */
-  --vida-primary: #e11d48;
-  --vida-light: #fb7185;
-  --vida-dark: #be123c;
+  --vida-primary: #02ae03;
+  --vida-light: #2ef328;
+  --vida-dark: #0c680f;
 
   /* GMM Colors */
   --gmm-primary: #0284c7;
@@ -75,7 +75,7 @@
   /* Gradients */
   --primary-gradient: linear-gradient(135deg, #0f4c75 0%, #3282b8 100%);
   --accent-gradient: linear-gradient(90deg, #c9a227 0%, #c9a227 100%);
-  --vida-gradient: linear-gradient(135deg, #e11d48 0%, #fb7185 100%);
+  --vida-gradient: linear-gradient(135deg, #2ef328 0%, #0c680f 100%);
   --gmm-gradient: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
 }
 
