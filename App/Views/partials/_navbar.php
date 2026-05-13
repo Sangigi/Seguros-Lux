@@ -16,25 +16,51 @@ $_iniciales   = strtoupper(
 );
 
 $_uri = strtok($_SERVER['REQUEST_URI'] ?? '/', '?');
+$_queryString = $_SERVER['QUERY_STRING'] ?? '';
+parse_str($_queryString, $_queryParams);
+$_currentTab = $_queryParams['tab'] ?? '';
 
 function _navActive(string $path, string $uri): string {
     return $uri === $path ? 'active' : '';
 }
+function _navTabActive(string $tab, string $currentTab): string {
+    return $currentTab === $tab ? 'active' : '';
+}
 
 $_sidebarNotifCount = 0;
-if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'], true)) {
+// Notificaciones solo para asesores (y superadmin en modo asesor)
+if ($_agenteRol === 'asesor' || $_agenteRol === 'superadmin') {
     try {
         $_sidebarNotifCount = (new NotificacionModel())->contarNoLeidas((int) SessionManager::getAgentId());
     } catch (\Throwable $e) {
         $_sidebarNotifCount = 0;
     }
 }
+
+$_isCoord     = in_array($_agenteRol, ['coordinador', 'administrador'], true);
+$_isSuperadmin= $_agenteRol === 'superadmin';
+$_isAsesor    = $_agenteRol === 'asesor';
+
+// Tabs de admin disponibles por rol
+$_adminTabs = [
+    'resumen'       => ['bi-grid-1x2-fill',  'Resumen'],
+    'rendimiento'   => ['bi-bar-chart-fill',  'Rendimiento'],
+    'pipeline'      => ['bi-arrow-repeat',    'Pipeline'],
+    'actividad'     => ['bi-lightning-fill',  'Actividad'],
+    'asesores'      => ['bi-people-fill',     'Asesores'],
+    'emision'       => ['bi-file-earmark-check-fill', 'Emisión'],
+    'renovaciones'  => ['bi-arrow-clockwise', 'Renovaciones'],
+];
+$_adminTabsSA = array_merge($_adminTabs, [
+    'cotizaciones'  => ['bi-file-earmark-text-fill', 'Cotizaciones'],
+    'configuracion' => ['bi-gear-fill',              'Configuración'],
+]);
 ?>
 <style nonce="<?= $cspNonce ?? '' ?>">
 /* ── Sidebar CRM ─────────────────────────────────────────────────────────── */
 .crm-sidebar {
     width: 240px;
-    height: 100vh;           /* ← fijo en 100vh, no min-height */
+    height: 100vh;
     background: #0f172a;
     display: flex;
     flex-direction: column;
@@ -43,7 +69,7 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
     left: 0;
     z-index: 100;
     transition: transform .25s ease;
-    overflow: hidden;        /* ← el sidebar en sí no scrollea */
+    overflow: hidden;
 }
 .crm-sidebar + .main-content,
 .crm-sidebar ~ .main-content {
@@ -56,7 +82,7 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
     align-items: center;
     gap: 10px;
     text-decoration: none;
-    flex-shrink: 0;          /* ← nunca se comprime */
+    flex-shrink: 0;
 }
 .sidebar-logo-icon {
     width: 36px;
@@ -85,10 +111,10 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
 
 /* Nav links */
 .sidebar-nav {
-    flex: 1;                 /* ocupa todo el espacio restante */
-    min-height: 0;           /* ← CLAVE: permite que flex shrink funcione */
+    flex: 1;
+    min-height: 0;
     padding: 14px 10px;
-    overflow-y: auto;        /* scroll propio cuando el contenido excede */
+    overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,.15) transparent;
 }
@@ -160,7 +186,7 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
 .sidebar-footer {
     padding: 14px 10px;
     border-top: 1px solid rgba(255,255,255,.08);
-    flex-shrink: 0;          /* ← nunca se comprime ni desaparece */
+    flex-shrink: 0;
 }
 .sidebar-user {
     display: flex;
@@ -242,7 +268,6 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
     z-index: 99;
 }
 
-/* Ajuste del main-content para el sidebar */
 .crm-wrapper {
     display: flex;
     min-height: 100vh;
@@ -264,63 +289,8 @@ button.sidebar-link {
     cursor: pointer;
     text-align: left;
 }
-.crm-notif-panel {
-    margin: 0 10px 10px;
-    padding: 10px;
-    border-radius: 8px;
-    background: rgba(15, 23, 42, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    max-height: 280px;
-    overflow-y: auto;
-}
-.crm-notif-panel .notif-item {
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.88);
-    padding: 8px 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    cursor: pointer;
-    text-align: left;
-    width: 100%;
-    background: none;
-    border-left: none;
-    border-right: none;
-    border-top: none;
-}
-.crm-notif-panel .notif-item:last-child { border-bottom: none; }
-.crm-notif-panel .notif-item.unread { font-weight: 600; }
-.crm-notif-panel .notif-meta { font-size: 10px; color: rgba(255, 255, 255, 0.45); margin-top: 4px; }
-.crm-notif-actions { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-.crm-notif-actions button {
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-    cursor: pointer;
-}
 
-@media (max-width: 1024px) {
-    .crm-sidebar {
-        transform: translateX(-100%);
-    }
-    .crm-sidebar.open {
-        transform: translateX(0);
-    }
-    .sidebar-toggle {
-        display: flex;
-    }
-    .sidebar-overlay.open {
-        display: block;
-    }
-    .crm-wrapper .main-content {
-        margin-left: 0;
-        padding: 60px 16px 20px;
-    }
-}
-</style>
-<style nonce="<?= $cspNonce ?? '' ?>">
-/* ── Notif panel ──────────────────────────────────────────────── */
+/* Notif panel */
 .crm-notif-panel {
     margin: 0 10px 10px;
     border-radius: 10px;
@@ -333,34 +303,40 @@ button.sidebar-link {
 }
 .crm-notif-panel::-webkit-scrollbar { width: 4px; }
 .crm-notif-panel::-webkit-scrollbar-thumb { background: rgba(243,195,50,.25); border-radius: 4px; }
- 
+.crm-notif-panel .notif-item { font-size: 12px; color: rgba(255,255,255,.88); padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,.06); cursor: pointer; text-align: left; width: 100%; background: none; border-left: none; border-right: none; border-top: none; }
 .crm-notif-panel .notif-item:last-child { border-bottom: none !important; }
 .crm-notif-panel .notif-item:hover { background: rgba(255,255,255,.05) !important; }
+.crm-notif-panel .notif-item.is-unread { font-weight: 600; }
 .crm-notif-panel .notif-item.is-unread:hover { background: rgba(243,195,50,.09) !important; }
- 
-.crm-notif-actions {
-    display: flex;
-    gap: 6px;
-    padding: 10px 10px 6px;
-    flex-wrap: wrap;
-    border-bottom: 1px solid rgba(255,255,255,.06);
+.crm-notif-panel .notif-meta { font-size: 10px; color: rgba(255, 255, 255, 0.45); margin-top: 4px; }
+.crm-notif-actions { display: flex; gap: 6px; padding: 10px 10px 6px; flex-wrap: wrap; border-bottom: 1px solid rgba(255,255,255,.06); }
+.crm-notif-actions button { font-size: 10px; padding: 4px 9px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: rgba(255,255,255,.75); cursor: pointer; font-weight: 600; transition: background .15s, color .15s; }
+.crm-notif-actions button:hover { background: rgba(255,255,255,.13); color: #fff; }
+
+/* Rol badge en sidebar */
+.sidebar-rol-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    padding: 2px 7px;
+    border-radius: 99px;
+    margin-left: 6px;
+    vertical-align: middle;
 }
-.crm-notif-actions button {
-    font-size: 10px;
-    padding: 4px 9px;
-    border-radius: 6px;
-    border: 1px solid rgba(255,255,255,.15);
-    background: rgba(255,255,255,.07);
-    color: rgba(255,255,255,.75);
-    cursor: pointer;
-    font-weight: 600;
-    transition: background .15s, color .15s;
-}
-.crm-notif-actions button:hover {
-    background: rgba(255,255,255,.13);
-    color: #fff;
+.sidebar-rol-badge.coordinador { background: rgba(59,130,246,.25); color: #93c5fd; }
+.sidebar-rol-badge.superadmin  { background: rgba(243,195,50,.2);  color: #fbbf24; }
+
+@media (max-width: 1024px) {
+    .crm-sidebar { transform: translateX(-100%); }
+    .crm-sidebar.open { transform: translateX(0); }
+    .sidebar-toggle { display: flex; }
+    .sidebar-overlay.open { display: block; }
+    .crm-wrapper .main-content { margin-left: 0; padding: 60px 16px 20px; }
 }
 </style>
+
 <!-- Overlay mobile -->
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
@@ -372,7 +348,7 @@ button.sidebar-link {
 <aside class="crm-sidebar" id="crmSidebar" role="navigation" aria-label="Menú del CRM">
 
     <!-- Logo -->
-    <a href="/dashboard" class="sidebar-logo-wrap">
+    <a href="<?= ($_isCoord || $_isSuperadmin) ? '/admin?tab=resumen' : '/dashboard' ?>" class="sidebar-logo-wrap">
         <div class="sidebar-logo-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -384,36 +360,36 @@ button.sidebar-link {
         </div>
     </a>
 
-    <!-- Navegación principal -->
     <nav class="sidebar-nav">
+
+        <?php if ($_isAsesor): ?>
+        <!-- ══════════════════════════════════════════════
+             MENÚ ASESOR
+        ══════════════════════════════════════════════ -->
         <div class="sidebar-section-label">Principal</div>
 
         <a href="/dashboard" class="sidebar-link <?php echo _navActive('/dashboard', $_uri); ?>">
             <i class="bi bi-grid-1x2-fill"></i>
             Dashboard
         </a>
-
         <a href="/clientes" class="sidebar-link <?php echo _navActive('/clientes', $_uri); ?>">
             <i class="bi bi-people-fill"></i>
             Clientes
         </a>
-
         <a href="/cotizaciones" class="sidebar-link <?php echo _navActive('/cotizaciones', $_uri); ?>">
             <i class="bi bi-file-earmark-text-fill"></i>
             Cotizaciones
         </a>
-
         <a href="/citas" class="sidebar-link <?php echo _navActive('/citas', $_uri); ?>">
             <i class="bi bi-calendar2-check-fill"></i>
             Citas
         </a>
-
         <a href="/reportes" class="sidebar-link <?php echo _navActive('/reportes', $_uri); ?>">
             <i class="bi bi-bar-chart-fill"></i>
             Reportes
         </a>
 
-        <?php if (!in_array($_agenteRol, ['coordinador', 'administrador', 'superadmin'], true)): ?>
+        <!-- Notificaciones (solo asesores) -->
         <button type="button"
                 class="sidebar-link <?php echo $_sidebarNotifCount > 0 ? 'has-alert' : ''; ?>"
                 id="sidebarNotifToggle"
@@ -433,21 +409,102 @@ button.sidebar-link {
             </div>
             <div id="sidebarNotifList" style="font-size:12px;color:rgba(255,255,255,.5);padding:10px;text-align:center;">Cargando…</div>
         </div>
-        <?php endif; ?>
-
-        <?php if (in_array($_agenteRol, ['coordinador', 'superadmin'], true)): ?>
-        <div class="sidebar-section-label" style="margin-top:8px;">Administración</div>
-        <a href="/admin" class="sidebar-link <?php echo str_starts_with($_uri, '/admin') ? 'active' : ''; ?>">
-            <i class="bi bi-shield-lock-fill"></i>
-            Panel Admin
-        </a>
-        <?php endif; ?>
 
         <div class="sidebar-section-label" style="margin-top:8px;">Acciones</div>
         <a href="/crear-cotizacion" class="sidebar-link <?php echo _navActive('/crear-cotizacion', $_uri); ?>">
             <i class="bi bi-plus-circle-fill"></i>
             Nueva Cotización
         </a>
+
+        <?php elseif ($_isCoord): ?>
+        <!-- ══════════════════════════════════════════════
+             MENÚ COORDINADOR
+        ══════════════════════════════════════════════ -->
+        <div class="sidebar-section-label">Panel de Coordinación</div>
+
+        <?php foreach ($_adminTabs as $tabKey => [$icon, $label]): ?>
+        <a href="/admin?tab=<?= $tabKey ?>"
+           class="sidebar-link <?= ($_uri === '/admin' && $_currentTab === $tabKey) ? 'active' : '' ?>">
+            <i class="bi <?= $icon ?>"></i>
+            <?= $label ?>
+        </a>
+        <?php endforeach; ?>
+
+        <div class="sidebar-section-label" style="margin-top:8px;">Acciones rápidas</div>
+        <a href="/admin?tab=emision" class="sidebar-link">
+            <i class="bi bi-upload"></i>
+            Subir comprobante
+        </a>
+        <a href="/admin?tab=renovaciones" class="sidebar-link">
+            <i class="bi bi-arrow-clockwise"></i>
+            Gestionar renovaciones
+        </a>
+
+        <?php elseif ($_isSuperadmin): ?>
+        <!-- ══════════════════════════════════════════════
+             MENÚ SUPERADMIN
+             (Panel admin completo + flujo de asesor)
+        ══════════════════════════════════════════════ -->
+        <div class="sidebar-section-label">
+            Panel Admin
+            <span class="sidebar-rol-badge superadmin">SA</span>
+        </div>
+
+        <?php foreach ($_adminTabsSA as $tabKey => [$icon, $label]): ?>
+        <a href="/admin?tab=<?= $tabKey ?>"
+           class="sidebar-link <?= ($_uri === '/admin' && $_currentTab === $tabKey) ? 'active' : '' ?>">
+            <i class="bi <?= $icon ?>"></i>
+            <?= $label ?>
+        </a>
+        <?php endforeach; ?>
+
+        <div class="sidebar-section-label" style="margin-top:8px;">Mi trabajo (Asesor)</div>
+        <a href="/dashboard" class="sidebar-link <?php echo _navActive('/dashboard', $_uri); ?>">
+            <i class="bi bi-grid-1x2-fill"></i>
+            Dashboard
+        </a>
+        <a href="/clientes" class="sidebar-link <?php echo _navActive('/clientes', $_uri); ?>">
+            <i class="bi bi-people-fill"></i>
+            Clientes
+        </a>
+        <a href="/cotizaciones" class="sidebar-link <?php echo _navActive('/cotizaciones', $_uri); ?>">
+            <i class="bi bi-file-earmark-text-fill"></i>
+            Cotizaciones
+        </a>
+        <a href="/citas" class="sidebar-link <?php echo _navActive('/citas', $_uri); ?>">
+            <i class="bi bi-calendar2-check-fill"></i>
+            Citas
+        </a>
+
+        <!-- Notificaciones para superadmin también -->
+        <button type="button"
+                class="sidebar-link <?php echo $_sidebarNotifCount > 0 ? 'has-alert' : ''; ?>"
+                id="sidebarNotifToggle"
+                aria-expanded="false"
+                aria-controls="sidebarNotifPanel">
+            <i class="bi bi-bell-fill"></i>
+            Avisos
+            <?php if ($_sidebarNotifCount > 0): ?>
+                <span class="nav-badge" id="sidebarNotifBadge"><?php echo $_sidebarNotifCount > 99 ? '99+' : $_sidebarNotifCount; ?></span>
+            <?php endif; ?>
+        </button>
+        <div id="sidebarNotifPanel" class="crm-notif-panel" hidden data-initial-count="<?php echo (int) $_sidebarNotifCount; ?>">
+            <div class="crm-notif-actions">
+                <button type="button" id="sidebarNotifMarkAll">✓ Marcar leídas</button>
+                <button type="button" id="sidebarNotifReload">↺ Actualizar</button>
+                <button type="button" id="sidebarNotifClearAll" style="color:#fca5a5;border-color:rgba(239,68,68,.3);">🗑 Limpiar todo</button>
+            </div>
+            <div id="sidebarNotifList" style="font-size:12px;color:rgba(255,255,255,.5);padding:10px;text-align:center;">Cargando…</div>
+        </div>
+
+        <div class="sidebar-section-label" style="margin-top:8px;">Acciones</div>
+        <a href="/crear-cotizacion" class="sidebar-link <?php echo _navActive('/crear-cotizacion', $_uri); ?>">
+            <i class="bi bi-plus-circle-fill"></i>
+            Nueva Cotización
+        </a>
+
+        <?php endif; ?>
+
     </nav>
 
     <!-- Usuario y cierre de sesión -->
@@ -470,6 +527,6 @@ button.sidebar-link {
 </aside>
 
 <script src="<?= asset_url('js/navbar.js') ?>" nonce="<?= $cspNonce ?? '' ?>"></script>
-<?php if (!in_array($_agenteRol, ['coordinador', 'administrador', 'superadmin'], true)): ?>
+<?php if ($_isAsesor || $_isSuperadmin): ?>
 <script src="<?= asset_url('js/notificaciones-navbar.js') ?>" nonce="<?= $cspNonce ?? '' ?>"></script>
 <?php endif; ?>

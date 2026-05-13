@@ -2,370 +2,231 @@
 /**
  * _ajax_emision.php
  * ─────────────────────────────────────────────────────────────────────────────
- * Bloque de acciones AJAX para el módulo de emisión.
- * Se incluye desde admin/index.php dentro del bloque POST:
- *
- *   if (str_starts_with($a, 'emi_')) {
- *       $db = Connection::getConnection();
- *       require __DIR__ . '/_ajax_emision.php';
- *       echo json_encode(['ok'=>false,'msg'=>'Acción no reconocida']); exit;
- *   }
- *
- * Variables disponibles del scope padre:
- *   $a         (string) — acción recibida en $_POST['accion']
- *   $agenteId  (int)    — coordinador autenticado
- *   $db        (PDO)    — conexión de base de datos
- *
- * FIXES vs versión original:
- *  - emi_subir_poliza: INSERT en polizas usa frecuencia_renovacion
- *    (nombre real de la columna) en lugar de periodicidad que no existe.
- *  - emi_subir_poliza: no pasa columna 'periodicidad' a polizas, pero sí
- *    la guarda en cotizaciones (que sí la tiene).
- *  - emi_tomar: el WHERE acepta también emision_estado IS NULL o 'pendiente'
- *    además de la lógica original (que solo verificaba estado='pagado').
- *  - emi_get_checklist: protege fecha_fin_vigencia '0000-00-00'.
+ * Manejador AJAX para el módulo de Emisión.
+ * Es requerido (require) desde admin/index.php cuando la acción empieza con "emi_".
+ * Variables disponibles del contexto padre: $db, $agenteId, $isSuperadmin
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-switch ($a) {
+use App\Models\NotificacionModel;
 
-    // ── emi_get_checklist ─────────────────────────────────────────────────────
-    case 'emi_get_checklist': {
+$accion = $_POST['accion'] ?? '';
+
+switch ($accion) {
+
+    // ── Ver documentos de una cotización (solo lectura) ───────────────────────
+    case 'emi_get_docs': {
         $cotId = (int)($_POST['cotizacion_id'] ?? 0);
-        $ramo  = trim($_POST['ramo'] ?? 'autos');
-        if (!$cotId) { echo json_encode(['ok' => false, 'msg' => 'ID inválido']); exit; }
+        if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+
+        $st = $db->prepare(
+            "SELECT c.ramo, c.compania, c.tipo_cobertura,
+                    CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre,
+                    CONCAT(a.nombre,' ',a.apellido)           AS asesor_nombre
+             FROM cotizaciones c
+             JOIN clientes cl ON cl.id = c.cliente_id
+             JOIN agentes   a ON a.id  = c.agente_id
+             WHERE c.id = ?"
+        );
+        $st->execute([$cotId]);
+        $cot = $st->fetch(\PDO::FETCH_ASSOC);
+        if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
 
         $stDocs = $db->prepare(
-            "SELECT id, cotizacion_id, tipo_documento,
-                    nombre_original, nombre_archivo,
-                    ruta AS archivo_relative,
-                    subido_en,
-                    idrive_subido, idrive_borrado
+            "SELECT tipo_documento, nombre_original, nombre_archivo, subido_en, idrive_subido, idrive_borrado
              FROM cotizacion_archivos
              WHERE cotizacion_id = ? AND eliminado_en IS NULL
              ORDER BY subido_en ASC"
         );
         $stDocs->execute([$cotId]);
-        $docs = $stDocs->fetchAll(\PDO::FETCH_ASSOC);
+        $archivos = $stDocs->fetchAll(\PDO::FETCH_ASSOC);
 
-        if (!\App\Models\CotizacionModel::docsListaTieneComprobantePago($docs)) {
-            $syn = \App\Models\CotizacionModel::syntheticComprobantePagoDesdeTablaPagos($db, $cotId);
-            if ($syn) {
-                $docs[] = $syn;
-            }
-        }
+        $docs = array_map(function ($a) use ($cotId) {
+            $ext       = strtolower(pathinfo($a['nombre_archivo'], PATHINFO_EXTENSION));
+            $esImg     = in_array($ext, ['jpg','jpeg','png','webp'], true);
+            $rutaFis   = dirname(__DIR__, 3) . '/uploads/cotizaciones/' . $cotId . '/' . $a['nombre_archivo'];
+            $dispLocal = ($a['idrive_borrado'] === null) && file_exists($rutaFis);
+            return [
+                'tipo'        => $a['tipo_documento'],
+                'nombre_orig' => $a['nombre_original'],
+                'url_local'   => $dispLocal ? '/archivo?file=cotizaciones/'.$cotId.'/'.$a['nombre_archivo'] : null,
+                'en_idrive'   => !empty($a['idrive_subido']),
+                'es_imagen'   => $esImg,
+                'es_pdf'      => $ext === 'pdf',
+            ];
+        }, $archivos);
 
-        $stCk = $db->prepare(
-            "SELECT doc_tipo, estado, nota
-             FROM emision_checklist
-             WHERE cotizacion_id = ?"
-        );
-        $stCk->execute([$cotId]);
-        $checklist = $stCk->fetchAll(\PDO::FETCH_ASSOC);
-
-        echo json_encode([
-            'ok'        => true,
-            'docs'      => $docs,
-            'checklist' => $checklist,
-            'ramo'      => $ramo,
-        ]);
+        echo json_encode(array_merge(['ok'=>true, 'docs'=>$docs], $cot));
         exit;
     }
 
-    // ── emi_marcar_checklist ──────────────────────────────────────────────────
-    case 'emi_marcar_checklist': {
-        $cotId  = (int)($_POST['cotizacion_id'] ?? 0);
-        $tipo   = trim($_POST['doc_tipo'] ?? '');
-        $estado = trim($_POST['estado']   ?? 'pendiente');
-        $nota   = trim($_POST['nota']     ?? '');
+    // ── Registrar comprobante de pago (subido por el coordinador) ─────────────
+    case 'emi_registrar_comprobante': {
+        $cotId    = (int)($_POST['cotizacion_id'] ?? 0);
+        $asesorId = (int)($_POST['asesor_id']     ?? 0);
+        $metodo   = trim($_POST['metodo_pago']    ?? 'efectivo');
+        $banco    = trim($_POST['banco']          ?? '');
+        $monto    = trim($_POST['monto']          ?? '');
+        $ref      = trim($_POST['referencia']     ?? '');
+        $coments  = trim($_POST['comentarios']    ?? '');
 
-        if (!$cotId || !$tipo
-            || !in_array($estado, ['pendiente', 'ok', 'rechazado'], true)) {
-            echo json_encode(['ok' => false, 'msg' => 'Datos inválidos']); exit;
+        $metodosValidos = ['efectivo','tarjeta_credito','tarjeta_debito','transferencia',
+                           'msi_3','msi_6','msi_12','msi_18','deposito_banco'];
+        if (!$cotId || !in_array($metodo, $metodosValidos, true)) {
+            echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit;
         }
 
-        $db->prepare(
-            "INSERT INTO emision_checklist
-                 (cotizacion_id, coordinador_id, doc_tipo, estado, nota, revisado_en)
-             VALUES (?, ?, ?, ?, ?, NOW())
-             ON DUPLICATE KEY UPDATE
-                 estado         = VALUES(estado),
-                 nota           = VALUES(nota),
-                 coordinador_id = VALUES(coordinador_id),
-                 revisado_en    = NOW()"
-        )->execute([$cotId, $agenteId, $tipo, $estado, $nota]);
-
-        echo json_encode(['ok' => true]);
-        exit;
-    }
-
-    // ── emi_tomar ─────────────────────────────────────────────────────────────
-    // Acepta registros con emision_estado NULL o 'pendiente' (además del caso
-    // de 'rechazada_docs' por si el coordinador retoma un caso rechazado).
-    case 'emi_tomar': {
-        $cotId = (int)($_POST['cotizacion_id'] ?? 0);
-        if (!$cotId) { echo json_encode(['ok' => false, 'msg' => 'ID inválido']); exit; }
-
-        $affected = $db->prepare(
-            "UPDATE cotizaciones
-             SET emision_estado          = 'en_proceso',
-                 emision_coordinador_id  = ?
-             WHERE id = ?
-               AND (
-                    estado = 'pagado'
-                    OR EXISTS (
-                        SELECT 1 FROM cotizacion_archivos ca
-                        WHERE ca.cotizacion_id = cotizaciones.id
-                          AND ca.tipo_documento = 'comprobante_pago'
-                          AND ca.eliminado_en IS NULL
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM cotizacion_pagos cp
-                        WHERE cp.cotizacion_id = cotizaciones.id
-                          AND COALESCE(NULLIF(cp.ruta,''), NULLIF(cp.nombre_archivo,'')) IS NOT NULL
-                    )
-               )
-               AND (emision_estado IS NULL
-                    OR emision_estado IN ('pendiente','rechazada_docs'))"
-        );
-        $affected->execute([$agenteId, $cotId]);
-
-        if ($affected->rowCount() === 0) {
-            echo json_encode(['ok' => false, 'msg' => 'No se pudo tomar el caso. Recarga la página.']);
-            exit;
-        }
-        echo json_encode(['ok' => true]);
-        exit;
-    }
-
-    // ── emi_subir_poliza ──────────────────────────────────────────────────────
-    // FIX CRÍTICO: polizas.frecuencia_renovacion (no periodicidad) es la columna
-    // real. Se mapea el valor del formulario (periodicidad) a ese campo.
-    // La tabla cotizaciones sí tiene periodicidad, así que se actualiza allí también.
-    case 'emi_subir_poliza': {
-        $cotId        = (int)($_POST['cotizacion_id'] ?? 0);
-        $numeroPol    = trim($_POST['numero_poliza']  ?? '');
-        $fechaInicio  = trim($_POST['fecha_inicio']   ?? '');
-        $fechaFin     = trim($_POST['fecha_fin']      ?? '');
-        $periodicidad = trim($_POST['periodicidad']   ?? 'anual');
-        $notas        = trim($_POST['notas']          ?? '');
-
-        // Validaciones básicas
-        if (!$cotId || !$numeroPol || !$fechaInicio || !$fechaFin) {
-            echo json_encode(['ok' => false, 'msg' => 'Faltan campos requeridos']); exit;
-        }
-        if (!in_array($periodicidad, ['mensual','trimestral','semestral','anual'], true)) {
-            $periodicidad = 'anual';
-        }
-
-        // Recuperar datos de cotización para notificación y FK
-        $stCot = $db->prepare(
-            "SELECT c.agente_id, c.folio, c.cliente_id, c.compania,
-                    CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
-             FROM cotizaciones c
-             JOIN clientes cl ON cl.id = c.cliente_id
-             WHERE c.id = ?"
-        );
-        $stCot->execute([$cotId]);
-        $cot = $stCot->fetch(\PDO::FETCH_ASSOC);
-        if (!$cot) {
-            echo json_encode(['ok' => false, 'msg' => 'Cotización no encontrada']); exit;
-        }
-
-        // Procesar archivo PDF/imagen si se envió
-        $nombreArchivo  = null;
-        $nombreOriginal = null;
-        $rutaRelativa   = null;
-
-        if (!empty($_FILES['poliza_file']['name'])
-            && $_FILES['poliza_file']['error'] === UPLOAD_ERR_OK) {
-
-            $file = $_FILES['poliza_file'];
-            $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-
-            if (!in_array($ext, ['pdf','jpg','jpeg','png'], true)) {
-                echo json_encode(['ok' => false, 'msg' => 'Tipo de archivo no permitido']); exit;
+        // Manejar archivo adjunto
+        $nombreArch  = null;
+        $nombreOrig  = null;
+        if (!empty($_FILES['comprobante']['name'])) {
+            $file  = $_FILES['comprobante'];
+            $ext   = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $allow = ['pdf','jpg','jpeg','png','webp'];
+            if (!in_array($ext, $allow, true)) {
+                echo json_encode(['ok'=>false,'msg'=>'Tipo de archivo no permitido.']); exit;
             }
-            if ($file['size'] > 10 * 1024 * 1024) {
-                echo json_encode(['ok' => false, 'msg' => 'El archivo supera los 10 MB']); exit;
-            }
-
-            $dir = dirname(__DIR__, 3) . "/uploads/polizas/{$cot['cliente_id']}/";
+            $dir = dirname(__DIR__, 3) . '/uploads/comprobantes/' . $cotId . '/';
             if (!is_dir($dir)) mkdir($dir, 0755, true);
-
-            $nombreArchivo  = 'poliza_' . time() . '.' . $ext;
-            $nombreOriginal = $file['name'];
-            $rutaRelativa   = "uploads/polizas/{$cot['cliente_id']}/{$nombreArchivo}";
-
-            if (!move_uploaded_file($file['tmp_name'], $dir . $nombreArchivo)) {
-                echo json_encode(['ok' => false, 'msg' => 'Error al guardar el archivo']); exit;
+            $nombreArch = 'comprobante_' . $agenteId . '_' . time() . '.' . $ext;
+            $nombreOrig = basename($file['name']);
+            if (!move_uploaded_file($file['tmp_name'], $dir . $nombreArch)) {
+                echo json_encode(['ok'=>false,'msg'=>'Error al guardar el archivo.']); exit;
             }
         }
 
-        $db->beginTransaction();
-        try {
-            // 1. Insertar en tabla polizas
-            //    ⚠ columna es frecuencia_renovacion, NO periodicidad
-            $stPol = $db->prepare(
-                "INSERT INTO polizas
-                     (cliente_id, cotizacion_id, agente_id,
-                      nombre_archivo, nombre_original, ruta,
-                      compania, numero_poliza,
-                      fecha_inicio, fecha_fin,
-                      frecuencia_renovacion,
-                      notas, estado, subido_en)
-                 VALUES (?, ?, ?,
-                         ?, ?, ?,
-                         ?, ?,
-                         ?, ?,
-                         ?,
-                         ?, 'vigente', NOW())"
-            );
-            $stPol->execute([
-                $cot['cliente_id'],
-                $cotId,
-                $cot['agente_id'],
-                $nombreArchivo  ?? '',
-                $nombreOriginal ?? '',
-                $rutaRelativa   ?? '',
-                $cot['compania'],
-                $numeroPol,
-                $fechaInicio,
-                $fechaFin,
-                $periodicidad,   // → frecuencia_renovacion en polizas
-                $notas,
-            ]);
+        // Insertar comprobante
+        $ins = $db->prepare(
+            "INSERT INTO cotizacion_comprobantes_pago
+             (cotizacion_id, coordinador_id, metodo_pago, banco, referencia, monto, comentarios, nombre_archivo, nombre_original)
+             VALUES (?,?,?,?,?,?,?,?,?)"
+        );
+        $ins->execute([
+            $cotId, $agenteId, $metodo,
+            $banco ?: null,
+            $ref   ?: null,
+            $monto !== '' ? (float)$monto : null,
+            $coments ?: null,
+            $nombreArch,
+            $nombreOrig,
+        ]);
+        $comprobanteId = $db->lastInsertId();
 
-            // 2. Actualizar cotización
-            $db->prepare(
-                "UPDATE cotizaciones
-                 SET emision_estado         = 'emitida',
-                     emision_coordinador_id = ?,
-                     emision_fecha          = NOW(),
-                     fecha_inicio_vigencia  = ?,
-                     fecha_fin_vigencia     = ?,
-                     periodicidad           = ?
-                 WHERE id = ?"
-            )->execute([$agenteId, $fechaInicio, $fechaFin, $periodicidad, $cotId]);
+        // Actualizar estado de pago en cotizacion
+        $db->prepare(
+            "UPDATE cotizaciones SET estado_pago = 'confirmado', comprobante_pago_id = ? WHERE id = ?"
+        )->execute([$comprobanteId, $cotId]);
 
-            // 3. Notificar al asesor
-            $db->prepare(
-                "INSERT INTO notificaciones
-                     (agente_id, tipo, titulo, mensaje, referencia)
-                 VALUES (?, 'emision', ?, ?, ?)"
-            )->execute([
-                $cot['agente_id'],
-                "✅ Póliza emitida: {$cot['folio']}",
-                "La póliza de {$cot['cliente_nombre']} ha sido emitida correctamente. "
-                    . "N° {$numeroPol}. Vigencia: {$fechaInicio} al {$fechaFin}.",
-                "cotizacion:{$cotId}",
-            ]);
-
-            $db->commit();
-            echo json_encode(['ok' => true]);
-
-        } catch (\Throwable $e) {
-            $db->rollBack();
-            error_log('emi_subir_poliza error: ' . $e->getMessage());
-            echo json_encode(['ok' => false, 'msg' => 'Error interno al guardar']);
-        }
-        exit;
-    }
-
-    // ── emi_rechazar_docs ─────────────────────────────────────────────────────
-    case 'emi_rechazar_docs': {
-        $cotId = (int)($_POST['cotizacion_id'] ?? 0);
-        $nota  = trim($_POST['nota'] ?? '');
-        if (!$cotId || !$nota) {
-            echo json_encode(['ok' => false, 'msg' => 'Faltan datos']); exit;
-        }
-
+        // Obtener datos de cotización para la notificación
         $stCot = $db->prepare(
-            "SELECT c.agente_id, c.folio,
+            "SELECT c.folio, c.compania,
                     CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
              FROM cotizaciones c
              JOIN clientes cl ON cl.id = c.cliente_id
              WHERE c.id = ?"
         );
         $stCot->execute([$cotId]);
-        $cot = $stCot->fetch(\PDO::FETCH_ASSOC);
-        if (!$cot) {
-            echo json_encode(['ok' => false, 'msg' => 'Cotización no encontrada']); exit;
-        }
+        $datosCot = $stCot->fetch(\PDO::FETCH_ASSOC);
 
+        // Registrar en historial del coordinador
         $db->prepare(
-            "UPDATE cotizaciones
-             SET emision_estado = 'rechazada_docs',
-                 emision_nota   = ?
-             WHERE id = ?"
-        )->execute([$nota, $cotId]);
-
-        $db->prepare(
-            "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, referencia)
-             VALUES (?, 'doc_rechazado', ?, ?, ?)"
+            "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id)
+             VALUES (?,?,?,?,?)"
         )->execute([
-            $cot['agente_id'],
-            "⚠️ Documentación rechazada: {$cot['folio']}",
-            "El coordinador rechazó la documentación de {$cot['cliente_nombre']}. "
-                . "Motivo: {$nota}",
-            "cotizacion:{$cotId}",
+            $agenteId,
+            'cobro',
+            '💳 Comprobante de pago registrado',
+            "Folio: {$datosCot['folio']} — Cliente: {$datosCot['cliente_nombre']} — Método: {$metodo}",
+            $cotId,
         ]);
 
-        echo json_encode(['ok' => true]);
+        // Notificación importante (roja) al asesor
+        if ($asesorId) {
+            _emi_notificar(
+                db: $db,
+                asesorId: $asesorId,
+                titulo: '✅ Pago confirmado',
+                cuerpo: "El coordinador confirmó el pago de la cotización {$datosCot['folio']} "
+                       . "({$datosCot['cliente_nombre']} / {$datosCot['compania']}). "
+                       . "Método: " . _emi_metodoLabel($metodo) . ".",
+                urgente: true,
+                color: 'green',
+                url: "/cotizacion/{$cotId}",
+            );
+        }
+
+        echo json_encode(['ok'=>true,'comprobante_id'=>$comprobanteId]);
         exit;
     }
 
-    // ── emi_notificar_renovacion ──────────────────────────────────────────────
-    case 'emi_notificar_renovacion': {
-        $cotId   = (int)($_POST['cotizacion_id'] ?? 0);
-        $agenteD = (int)($_POST['agente_id']     ?? 0);
-        if (!$cotId || !$agenteD) {
-            echo json_encode(['ok' => false, 'msg' => 'Datos inválidos']); exit;
-        }
+    // ── Obtener datos de un comprobante ───────────────────────────────────────
+    case 'emi_get_comprobante': {
+        $compId = (int)($_POST['comprobante_id'] ?? 0);
+        if (!$compId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
 
-        $stCot = $db->prepare(
-            "SELECT c.folio,
-                    CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre,
-                    COALESCE(
-                        NULLIF(p.fecha_fin,'0000-00-00'),
-                        NULLIF(c.fecha_fin_vigencia,'0000-00-00')
-                    ) AS fecha_vence
-             FROM cotizaciones c
-             JOIN clientes cl ON cl.id = c.cliente_id
-             LEFT JOIN polizas p
-                   ON p.cotizacion_id = c.id AND p.eliminado_en IS NULL
-             WHERE c.id = ?"
+        $st = $db->prepare(
+            "SELECT cp.*, c.id AS cotizacion_id
+             FROM cotizacion_comprobantes_pago cp
+             JOIN cotizaciones c ON c.id = cp.cotizacion_id
+             WHERE cp.id = ? AND cp.eliminado_en IS NULL"
         );
-        $stCot->execute([$cotId]);
-        $cot = $stCot->fetch(\PDO::FETCH_ASSOC);
-        if (!$cot) {
-            echo json_encode(['ok' => false, 'msg' => 'Cotización no encontrada']); exit;
+        $st->execute([$compId]);
+        $comp = $st->fetch(\PDO::FETCH_ASSOC);
+        if (!$comp) { echo json_encode(['ok'=>false,'msg'=>'Comprobante no encontrado.']); exit; }
+
+        // URL archivo
+        if ($comp['nombre_archivo']) {
+            $rutaFis = dirname(__DIR__, 3) . '/uploads/comprobantes/' . $comp['cotizacion_id'] . '/' . $comp['nombre_archivo'];
+            $comp['url_local'] = file_exists($rutaFis)
+                ? '/archivo?file=comprobantes/' . $comp['cotizacion_id'] . '/' . $comp['nombre_archivo']
+                : null;
+        } else {
+            $comp['url_local'] = null;
         }
 
-        $vence = $cot['fecha_vence']
-            ? date('d/m/Y', strtotime($cot['fecha_vence']))
-            : 'próximamente';
-
-        $db->prepare(
-            "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, referencia)
-             VALUES (?, 'renovacion', ?, ?, ?)"
-        )->execute([
-            $agenteD,
-            "🔔 Renovación próxima: {$cot['folio']}",
-            "La póliza de {$cot['cliente_nombre']} vence el {$vence}. "
-                . "Contacta al cliente para iniciar la renovación.",
-            "cotizacion:{$cotId}",
-        ]);
-
-        $db->prepare(
-            "UPDATE cotizaciones SET renovacion_notificada = 1 WHERE id = ?"
-        )->execute([$cotId]);
-
-        echo json_encode(['ok' => true]);
+        $comp['creado_en'] = date('d/m/Y H:i', strtotime($comp['creado_en']));
+        echo json_encode(['ok'=>true,'comprobante'=>$comp]);
         exit;
     }
 
-    default:
-        // Caso no reconocido — el caller en index.php enviará la respuesta
-        break;
+    // ── PDF Checklist (ya existía, se mantiene igual) ─────────────────────────
+    // El GET accion=emi_pdf_checklist se procesa antes de llegar aquí (en admin/index.php)
+    // Por seguridad si alguien lo manda por POST:
+    case 'emi_pdf_checklist': {
+        echo json_encode(['ok'=>false,'msg'=>'Usa el método GET para el checklist PDF.']); exit;
+    }
+
+    default: {
+        echo json_encode(['ok'=>false,'msg'=>'Acción de emisión no reconocida: ' . htmlspecialchars($accion)]);
+        exit;
+    }
+}
+
+// ── Helpers internos ──────────────────────────────────────────────────────────
+
+function _emi_notificar(\PDO $db, int $asesorId, string $titulo, string $cuerpo,
+                         bool $urgente = false, string $color = 'blue', string $url = ''): void
+{
+    try {
+        $db->prepare(
+            "INSERT INTO notificaciones (agente_id, titulo, cuerpo, urgente, color, url_accion, leido, creado_en)
+             VALUES (?,?,?,?,?,?,0,NOW())"
+        )->execute([$asesorId, $titulo, $cuerpo, $urgente ? 1 : 0, $color ?: null, $url ?: null]);
+    } catch (\Throwable $e) {
+        // Silenciar errores de notificación para no interrumpir el flujo principal
+    }
+}
+
+function _emi_metodoLabel(string $metodo): string {
+    return [
+        'efectivo'        => 'Efectivo',
+        'tarjeta_credito' => 'Tarjeta de crédito',
+        'tarjeta_debito'  => 'Tarjeta de débito',
+        'transferencia'   => 'Transferencia bancaria',
+        'msi_3'           => '3 MSI',
+        'msi_6'           => '6 MSI',
+        'msi_12'          => '12 MSI',
+        'msi_18'          => '18 MSI',
+        'deposito_banco'  => 'Depósito en banco',
+    ][$metodo] ?? $metodo;
 }

@@ -10,12 +10,12 @@ SessionManager::requireRole('coordinador', '/login');
 $agenteId    = SessionManager::getAgentId();
 $agente      = SessionManager::getAgentData();
 $isSuperadmin= SessionManager::isSuperadmin();
+$_agenteRol  = $agente['rol'] ?? 'coordinador';
 
 $agentModel  = new AgentModel();
 $cotModel    = new CotizacionModel();
 
 // ── PASO 5 — PDF Checklist Emisión ────────────────────────────────────────────
-// Debe ir ANTES del bloque de tabs y ANTES del bloque AJAX
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf_checklist') {
     $cotId = (int)($_GET['cotizacion_id'] ?? 0);
     if (!$cotId) { header('Location: /admin?tab=emision'); exit; }
@@ -65,10 +65,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
     $ckMap = [];
     foreach ($ck as $c) $ckMap[$c['doc_tipo']] = $c;
 
-    // Docs requeridos (misma lógica que el tab)
     $REQS = [
-        'autos' => ['ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2','comprobante_pago'],
-        'vida' => ['ine','comprobante_dom','comprobante_pago'],
+        'autos'          => ['ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2','comprobante_pago'],
+        'vida'           => ['ine','comprobante_dom','comprobante_pago'],
         'gastos_medicos' => ['ine','comprobante_dom','comprobante_pago'],
     ];
     $tipoLabel = [
@@ -91,273 +90,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
     <link rel="icon" type="image/png" sizes="32x32" href="/images/logo.png">
     <title>Checklist de Emisión — <?= htmlspecialchars($cot['folio'] ?? ('#'.$cotId)) ?></title>
     <style>
-        /* ── Reset & base ──────────────────────────────────────────────── */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 12px;
-            color: #1e293b;
-            background: #f8fafc;
-        }
- 
-        /* ── Toolbar (solo pantalla) ────────────────────────────────────── */
-        .toolbar-screen {
-            background: #0a0f1c;
-            padding: 10px 32px;
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            border-bottom: 3px solid #f3c332;
-        }
-        .toolbar-screen button {
-            padding: 8px 20px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            border: none;
-            transition: opacity .15s;
-        }
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1e293b; background: #f8fafc; }
+        .toolbar-screen { background: #0a0f1c; padding: 10px 32px; display: flex; gap: 12px; align-items: center; border-bottom: 3px solid #f3c332; }
+        .toolbar-screen button { padding: 8px 20px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; transition: opacity .15s; }
         .toolbar-screen button:hover { opacity: .85; }
-        .btn-print  { background: #f3c332; color: #0a0f1c; }
-        .btn-back   { background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.2) !important; }
+        .btn-print { background: #f3c332; color: #0a0f1c; }
+        .btn-back  { background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.2) !important; }
         .toolbar-screen span { font-size: 11px; color: rgba(255,255,255,.5); margin-left: 8px; }
- 
-        /* ── Header ─────────────────────────────────────────────────────── */
-        .doc-header {
-            background: linear-gradient(135deg, #0a0f1c 0%, #1a2744 100%);
-            padding: 28px 40px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 24px;
-            flex-wrap: wrap;
-        }
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-        .brand-logo {
-            width: 52px;
-            height: 52px;
-            background: linear-gradient(135deg, #f3c332, #e0a800);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(243,195,50,.35);
-        }
-        .brand-logo svg { width: 28px; height: 28px; }
-        .brand-text h1 {
-            font-size: 22px;
-            font-weight: 900;
-            color: #fff;
-            letter-spacing: -.5px;
-        }
-        .brand-text p {
-            font-size: 11px;
-            color: rgba(255,255,255,.45);
-            letter-spacing: .8px;
-            text-transform: uppercase;
-            margin-top: 2px;
-        }
-        .doc-meta {
-            text-align: right;
-        }
-        .doc-meta .folio-badge {
-            display: inline-block;
-            background: #f3c332;
-            color: #0a0f1c;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            font-weight: 900;
-            padding: 6px 16px;
-            border-radius: 6px;
-            letter-spacing: .5px;
-            margin-bottom: 6px;
-        }
-        .doc-meta p {
-            font-size: 11px;
-            color: rgba(255,255,255,.55);
-            line-height: 1.6;
-        }
- 
-        /* ── Info strip ─────────────────────────────────────────────────── */
-        .info-strip {
-            background: #fff;
-            border-bottom: 2px solid #f3c332;
-            padding: 16px 40px;
-            display: flex;
-            gap: 40px;
-            flex-wrap: wrap;
-        }
+        .doc-header { background: linear-gradient(135deg, #0a0f1c 0%, #1a2744 100%); padding: 28px 40px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+        .brand { display: flex; align-items: center; gap: 16px; }
+        .brand-text h1 { font-size: 22px; font-weight: 900; color: #fff; letter-spacing: -.5px; }
+        .brand-text p { font-size: 11px; color: rgba(255,255,255,.45); letter-spacing: .8px; text-transform: uppercase; margin-top: 2px; }
+        .doc-meta { text-align: right; }
+        .doc-meta .folio-badge { display: inline-block; background: #f3c332; color: #0a0f1c; font-family: 'Courier New', monospace; font-size: 14px; font-weight: 900; padding: 6px 16px; border-radius: 6px; letter-spacing: .5px; margin-bottom: 6px; }
+        .doc-meta p { font-size: 11px; color: rgba(255,255,255,.55); line-height: 1.6; }
+        .info-strip { background: #fff; border-bottom: 2px solid #f3c332; padding: 16px 40px; display: flex; gap: 40px; flex-wrap: wrap; }
         .info-strip .item { display: flex; flex-direction: column; gap: 2px; }
-        .info-strip .label {
-            font-size: 10px;
-            font-weight: 700;
-            color: #94a3b8;
-            text-transform: uppercase;
-            letter-spacing: .6px;
-        }
-        .info-strip .value {
-            font-size: 13px;
-            font-weight: 600;
-            color: #0f172a;
-        }
- 
-        /* ── Contenido ──────────────────────────────────────────────────── */
+        .info-strip .label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .6px; }
+        .info-strip .value { font-size: 13px; font-weight: 600; color: #0f172a; }
         .content { padding: 28px 40px; }
-        .section-title {
-            font-size: 11px;
-            font-weight: 800;
-            color: #f3c332;
-            text-transform: uppercase;
-            letter-spacing: .8px;
-            margin-bottom: 14px;
-            padding-bottom: 6px;
-            border-bottom: 2px solid #f3c332;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .section-title::before {
-            content: '';
-            width: 4px;
-            height: 16px;
-            background: #f3c332;
-            border-radius: 2px;
-            display: inline-block;
-        }
- 
-        /* ── Tabla ──────────────────────────────────────────────────────── */
+        .section-title { font-size: 11px; font-weight: 800; color: #f3c332; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #f3c332; display: flex; align-items: center; gap: 8px; }
         table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-        thead tr {
-            background: linear-gradient(90deg, #0a0f1c, #1a2744);
-        }
-        thead th {
-            padding: 11px 14px;
-            text-align: left;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: .6px;
-            color: rgba(255,255,255,.85);
-        }
-        thead th:first-child { border-radius: 0; }
-        /* Accent en primera columna */
-        thead tr::after {
-            content: '';
-            display: block;
-            height: 2px;
-            background: #f3c332;
-        }
+        thead tr { background: linear-gradient(90deg, #0a0f1c, #1a2744); }
+        thead th { padding: 11px 14px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: rgba(255,255,255,.85); }
         tbody tr:nth-child(even) { background: #f8fafc; }
         tbody tr:hover { background: #fef9e7; }
-        tbody td {
-            padding: 10px 14px;
-            border-bottom: 1px solid #e2e8f0;
-            font-size: 12px;
-            vertical-align: middle;
-        }
+        tbody td { padding: 10px 14px; border-bottom: 1px solid #e2e8f0; font-size: 12px; vertical-align: middle; }
         tbody tr:last-child td { border-bottom: none; }
- 
-        /* ── Badges / Pills ─────────────────────────────────────────────── */
-        .pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 10px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .4px;
-        }
-        .pill-ok      { background: #dcfce7; color: #166534; }
-        .pill-pend    { background: #f1f5f9; color: #334155; }
-        .pill-rej     { background: #fff7ed; color: #9a3412; }
-        .pill-miss    { background: #fee2e2; color: #991b1b; }
-        .req-star     { color: #dc2626; font-weight: 900; margin-left: 3px; }
- 
-        /* ── Footer ─────────────────────────────────────────────────────── */
-        .doc-footer {
-            margin: 0 40px 24px;
-            padding: 14px 0;
-            border-top: 2px solid #e2e8f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; }
+        .pill-ok   { background: #dcfce7; color: #166534; }
+        .pill-pend { background: #f1f5f9; color: #334155; }
+        .pill-rej  { background: #fff7ed; color: #9a3412; }
+        .pill-miss { background: #fee2e2; color: #991b1b; }
+        .req-star  { color: #dc2626; font-weight: 900; margin-left: 3px; }
+        .doc-footer { margin: 0 40px 24px; padding: 14px 0; border-top: 2px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
         .doc-footer span { font-size: 10px; color: #94a3b8; }
         .doc-footer .gold { color: #b8960a; font-weight: 700; }
- 
-        /* ── Resumen de progreso ────────────────────────────────────────── */
-        .progress-bar-wrap {
-            background: #f1f5f9;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
+        .progress-bar-wrap { background: #f1f5f9; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
         .progress-stat { display: flex; flex-direction: column; align-items: center; }
-        .progress-stat .num {
-            font-size: 22px;
-            font-weight: 900;
-            color: #0a0f1c;
-            line-height: 1;
-        }
-        .progress-stat .lbl {
-            font-size: 9px;
-            color: #94a3b8;
-            text-transform: uppercase;
-            letter-spacing: .5px;
-            margin-top: 2px;
-        }
-        .progress-bar-outer {
-            flex: 1;
-            min-width: 120px;
-            height: 8px;
-            background: #e2e8f0;
-            border-radius: 99px;
-            overflow: hidden;
-        }
-        .progress-bar-inner {
-            height: 100%;
-            background: linear-gradient(90deg, #f3c332, #e0a800);
-            border-radius: 99px;
-            transition: width .3s;
-        }
- 
-        /* ── Print ──────────────────────────────────────────────────────── */
-        @media print {
-            body { background: #fff; }
-            .toolbar-screen { display: none !important; }
-            .doc-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            thead tr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            @page { margin: 8mm; size: A4 portrait; }
-        }
+        .progress-stat .num { font-size: 22px; font-weight: 900; color: #0a0f1c; line-height: 1; }
+        .progress-stat .lbl { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+        .progress-bar-outer { flex: 1; min-width: 120px; height: 8px; background: #e2e8f0; border-radius: 99px; overflow: hidden; }
+        .progress-bar-inner { height: 100%; background: linear-gradient(90deg, #f3c332, #e0a800); border-radius: 99px; }
+        @media print { body { background: #fff; } .toolbar-screen { display: none !important; } .doc-header, thead tr, .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @page { margin: 8mm; size: A4 portrait; } }
     </style>
 </head>
 <body>
- 
-<!-- Toolbar (solo pantalla) -->
 <div class="toolbar-screen">
     <button class="btn-back"  id="emiCkBack">← Volver</button>
     <button class="btn-print" id="emiCkPrint">🖨️ Guardar como PDF</button>
     <span>Imprimir → Destino: «Guardar como PDF»</span>
 </div>
 <script src="/js/emi_checklist_pdf.js" defer></script>
- 
-<!-- Header -->
 <div class="doc-header">
     <div class="brand">
-        <div class="brand-logo" style="background:none;box-shadow:none;padding:0;width:auto;height:auto;">
+        <div style="background:none;box-shadow:none;padding:0;width:auto;height:auto;">
             <img src="/images/logo_blanco.png" alt="LuxSeguros" style="height:52px;width:auto;object-fit:contain;">
         </div>
         <div class="brand-text">
@@ -372,122 +160,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
         <p>Coordinador: <?= htmlspecialchars(($agente['nombre'] ?? '') . ' ' . ($agente['apellido'] ?? '')) ?></p>
     </div>
 </div>
- 
-<!-- Info strip -->
 <div class="info-strip">
-    <div class="item">
-        <span class="label">Cliente</span>
-        <span class="value"><?= htmlspecialchars($cot['cliente_nombre']) ?></span>
-    </div>
-    <div class="item">
-        <span class="label">Asesor</span>
-        <span class="value"><?= htmlspecialchars($cot['asesor_nombre']) ?></span>
-    </div>
-    <div class="item">
-        <span class="label">Ramo</span>
-        <span class="value"><?= ucfirst(str_replace('_',' ', htmlspecialchars($ramo))) ?></span>
-    </div>
-    <div class="item">
-        <span class="label">Compañía</span>
-        <span class="value"><?= htmlspecialchars($cot['compania'] ?? '—') ?></span>
-    </div>
-    <div class="item">
-        <span class="label">Tipo de cobertura</span>
-        <span class="value"><?= htmlspecialchars($cot['tipo_cobertura'] ?? '—') ?></span>
-    </div>
-    <div class="item">
-        <span class="label">Periodicidad</span>
-        <span class="value"><?= ucfirst(htmlspecialchars($cot['periodicidad'] ?? '—')) ?></span>
-    </div>
+    <div class="item"><span class="label">Cliente</span><span class="value"><?= htmlspecialchars($cot['cliente_nombre']) ?></span></div>
+    <div class="item"><span class="label">Asesor</span><span class="value"><?= htmlspecialchars($cot['asesor_nombre']) ?></span></div>
+    <div class="item"><span class="label">Ramo</span><span class="value"><?= ucfirst(str_replace('_',' ', htmlspecialchars($ramo))) ?></span></div>
+    <div class="item"><span class="label">Compañía</span><span class="value"><?= htmlspecialchars($cot['compania'] ?? '—') ?></span></div>
+    <div class="item"><span class="label">Tipo de cobertura</span><span class="value"><?= htmlspecialchars($cot['tipo_cobertura'] ?? '—') ?></span></div>
+    <div class="item"><span class="label">Periodicidad</span><span class="value"><?= ucfirst(htmlspecialchars($cot['periodicidad'] ?? '—')) ?></span></div>
 </div>
- 
-<!-- Contenido principal -->
 <div class="content">
- 
     <?php
-    // Calcular progreso
     $totalReq  = count($requeridos);
     $presentes = count(array_filter($requeridos, fn($t) => isset($docsMap[$t])));
     $okCount   = count(array_filter($all, fn($t) => ($ckMap[$t]['estado'] ?? '') === 'ok'));
     $pct = $totalReq > 0 ? round($presentes / $totalReq * 100) : 0;
     ?>
- 
-    <!-- Barra de progreso -->
     <div class="progress-bar-wrap">
-        <div class="progress-stat">
-            <span class="num"><?= $presentes ?>/<?= $totalReq ?></span>
-            <span class="lbl">Docs requeridos</span>
-        </div>
-        <div class="progress-bar-outer">
-            <div class="progress-bar-inner" style="width:<?= $pct ?>%;"></div>
-        </div>
-        <div class="progress-stat">
-            <span class="num" style="color:#16a34a;"><?= $okCount ?></span>
-            <span class="lbl">Marcados OK</span>
-        </div>
-        <div class="progress-stat">
-            <span class="num" style="color:#dc2626;"><?= count(array_filter($all, fn($t) => ($ckMap[$t]['estado'] ?? '') === 'rechazado')) ?></span>
-            <span class="lbl">Con observaciones</span>
-        </div>
+        <div class="progress-stat"><span class="num"><?= $presentes ?>/<?= $totalReq ?></span><span class="lbl">Docs requeridos</span></div>
+        <div class="progress-bar-outer"><div class="progress-bar-inner" style="width:<?= $pct ?>%;"></div></div>
+        <div class="progress-stat"><span class="num" style="color:#16a34a;"><?= $okCount ?></span><span class="lbl">Marcados OK</span></div>
+        <div class="progress-stat"><span class="num" style="color:#dc2626;"><?= count(array_filter($all, fn($t) => ($ckMap[$t]['estado'] ?? '') === 'rechazado')) ?></span><span class="lbl">Con observaciones</span></div>
     </div>
- 
     <div class="section-title">Documentos del Expediente</div>
- 
     <table>
-        <thead>
-            <tr>
-                <th>Documento</th>
-                <th>Req.</th>
-                <th>Archivo subido</th>
-                <th>Fecha subida</th>
-                <th>Estado revisión</th>
-                <th>Nota del coordinador</th>
-            </tr>
-        </thead>
+        <thead><tr><th>Documento</th><th>Req.</th><th>Archivo subido</th><th>Fecha subida</th><th>Estado revisión</th><th>Nota del coordinador</th></tr></thead>
         <tbody>
         <?php foreach ($all as $tipo):
-            $isReq = in_array($tipo, $requeridos, true);
-            $doc   = $docsMap[$tipo] ?? null;
-            $ckr   = $ckMap[$tipo] ?? null;
-            $estado = $ckr['estado'] ?? 'pendiente';
+            $isReq  = in_array($tipo, $requeridos, true);
+            $doc    = $docsMap[$tipo] ?? null;
+            $ckr    = $ckMap[$tipo]   ?? null;
+            $estado = $ckr['estado']  ?? 'pendiente';
             $hasDoc = (bool)$doc;
             $label  = $tipoLabel[$tipo] ?? $tipo;
- 
-            if (!$hasDoc && $isReq)          { $pillClass='pill-miss'; $pillTxt='⚠ Falta'; }
-            elseif (!$hasDoc)                 { $pillClass='pill-pend'; $pillTxt='—'; }
-            elseif ($estado==='ok')           { $pillClass='pill-ok';   $pillTxt='✓ OK'; }
-            elseif ($estado==='rechazado')    { $pillClass='pill-rej';  $pillTxt='⚠ Obs.'; }
-            else                              { $pillClass='pill-pend'; $pillTxt='⏳ Pendiente'; }
+            if (!$hasDoc && $isReq)       { $pillClass='pill-miss'; $pillTxt='⚠ Falta'; }
+            elseif (!$hasDoc)              { $pillClass='pill-pend'; $pillTxt='—'; }
+            elseif ($estado==='ok')        { $pillClass='pill-ok';   $pillTxt='✓ OK'; }
+            elseif ($estado==='rechazado') { $pillClass='pill-rej';  $pillTxt='⚠ Obs.'; }
+            else                           { $pillClass='pill-pend'; $pillTxt='⏳ Pendiente'; }
         ?>
             <tr>
-                <td>
-                    <strong><?= htmlspecialchars($label) ?></strong>
-                    <?php if ($isReq): ?><span class="req-star">*</span><?php endif; ?>
-                </td>
+                <td><strong><?= htmlspecialchars($label) ?></strong><?php if ($isReq): ?><span class="req-star">*</span><?php endif; ?></td>
                 <td><?= $isReq ? '<span style="color:red;font-weight:800;">●</span>' : '<span style="color:#cbd5e1;">○</span>' ?></td>
-                <td style="font-size:11px;color:#475569;max-width:160px;word-break:break-word;">
-                    <?= $hasDoc ? htmlspecialchars($doc['nombre_original'] ?? $doc['nombre_archivo'] ?? '—') : '<em style="color:#94a3b8;">No subido</em>' ?>
-                </td>
-                <td style="font-size:11px;white-space:nowrap;color:#64748b;">
-                    <?= !empty($doc['subido_en']) ? date('d/m/Y H:i', strtotime($doc['subido_en'])) : '—' ?>
-                </td>
+                <td style="font-size:11px;color:#475569;max-width:160px;word-break:break-word;"><?= $hasDoc ? htmlspecialchars($doc['nombre_original'] ?? $doc['nombre_archivo'] ?? '—') : '<em style="color:#94a3b8;">No subido</em>' ?></td>
+                <td style="font-size:11px;white-space:nowrap;color:#64748b;"><?= !empty($doc['subido_en']) ? date('d/m/Y H:i', strtotime($doc['subido_en'])) : '—' ?></td>
                 <td><span class="pill <?= $pillClass ?>"><?= $pillTxt ?></span></td>
-                <td style="font-size:11px;color:#64748b;font-style:<?= !empty($ckr['nota']) ? 'normal' : 'italic' ?>">
-                    <?= !empty($ckr['nota']) ? htmlspecialchars($ckr['nota']) : '<span style="color:#cbd5e1;">—</span>' ?>
-                </td>
+                <td style="font-size:11px;color:#64748b;"><?= !empty($ckr['nota']) ? htmlspecialchars($ckr['nota']) : '<span style="color:#cbd5e1;">—</span>' ?></td>
             </tr>
         <?php endforeach; ?>
         </tbody>
     </table>
 </div>
- 
-<!-- Footer -->
 <div class="doc-footer">
     <span>EIRA · <span class="gold">Seguros Lux</span> — Documento generado el <?= date('d/m/Y H:i') ?></span>
-    <span style="color:#dc2626;font-size:9px;">● Requerido &nbsp; &nbsp;</span>
+    <span style="color:#dc2626;font-size:9px;">● Requerido &nbsp;</span>
     <span>Confidencial — Uso interno</span>
 </div>
- 
 </body>
 </html>
     <?php
@@ -499,6 +226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     header('Content-Type: application/json');
     $a      = $_POST['accion'];
+    $db     = Connection::getConnection();
     $soloSA = ['crear_agente','cambiar_rol','eliminar_agente','reactivar_agente','eliminar_cotizacion'];
 
     if (in_array($a, $soloSA, true) && !$isSuperadmin) {
@@ -506,18 +234,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     }
 
     // ── MÓDULO EMISIÓN ────────────────────────────────────────────────────────
-    // Si la acción empieza con "emi_", delegamos todo a su propio archivo.
-    // NOTA: _ajax_emision.php debe hacer echo + exit en cada case.
     if (str_starts_with($a, 'emi_')) {
-        $db = Connection::getConnection(); // asegurar $db disponible para el include
         require __DIR__ . '/_ajax_emision.php';
-        // Si _ajax_emision.php no hizo exit por algún case no reconocido:
         echo json_encode(['ok'=>false,'msg'=>'Acción de emisión no reconocida.']);
         exit;
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
+    // ── PARCHE: Nuevos cases para editar agentes y historial coordinador ──────
     match($a) {
+
+        // ── Cambiar nombre de un agente ───────────────────────────────────────
+        'editar_agente_nombre' => (function() use ($agentModel, $agenteId, $isSuperadmin, $_agenteRol, $db) {
+            $tid    = (int)($_POST['agente_id'] ?? 0);
+            $nombre = trim($_POST['nombre']    ?? '');
+            $apell  = trim($_POST['apellido']  ?? '');
+            if (!$tid || !$nombre || !$apell) { echo json_encode(['ok'=>false,'msg'=>'Datos incompletos.']); exit; }
+            if ($tid === $agenteId)            { echo json_encode(['ok'=>false,'msg'=>'No puedes editar tu propio nombre aquí.']); exit; }
+
+            $target = $agentModel->find($tid);
+            if (!$target) { echo json_encode(['ok'=>false,'msg'=>'Agente no encontrado.']); exit; }
+
+            $rolDestino = $target['rol'] ?? 'asesor';
+            $rolActual  = $_agenteRol   ?? 'coordinador';
+
+            if ($rolActual === 'coordinador' && $rolDestino !== 'asesor') {
+                echo json_encode(['ok'=>false,'msg'=>'Solo puedes editar asesores.']); exit;
+            }
+            if ($isSuperadmin && $rolDestino === 'superadmin') {
+                echo json_encode(['ok'=>false,'msg'=>'No puedes editar otro superadmin.']); exit;
+            }
+
+            $db->prepare("UPDATE agentes SET nombre = ?, apellido = ? WHERE id = ?")->execute([$nombre, $apell, $tid]);
+            $db->prepare(
+                "INSERT INTO agente_cambios_log (agente_id, modificado_por, tipo_cambio, descripcion)
+                 VALUES (?,?,'nombre',?)"
+            )->execute([$tid, $agenteId, "Nombre cambiado a: {$nombre} {$apell}"]);
+
+            echo json_encode(['ok'=>true]);
+        })(),
+
+        // ── Cambiar contraseña de un agente ──────────────────────────────────
+        // NOTA: La columna en la BD se llama `contrasena`, no `password`
+        'cambiar_password_agente' => (function() use ($agentModel, $agenteId, $isSuperadmin, $_agenteRol, $db) {
+            $tid = (int)($_POST['agente_id'] ?? 0);
+            $pw  = trim($_POST['password']   ?? '');
+            if (!$tid || strlen($pw) < 8) { echo json_encode(['ok'=>false,'msg'=>'Contraseña mínimo 8 caracteres.']); exit; }
+            if ($tid === $agenteId)        { echo json_encode(['ok'=>false,'msg'=>'Usa el perfil para cambiar tu propia contraseña.']); exit; }
+
+            $target = $agentModel->find($tid);
+            if (!$target) { echo json_encode(['ok'=>false,'msg'=>'Agente no encontrado.']); exit; }
+
+            $rolDestino = $target['rol'] ?? 'asesor';
+            $rolActual  = $_agenteRol   ?? 'coordinador';
+
+            if ($rolActual === 'coordinador' && $rolDestino !== 'asesor') {
+                echo json_encode(['ok'=>false,'msg'=>'Solo puedes cambiar contraseñas de asesores.']); exit;
+            }
+            if ($isSuperadmin && $rolDestino === 'superadmin') {
+                echo json_encode(['ok'=>false,'msg'=>'No puedes cambiar la contraseña de otro superadmin.']); exit;
+            }
+
+            // CORRECCIÓN: columna se llama `contrasena` en la BD real
+            $hash = password_hash($pw, PASSWORD_BCRYPT);
+            $db->prepare("UPDATE agentes SET contrasena = ? WHERE id = ?")->execute([$hash, $tid]);
+            $db->prepare(
+                "INSERT INTO agente_cambios_log (agente_id, modificado_por, tipo_cambio, descripcion)
+                 VALUES (?,?,'contrasena','Contraseña actualizada por supervisor')"
+            )->execute([$tid, $agenteId]);
+
+            echo json_encode(['ok'=>true,'msg'=>'Contraseña actualizada.']);
+        })(),
+
+        // ── Historial de acciones de un coordinador (solo superadmin) ─────────
+        'get_historial_coordinador' => (function() use ($db, $isSuperadmin) {
+            if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Acceso denegado.']); exit; }
+            $tid   = (int)($_POST['agente_id'] ?? 0);
+            $limit = min((int)($_POST['limit'] ?? 50), 200);
+            if (!$tid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+
+            $st = $db->prepare(
+                "SELECT h.tipo, h.titulo, h.descripcion, h.fecha,
+                        c.folio,
+                        CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
+                 FROM historial_coordinador h
+                 LEFT JOIN cotizaciones c  ON c.id  = h.cotizacion_id
+                 LEFT JOIN clientes    cl ON cl.id = h.cliente_id
+                 WHERE h.coordinador_id = ?
+                 ORDER BY h.fecha DESC
+                 LIMIT ?"
+            );
+            $st->execute([$tid, $limit]);
+            $rows = $st->fetchAll(\PDO::FETCH_ASSOC);
+            foreach ($rows as &$r) { $r['fecha_fmt'] = date('d/m/Y H:i', strtotime($r['fecha'])); }
+            unset($r);
+            echo json_encode(['ok'=>true,'historial'=>$rows]);
+        })(),
+
         'cambiar_rol' => (function() use ($agentModel, $agenteId) {
             $tid = (int)($_POST['agente_id']??0);
             $rol = trim($_POST['rol']??'');
@@ -577,15 +389,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 $rutaFis = dirname(__DIR__, 3) . '/uploads/cotizaciones/' . $a['cotizacion_id'] . '/' . $a['nombre_archivo'];
                 $dispLocal = ($a['idrive_borrado'] === null) && file_exists($rutaFis);
                 return [
-                    'id'         => (int)$a['id'],
-                    'tipo_label' => $tipoLabel[$a['tipo_documento']] ?? ucfirst(str_replace('_',' ',$a['tipo_documento'])),
-                    'nombre_orig'=> $a['nombre_original'],
-                    'url_local'  => $dispLocal
-                        ? '/archivo?file=cotizaciones/' . $a['cotizacion_id'] . '/' . $a['nombre_archivo']
-                        : null,
-                    'en_idrive'  => !empty($a['idrive_subido']),
-                    'es_imagen'  => $esImg,
-                    'es_pdf'     => $ext === 'pdf',
+                    'id'          => (int)$a['id'],
+                    'tipo_label'  => $tipoLabel[$a['tipo_documento']] ?? ucfirst(str_replace('_',' ',$a['tipo_documento'])),
+                    'nombre_orig' => $a['nombre_original'],
+                    'url_local'   => $dispLocal ? '/archivo?file=cotizaciones/' . $a['cotizacion_id'] . '/' . $a['nombre_archivo'] : null,
+                    'en_idrive'   => !empty($a['idrive_subido']),
+                    'es_imagen'   => $esImg,
+                    'es_pdf'      => $ext === 'pdf',
                 ];
             }, $archivos);
             echo json_encode(['ok'=>true,'docs'=>$docs,'folio'=>$cot['folio']??'']);
@@ -599,7 +409,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             echo json_encode(['ok'=>true,'reasignados'=>$n]);
         })(),
 
-        // ── Renovación: actualizar datos de póliza ────────────────────────────
         'renov_actualizar_poliza' => (function() use ($agenteId) {
             $db          = \Database\Connection::getConnection();
             $polizaId    = (int)($_POST['poliza_id']   ?? 0);
@@ -609,28 +418,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $frecuencia  = trim($_POST['frecuencia']    ?? 'anual');
             $nuevoNumero = trim($_POST['nuevo_numero']  ?? '');
             $notas       = trim($_POST['notas']         ?? '');
-            if (!$polizaId || !$fechaFin) {
-                echo json_encode(['ok'=>false,'msg'=>'Faltan datos obligatorios.']); exit;
-            }
+            if (!$polizaId || !$fechaFin) { echo json_encode(['ok'=>false,'msg'=>'Faltan datos obligatorios.']); exit; }
             $frecuenciasValidas = ['semanal','mensual','trimestral','anual'];
             if (!in_array($frecuencia, $frecuenciasValidas, true)) $frecuencia = 'anual';
-
             $sets = ['estado = ?', 'fecha_fin = ?', 'frecuencia_renovacion = ?', 'renovacion_notificada = 0', 'actualizado_en = NOW()'];
             $vals = ['vigente', $fechaFin, $frecuencia];
             if ($fechaInicio) { $sets[] = 'fecha_inicio = ?'; $vals[] = $fechaInicio; }
             if ($nuevoNumero) { $sets[] = 'numero_poliza = ?'; $vals[] = $nuevoNumero; }
-            if ($notas)       { $sets[] = 'notas = ?';         $vals[] = $notas; }
+            if ($notas)       { $sets[] = 'notas = ?'; $vals[] = $notas; }
             $vals[] = $polizaId;
-
             $db->prepare('UPDATE polizas SET '.implode(', ', $sets).' WHERE id = ?')->execute($vals);
-
             if ($clienteId) {
                 $desc = 'Renovada por coordinador.' . ($nuevoNumero ? " Nueva póliza: {$nuevoNumero}." : '') . ($notas ? " Nota: {$notas}" : '');
                 $db->prepare(
                     "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha)
                      VALUES (?, ?, 'nota', '✅ Póliza renovada', ?, NOW())"
                 )->execute([$clienteId, $agenteId, $desc]);
-                // Marcar solicitudes de renovación pendientes como gestionadas
                 $db->prepare(
                     "UPDATE historial_cliente SET titulo = '✅ Renovación gestionada'
                      WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'"
@@ -639,7 +442,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             echo json_encode(['ok'=>true]); exit;
         })(),
 
-        // ── Renovación: marcar solicitud como gestionada ──────────────────────
         'renov_marcar_gestionada' => (function() {
             $db        = \Database\Connection::getConnection();
             $clienteId = (int)($_POST['cliente_id'] ?? 0);
@@ -690,9 +492,7 @@ if (!empty($cotsGlobal) && empty(array_filter(array_column($cotsGlobal, 'fecha_f
         $_st2->execute($_ids2);
         $_vigMap2 = array_column($_st2->fetchAll(\PDO::FETCH_ASSOC), 'fecha_fin_vigencia', 'id');
         foreach ($cotsGlobal as &$_cg) {
-            if (empty($_cg['fecha_fin_vigencia'])) {
-                $_cg['fecha_fin_vigencia'] = $_vigMap2[$_cg['id']] ?? null;
-            }
+            if (empty($_cg['fecha_fin_vigencia'])) { $_cg['fecha_fin_vigencia'] = $_vigMap2[$_cg['id']] ?? null; }
         }
         unset($_cg);
     }
@@ -720,8 +520,6 @@ $atcData = $db->query(
 )->fetchAll();
 $atcMap  = array_column($atcData, null, 'clave');
 
-
-// ── Solicitudes de renovación (historial con título de renovación) ────────────
 $renovacionesPendientes = $db->query(
     "SELECT h.cliente_id, h.descripcion, h.fecha,
             CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',COALESCE(cl.apellido_materno,'')) AS cliente_nombre,
@@ -914,11 +712,8 @@ function closeModal(id){document.getElementById(id)?.classList.remove('active');
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <select id="expMes" class="form-select" style="width:auto;font-size:12px;">
             <option value="">Todos los meses</option>
-            <?php for($_m=1;$_m<=12;$_m++):
-                $_ms = str_pad((string)$_m, 2, '0', STR_PAD_LEFT); ?>
-            <option value="<?php echo date('Y').'-'.$_ms; ?>">
-                <?php echo date('F', mktime(0, 0, 0, $_m, 1)).' '.date('Y'); ?>
-            </option>
+            <?php for($_m=1;$_m<=12;$_m++): $_ms = str_pad((string)$_m, 2, '0', STR_PAD_LEFT); ?>
+            <option value="<?php echo date('Y').'-'.$_ms; ?>"><?php echo date('F', mktime(0, 0, 0, $_m, 1)).' '.date('Y'); ?></option>
             <?php endfor; ?>
         </select>
         <select id="expEstado" class="form-select" style="width:auto;font-size:12px;">
@@ -1138,8 +933,10 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
                 <table class="adt"><thead><tr><th>Asesor</th><th>Rol</th><th>Clientes</th><th>Acciones</th></tr></thead>
                 <tbody id="tbA">
                 <?php foreach ($agLista as $ag):
-                    $met = array_values(array_filter($ranking,fn($r)=>$r['id']===(int)$ag['id']))[0]??[];
+                    $met    = array_values(array_filter($ranking,fn($r)=>$r['id']===(int)$ag['id']))[0]??[];
                     $activo = (int)($ag['activo']??1);
+                    $puedeEditar = ($isSuperadmin && in_array($ag['rol'],['asesor','coordinador'],true))
+                                || ($_agenteRol === 'coordinador' && $ag['rol'] === 'asesor');
                 ?>
                 <tr data-n="<?php echo strtolower($ag['nombre'].' '.$ag['apellido']); ?>" data-c="<?php echo strtolower($ag['correo']); ?>">
                     <td><div style="display:flex;align-items:center;gap:10px;">
@@ -1159,22 +956,63 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
                         <a href="?tab=asesores&asesor_id=<?php echo $ag['id']; ?>" class="btn btn-sm btn-ghost" style="font-size:12px;"><?php echo $nc; ?> clientes →</a>
                         <?php else: ?><span style="font-size:12px;color:var(--text-muted);"><?php echo $nc; ?></span><?php endif; ?>
                     </td>
-                    <td><?php if ($ag['id']!=$agenteId&&$isSuperadmin): ?>
-                        <div style="display:flex;align-items:center;gap:6px;">
+                    <!-- PARCHE: celda de acciones con botón ✏️ editar agente -->
+                    <td onclick="event.stopPropagation()">
+                        <?php if ($ag['id'] != $agenteId && ($isSuperadmin || $_agenteRol === 'coordinador')): ?>
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <?php if ($isSuperadmin): ?>
                             <select class="form-select adm-rol-select" style="font-size:11px;padding:3px 6px;width:auto;"
                                     data-agente-id="<?php echo $ag['id']; ?>">
                                 <option value="asesor"      <?php echo $ag['rol']==='asesor'     ?'selected':''; ?>>Asesor</option>
                                 <option value="coordinador" <?php echo $ag['rol']==='coordinador'?'selected':''; ?>>Coord.</option>
                                 <option value="superadmin"  <?php echo $ag['rol']==='superadmin' ?'selected':''; ?>>SA</option>
                             </select>
+                            <?php endif; ?>
+
+                            <?php if ($puedeEditar && $activo): ?>
+                            <button class="btn btn-sm btn-ghost"
+                                    title="Editar nombre / contraseña"
+                                    data-action="adm-editarAgente"
+                                    data-id="<?php echo $ag['id']; ?>"
+                                    data-nombre="<?php echo htmlspecialchars($ag['nombre'],ENT_QUOTES); ?>"
+                                    data-apellido="<?php echo htmlspecialchars($ag['apellido'],ENT_QUOTES); ?>"
+                                    data-rol="<?php echo htmlspecialchars($ag['rol'],ENT_QUOTES); ?>">
+                                ✏️
+                            </button>
+                            <?php endif; ?>
+
+                            <?php if ($isSuperadmin): ?>
                             <button class="btn btn-sm btn-ghost"
                                     style="color:<?php echo $activo?'var(--danger-color)':'var(--success-color)'; ?>;"
                                     data-action="adm-toggleAgente"
                                     data-id="<?php echo $ag['id']; ?>"
                                     data-nombre="<?php echo htmlspecialchars($ag['nombre'],ENT_QUOTES); ?>"
                                     data-activo="<?php echo $activo; ?>">
-                                <?php echo $activo?'⊗':'✓'; ?>
+                                <?php echo $activo ? '⊗' : '✓'; ?>
                             </button>
+                            <?php endif; ?>
+
+                            <?php if ($_agenteRol === 'coordinador' && $ag['rol'] === 'asesor'): ?>
+                            <button class="btn btn-sm btn-ghost"
+                                    style="color:<?php echo $activo?'var(--danger-color)':'var(--success-color)'; ?>;"
+                                    data-action="adm-toggleAgente"
+                                    data-id="<?php echo $ag['id']; ?>"
+                                    data-nombre="<?php echo htmlspecialchars($ag['nombre'],ENT_QUOTES); ?>"
+                                    data-activo="<?php echo $activo; ?>">
+                                <?php echo $activo ? '⊗' : '✓'; ?>
+                            </button>
+                            <?php endif; ?>
+
+                            <?php if ($isSuperadmin): ?>
+                            <button class="btn btn-sm btn-ghost"
+                                    title="Ver historial del coordinador"
+                                    data-action="adm-verHistorialCoord"
+                                    data-id="<?php echo $ag['id']; ?>"
+                                    data-nombre="<?php echo htmlspecialchars($ag['nombre'].' '.$ag['apellido'],ENT_QUOTES); ?>"
+                                    style="<?php echo $ag['rol']==='coordinador'?'':'display:none;'; ?>">
+                                📋
+                            </button>
+                            <?php endif; ?>
                         </div>
                         <?php else: ?><span style="font-size:12px;color:var(--text-muted);">—</span><?php endif; ?>
                     </td>
@@ -1240,44 +1078,28 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
     require __DIR__ . '/_tab_emision.php'; ?>
 
 <?php elseif ($tab === 'renovaciones'): ?>
-
 <?php
 $totalRenov = count($renovacionesPendientes);
 $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['dias_vence']) && (int)$r['dias_vence'] <= 7));
 ?>
-
-<!-- KPIs -->
 <div class="kpi4" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
-    <div class="stat-card warning">
-        <div class="stat-card-value"><?= $totalRenov ?></div>
-        <div class="stat-card-label">🔁 Solicitudes</div>
-    </div>
-    <div class="stat-card <?= $urgentes > 0 ? 'danger' : 'success' ?>">
-        <div class="stat-card-value"><?= $urgentes ?></div>
-        <div class="stat-card-label">🚨 Urgentes (≤7 días)</div>
-    </div>
-    <div class="stat-card info">
-        <div class="stat-card-value"><?= $totalRenov - $urgentes ?></div>
-        <div class="stat-card-label">📋 En seguimiento</div>
-    </div>
+    <div class="stat-card warning"><div class="stat-card-value"><?= $totalRenov ?></div><div class="stat-card-label">🔁 Solicitudes</div></div>
+    <div class="stat-card <?= $urgentes > 0 ? 'danger' : 'success' ?>"><div class="stat-card-value"><?= $urgentes ?></div><div class="stat-card-label">🚨 Urgentes (≤7 días)</div></div>
+    <div class="stat-card info"><div class="stat-card-value"><?= $totalRenov - $urgentes ?></div><div class="stat-card-label">📋 En seguimiento</div></div>
 </div>
-
 <?php if (empty($renovacionesPendientes)): ?>
 <div class="card" style="text-align:center;padding:56px;">
     <div style="font-size:48px;margin-bottom:12px;">✅</div>
     <div style="font-size:16px;font-weight:700;color:var(--text-primary);">Sin solicitudes de renovación</div>
-    <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">Cuando un asesor solicite renovar una póliza de un cliente, aparecerá aquí.</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">Cuando un asesor solicite renovar una póliza, aparecerá aquí.</div>
 </div>
 <?php else: ?>
-
-<!-- Buscador -->
 <div class="toolbar" style="margin-bottom:16px;">
     <div class="search-bar" style="flex:1;">
         <span class="search-bar-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
         <input type="text" id="srchRenov" class="search-bar-input" placeholder="Buscar por cliente, asesor, compañía…">
     </div>
 </div>
-
 <div style="display:flex;flex-direction:column;gap:14px;" id="renovLista">
 <?php foreach ($renovacionesPendientes as $r):
     $dias   = isset($r['dias_vence']) ? (int)$r['dias_vence'] : null;
@@ -1296,29 +1118,22 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
      style="border-left:4px solid <?= $borderColor ?>;">
     <div class="card-body" style="padding:16px 20px;">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
-
-            <!-- Info -->
             <div style="flex:1;min-width:220px;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-                    <?php if ($vencida): ?>
-                    <span class="badge badge-danger">🚨 Póliza vencida</span>
-                    <?php elseif ($urgente): ?>
-                    <span class="badge badge-warning">⚠️ Urgente — <?= $dias ?>d restantes</span>
-                    <?php elseif ($dias !== null): ?>
-                    <span class="badge badge-info"><?= $dias ?>d para vencer</span>
+                    <?php if ($vencida): ?><span class="badge badge-danger">🚨 Póliza vencida</span>
+                    <?php elseif ($urgente): ?><span class="badge badge-warning">⚠️ Urgente — <?= $dias ?>d restantes</span>
+                    <?php elseif ($dias !== null): ?><span class="badge badge-info"><?= $dias ?>d para vencer</span>
                     <?php endif; ?>
                     <?php if (!empty($r['poliza_estado'])): ?>
                     <span class="badge <?= $polEstBadge ?>" style="font-size:10px;"><?= $polEstLabel ?></span>
                     <?php endif; ?>
                 </div>
-
                 <div style="font-size:15px;font-weight:700;margin-bottom:4px;"><?= htmlspecialchars($r['cliente_nombre']) ?></div>
                 <div style="font-size:12px;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
                     <?php if ($r['cliente_correo']): ?><span>✉️ <?= htmlspecialchars($r['cliente_correo']) ?></span><?php endif; ?>
                     <?php if ($r['cliente_tel']): ?><span>📞 <?= htmlspecialchars($r['cliente_tel']) ?></span><?php endif; ?>
                     <span>👤 Asesor: <strong><?= htmlspecialchars($r['asesor_nombre']) ?></strong></span>
                 </div>
-
                 <?php if (!empty($r['numero_poliza']) || !empty($r['compania'])): ?>
                 <div style="font-size:12px;color:var(--text-secondary);display:flex;gap:10px;flex-wrap:wrap;">
                     <?php if ($r['compania']): ?><span>🏢 <?= htmlspecialchars($r['compania']) ?></span><?php endif; ?>
@@ -1327,27 +1142,19 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                     <?php if ($fechaFin): ?><span>⏳ Vence: <strong><?= $fechaFin ?></strong></span><?php endif; ?>
                 </div>
                 <?php endif; ?>
-
                 <?php if (!empty($r['descripcion'])): ?>
                 <div style="margin-top:8px;padding:6px 10px;background:var(--bg-secondary);border-radius:6px;font-size:11px;color:var(--text-muted);">
                     💬 <?= htmlspecialchars($r['descripcion']) ?>
                 </div>
                 <?php endif; ?>
-
                 <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">📅 Solicitado: <?= $fechaSol ?></div>
             </div>
-
-            <!-- Acciones -->
             <div style="display:flex;flex-direction:column;gap:8px;min-width:190px;align-items:flex-end;">
                 <?php if ($r['cliente_id']): ?>
-                <a href="/cliente/<?= (int)$r['cliente_id'] ?>"
-                   class="btn btn-outline btn-sm" style="width:100%;text-align:center;">
-                    👁 Ver cliente
-                </a>
+                <a href="/cliente/<?= (int)$r['cliente_id'] ?>" class="btn btn-outline btn-sm" style="width:100%;text-align:center;">👁 Ver cliente</a>
                 <?php endif; ?>
                 <?php if ($r['poliza_id']): ?>
-                <button class="btn btn-primary btn-sm"
-                        style="width:100%;"
+                <button class="btn btn-primary btn-sm" style="width:100%;"
                         data-action="adm-renovGestionarPoliza"
                         data-poliza-id="<?= (int)$r['poliza_id'] ?>"
                         data-cliente-id="<?= (int)$r['cliente_id'] ?>"
@@ -1358,8 +1165,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                     🔁 Gestionar renovación
                 </button>
                 <?php endif; ?>
-                <button class="btn btn-ghost btn-sm"
-                        style="width:100%;color:var(--success-color);"
+                <button class="btn btn-ghost btn-sm" style="width:100%;color:var(--success-color);"
                         data-action="adm-renovMarcarGestionada"
                         data-cliente-id="<?= (int)$r['cliente_id'] ?>"
                         data-fecha="<?= htmlspecialchars($r['fecha'] ?? '', ENT_QUOTES) ?>">
@@ -1376,46 +1182,23 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 <!-- Modal: Gestionar Renovación -->
 <div class="modal-overlay" id="modalGestionarRenovacion">
     <div class="modal" style="max-width:560px;">
-        <div class="modal-header">
-            <h3 class="modal-title">🔁 Gestionar Renovación</h3>
-            <button class="modal-close" data-close="modalGestionarRenovacion">&times;</button>
-        </div>
+        <div class="modal-header"><h3 class="modal-title">🔁 Gestionar Renovación</h3><button class="modal-close" data-close="modalGestionarRenovacion">&times;</button></div>
         <div class="modal-body">
-            <input type="hidden" id="grPolizaId">
-            <input type="hidden" id="grClienteId">
+            <input type="hidden" id="grPolizaId"><input type="hidden" id="grClienteId">
             <div style="background:var(--info-light);border:1px solid var(--info-color,#3b82f6);border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:13px;">
                 <div><strong>Póliza:</strong> <span id="grNumero" style="font-family:monospace;color:var(--accent-color);"></span></div>
                 <div style="margin-top:4px;"><strong>Compañía:</strong> <span id="grCompania"></span></div>
             </div>
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.55;">
-                Actualiza los datos de la póliza renovada. Puedes cambiar las fechas de vigencia y, si es necesario, subir el nuevo documento desde el perfil del cliente → sección Pólizas.
-            </p>
             <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label">Nueva fecha de inicio</label>
-                    <input type="date" class="form-input" id="grFechaInicio">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Nueva fecha de vencimiento</label>
-                    <input type="date" class="form-input" id="grFechaFin">
-                </div>
+                <div class="form-group"><label class="form-label">Nueva fecha de inicio</label><input type="date" class="form-input" id="grFechaInicio"></div>
+                <div class="form-group"><label class="form-label">Nueva fecha de vencimiento</label><input type="date" class="form-input" id="grFechaFin"></div>
             </div>
-            <div class="form-group">
-                <label class="form-label">Frecuencia de renovación</label>
+            <div class="form-group"><label class="form-label">Frecuencia de renovación</label>
                 <select class="form-select" id="grFrecuencia">
-                    <option value="mensual">Mensual</option>
-                    <option value="trimestral">Trimestral</option>
-                    <option value="anual" selected>Anual</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Nuevo número de póliza (si cambió)</label>
-                <input type="text" class="form-input" id="grNuevoNumero" placeholder="Dejar vacío para mantener el actual">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Notas del coordinador</label>
-                <textarea class="form-input" id="grNotas" rows="2" placeholder="Ej: Renovada con misma cobertura, prima ajustada…" style="resize:vertical;"></textarea>
-            </div>
+                    <option value="mensual">Mensual</option><option value="trimestral">Trimestral</option><option value="anual" selected>Anual</option>
+                </select></div>
+            <div class="form-group"><label class="form-label">Nuevo número de póliza (si cambió)</label><input type="text" class="form-input" id="grNuevoNumero" placeholder="Dejar vacío para mantener el actual"></div>
+            <div class="form-group"><label class="form-label">Notas del coordinador</label><textarea class="form-input" id="grNotas" rows="2" style="resize:vertical;"></textarea></div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalGestionarRenovacion">Cancelar</button>
@@ -1426,7 +1209,6 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 
 <script nonce="<?= $cspNonce ?>">
 (function () {
-    // ── Buscador ──────────────────────────────────────────────────────────────
     document.getElementById('srchRenov')?.addEventListener('input', function () {
         const q = this.value.toLowerCase().trim();
         document.querySelectorAll('#renovLista .renov-card').forEach(card => {
@@ -1435,82 +1217,46 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
         });
     });
 
-    // ── Delegación de eventos del tab ─────────────────────────────────────────
     document.addEventListener('click', function (e) {
         const el = e.target.closest('[data-action]');
         if (!el) return;
-
         switch (el.dataset.action) {
-
             case 'adm-renovGestionarPoliza': {
-                document.getElementById('grPolizaId').value   = el.dataset.polizaId;
-                document.getElementById('grClienteId').value  = el.dataset.clienteId;
-                document.getElementById('grNumero').textContent    = el.dataset.numero || '—';
-                document.getElementById('grCompania').textContent  = el.dataset.compania || '—';
-                document.getElementById('grFrecuencia').value      = el.dataset.frecuencia || 'anual';
-                document.getElementById('grNuevoNumero').value     = '';
-                document.getElementById('grNotas').value           = '';
-                // Pre-rellenar fechas: inicio = hoy, fin = hoy + 1 año
-                const hoy  = new Date();
-                const fin  = new Date(hoy); fin.setFullYear(fin.getFullYear() + 1);
+                document.getElementById('grPolizaId').value  = el.dataset.polizaId;
+                document.getElementById('grClienteId').value = el.dataset.clienteId;
+                document.getElementById('grNumero').textContent   = el.dataset.numero || '—';
+                document.getElementById('grCompania').textContent = el.dataset.compania || '—';
+                document.getElementById('grFrecuencia').value     = el.dataset.frecuencia || 'anual';
+                document.getElementById('grNuevoNumero').value    = '';
+                document.getElementById('grNotas').value          = '';
+                const hoy = new Date(); const fin = new Date(hoy); fin.setFullYear(fin.getFullYear() + 1);
                 document.getElementById('grFechaInicio').value = hoy.toISOString().split('T')[0];
                 document.getElementById('grFechaFin').value    = fin.toISOString().split('T')[0];
                 if (typeof openModal === 'function') openModal('modalGestionarRenovacion');
                 break;
             }
-
             case 'adm-confirmarRenovacion': {
-                const btn       = el;
-                const polizaId  = document.getElementById('grPolizaId').value;
-                const clienteId = document.getElementById('grClienteId').value;
-                const fd = new FormData();
-                fd.append('accion',       'renov_actualizar_poliza');
-                fd.append('poliza_id',    polizaId);
-                fd.append('cliente_id',   clienteId);
-                fd.append('fecha_inicio', document.getElementById('grFechaInicio').value);
-                fd.append('fecha_fin',    document.getElementById('grFechaFin').value);
-                fd.append('frecuencia',   document.getElementById('grFrecuencia').value);
-                fd.append('nuevo_numero', document.getElementById('grNuevoNumero').value.trim());
-                fd.append('notas',        document.getElementById('grNotas').value.trim());
+                const btn = el; const polizaId = document.getElementById('grPolizaId').value; const clienteId = document.getElementById('grClienteId').value;
+                const fd = new FormData(); fd.append('accion','renov_actualizar_poliza'); fd.append('poliza_id',polizaId); fd.append('cliente_id',clienteId);
+                fd.append('fecha_inicio',document.getElementById('grFechaInicio').value); fd.append('fecha_fin',document.getElementById('grFechaFin').value);
+                fd.append('frecuencia',document.getElementById('grFrecuencia').value); fd.append('nuevo_numero',document.getElementById('grNuevoNumero').value.trim());
+                fd.append('notas',document.getElementById('grNotas').value.trim());
                 btn.disabled = true; btn.textContent = 'Guardando…';
-                fetch('/admin', { method: 'POST', body: fd })
-                    .then(r => r.json())
-                    .then(d => {
-                        btn.disabled = false; btn.textContent = '💾 Guardar renovación';
-                        if (d.ok) {
-                            if (typeof showToast === 'function') showToast('Póliza actualizada y marcada como vigente', 'success');
-                            if (typeof closeModal === 'function') closeModal('modalGestionarRenovacion');
-                            setTimeout(() => location.reload(), 1200);
-                        } else {
-                            if (typeof showToast === 'function') showToast(d.msg || 'Error al guardar', 'error');
-                        }
-                    })
-                    .catch(() => {
-                        btn.disabled = false; btn.textContent = '💾 Guardar renovación';
-                        if (typeof showToast === 'function') showToast('Error de conexión', 'error');
-                    });
+                fetch('/admin', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
+                    btn.disabled = false; btn.textContent = '💾 Guardar renovación';
+                    if (d.ok) { if (typeof showToast === 'function') showToast('Póliza actualizada y marcada como vigente', 'success'); if (typeof closeModal === 'function') closeModal('modalGestionarRenovacion'); setTimeout(() => location.reload(), 1200); }
+                    else { if (typeof showToast === 'function') showToast(d.msg || 'Error al guardar', 'error'); }
+                }).catch(() => { btn.disabled = false; btn.textContent = '💾 Guardar renovación'; if (typeof showToast === 'function') showToast('Error de conexión', 'error'); });
                 break;
             }
-
             case 'adm-renovMarcarGestionada': {
-                const clienteId = el.dataset.clienteId;
-                const fecha     = el.dataset.fecha;
-                if (!confirm('¿Marcar esta solicitud como gestionada? Desaparecerá de la lista.')) break;
-                const fd = new FormData();
-                fd.append('accion',     'renov_marcar_gestionada');
-                fd.append('cliente_id', clienteId);
-                fd.append('fecha',      fecha);
-                fetch('/admin', { method: 'POST', body: fd })
-                    .then(r => r.json())
-                    .then(d => {
-                        if (d.ok) {
-                            el.closest('.card').remove();
-                            if (typeof showToast === 'function') showToast('Marcada como gestionada', 'success');
-                        } else {
-                            if (typeof showToast === 'function') showToast(d.msg || 'Error', 'error');
-                        }
-                    })
-                    .catch(() => { if (typeof showToast === 'function') showToast('Error de conexión', 'error'); });
+                const clienteId = el.dataset.clienteId; const fecha = el.dataset.fecha;
+                if (!confirm('¿Marcar esta solicitud como gestionada?')) break;
+                const fd = new FormData(); fd.append('accion','renov_marcar_gestionada'); fd.append('cliente_id',clienteId); fd.append('fecha',fecha);
+                fetch('/admin', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
+                    if (d.ok) { el.closest('.card').remove(); if (typeof showToast === 'function') showToast('Marcada como gestionada', 'success'); }
+                    else { if (typeof showToast === 'function') showToast(d.msg || 'Error', 'error'); }
+                }).catch(() => { if (typeof showToast === 'function') showToast('Error de conexión', 'error'); });
                 break;
             }
         }
@@ -1526,15 +1272,10 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
     </div>
     <select class="filter-select" id="flAg"><option value="todos">Todos los asesores</option><?php foreach ($agNombres as $an): ?><option value="<?php echo htmlspecialchars($an); ?>"><?php echo htmlspecialchars($an); ?></option><?php endforeach; ?></select>
     <select class="filter-select" id="flEst"><option value="todos">Todos los estados</option><option value="pendiente">Pendiente</option><option value="enviada">Enviada</option><option value="aceptada">Aceptada</option><option value="rechazada">Rechazada</option></select>
-    <button id="btnAdminSortVence" class="btn btn-outline" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">
-        <i class="bi bi-clock-history" style="font-size:14px;"></i> Próximos a vencer
-    </button>
+    <button id="btnAdminSortVence" class="btn btn-outline" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;"><i class="bi bi-clock-history" style="font-size:14px;"></i> Próximos a vencer</button>
 </div>
 <div class="card">
-    <div class="card-header">
-        <h3 class="card-title">Todas las Cotizaciones <span class="badge badge-neutral" id="cntC"><?php echo count($cotsGlobal); ?></span></h3>
-        <span style="font-size:11px;color:var(--text-muted);">Doble clic en una fila para ver documentos</span>
-    </div>
+    <div class="card-header"><h3 class="card-title">Todas las Cotizaciones <span class="badge badge-neutral" id="cntC"><?php echo count($cotsGlobal); ?></span></h3><span style="font-size:11px;color:var(--text-muted);">Doble clic en una fila para ver documentos</span></div>
     <div class="card-body" style="padding:0;">
         <table class="adt"><thead><tr><th>Folio</th><th>Cliente</th><th>Asesor</th><th>Compañía</th><th>Prima</th><th>Estado</th><th>Fecha</th><th>Vence</th><th></th></tr></thead>
         <tbody id="tbC">
@@ -1566,12 +1307,10 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                 <?php elseif($dR<=0): ?><div style="font-size:10px;color:#dc2626;font-weight:700;">VENCIDA</div><?php endif; ?>
                 <?php else: ?><span style="font-size:11px;color:var(--text-muted);">—</span><?php endif; ?>
             </td>
-            <td>
-                <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);"
-                        data-action="adm-eliminarCot"
-                        data-id="<?php echo $cot['id']; ?>"
-                        data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>">🗑</button>
-            </td>
+            <td><button class="btn btn-sm btn-ghost" style="color:var(--danger-color);"
+                    data-action="adm-eliminarCot"
+                    data-id="<?php echo $cot['id']; ?>"
+                    data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>">🗑</button></td>
         </tr>
         <?php endforeach; ?>
         </tbody></table>
@@ -1585,10 +1324,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
         <div class="card-header"><h3 class="card-title">📞 Números de Empresa para ATC</h3></div>
         <div class="card-body">
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Visibles para todos los asesores en su panel.</p>
-            <?php for ($i=1;$i<=3;$i++):
-                $num = $atcMap["atc_numero_{$i}"]['valor'] ?? '';
-                $nom = $atcMap["atc_nombre_{$i}"]['valor'] ?? '';
-            ?>
+            <?php for ($i=1;$i<=3;$i++): $num=$atcMap["atc_numero_{$i}"]['valor']??''; $nom=$atcMap["atc_nombre_{$i}"]['valor']??''; ?>
             <div style="background:var(--bg-secondary);border-radius:var(--border-radius-sm);padding:14px;margin-bottom:12px;">
                 <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:8px;">Línea <?php echo $i; ?></div>
                 <div class="form-row" style="margin-bottom:0;">
@@ -1605,8 +1341,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
         <div class="card-body">
             <?php foreach ($atcData as $row):
                 if (strpos($row['clave'],'atc_numero')!==0||empty($row['valor'])) continue;
-                $idx  = substr($row['clave'],-1);
-                $nombre = $atcMap["atc_nombre_{$idx}"]['valor'] ?? 'Línea '.$idx;
+                $idx=$row['clave'][-1]; $nombre=$atcMap["atc_nombre_{$idx}"]['valor']??'Línea '.$idx;
             ?>
             <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--bg-secondary);border-radius:var(--border-radius-sm);margin-bottom:10px;border-left:3px solid var(--accent-color);">
                 <span style="font-size:24px;">📞</span>
@@ -1621,13 +1356,12 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 </main>
 </div>
 
+<!-- ═══ MODALES ════════════════════════════════════════════════════════════════ -->
+
 <!-- Modal Crear Agente -->
 <div class="modal-overlay" id="modalCrearAgente">
     <div class="modal">
-        <div class="modal-header">
-            <h3 class="modal-title">Nuevo Asesor</h3>
-            <button class="modal-close" data-close="modalCrearAgente">&times;</button>
-        </div>
+        <div class="modal-header"><h3 class="modal-title">Nuevo Asesor</h3><button class="modal-close" data-close="modalCrearAgente">&times;</button></div>
         <div class="modal-body">
             <div class="form-row">
                 <div class="form-group"><label class="form-label required">Nombre</label><input type="text" class="form-input" id="nN"></div>
@@ -1673,12 +1407,55 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
             <h3 class="modal-title">📎 Documentos — <span id="adminDocsFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
             <button class="modal-close" data-close="modalAdminDocs">&times;</button>
         </div>
-        <div class="modal-body" id="adminDocsContent" style="min-height:160px;">
-            <div style="text-align:center;padding:32px;color:var(--text-muted);">Cargando...</div>
+        <div class="modal-body" id="adminDocsContent" style="min-height:160px;"><div style="text-align:center;padding:32px;color:var(--text-muted);">Cargando...</div></div>
+        <div class="modal-footer"><button class="btn btn-outline" data-close="modalAdminDocs">Cerrar</button></div>
+    </div>
+</div>
+
+<!-- PARCHE: Modal Editar Agente (nombre + contraseña) -->
+<div class="modal-overlay" id="modalEditarAgente">
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-header">
+            <h3 class="modal-title">✏️ Editar agente</h3>
+            <button class="modal-close" data-close="modalEditarAgente">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="editAgenteId">
+            <div style="background:var(--bg-secondary);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
+                <strong id="editAgenteRolBadge"></strong>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Puedes cambiar el nombre y/o la contraseña. El correo no es editable aquí.</p>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label required">Nombre</label><input type="text" class="form-input" id="editNombre"></div>
+                <div class="form-group"><label class="form-label required">Apellido</label><input type="text" class="form-input" id="editApellido"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Nueva contraseña <span style="font-size:11px;color:var(--text-muted);">(dejar en blanco para no cambiar)</span></label>
+                <input type="password" class="form-input" id="editPassword" placeholder="Mínimo 8 caracteres">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Confirmar contraseña</label>
+                <input type="password" class="form-input" id="editPasswordConfirm" placeholder="Repite la contraseña">
+            </div>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-outline" data-close="modalAdminDocs">Cerrar</button>
+            <button class="btn btn-outline" data-close="modalEditarAgente">Cancelar</button>
+            <button class="btn btn-primary" data-action="adm-guardarEdicionAgente">💾 Guardar</button>
         </div>
+    </div>
+</div>
+
+<!-- PARCHE: Modal Historial Coordinador (solo superadmin) -->
+<div class="modal-overlay" id="modalHistorialCoord">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title">📋 Historial del coordinador</h3>
+            <button class="modal-close" data-close="modalHistorialCoord">&times;</button>
+        </div>
+        <div class="modal-body" id="historialCoordBody" style="min-height:200px;">
+            <div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-outline" data-close="modalHistorialCoord">Cerrar</button></div>
     </div>
 </div>
 
@@ -1699,9 +1476,7 @@ document.addEventListener('DOMContentLoaded', () => { if(typeof initReportesChar
 document.addEventListener('click', function(e) {
     const el = e.target.closest('[data-action],[data-close]');
     if (!el) return;
-
     if (el.dataset.close) { closeModal(el.dataset.close); return; }
-
     switch(el.dataset.action) {
         case 'adm-abrirCrearAgente':   openModal('modalCrearAgente'); break;
         case 'adm-crearAgente':        crearAgente(); break;
@@ -1723,17 +1498,27 @@ document.addEventListener('click', function(e) {
         case 'adm-verDocs':  abrirDocumentosAdmin(window._adminCotId); break;
         case 'adm-page':     window['_p_'+el.dataset.tb]?.go(+el.dataset.p); break;
         case 'toast-close':  el.closest('.toast')?.remove(); break;
+        // PARCHE: editar agente e historial coordinador
+        case 'adm-editarAgente': {
+            document.getElementById('editAgenteId').value       = el.dataset.id;
+            document.getElementById('editNombre').value         = el.dataset.nombre;
+            document.getElementById('editApellido').value       = el.dataset.apellido;
+            document.getElementById('editPassword').value       = '';
+            document.getElementById('editPasswordConfirm').value= '';
+            document.getElementById('editAgenteRolBadge').textContent = 'Rol: ' + el.dataset.rol;
+            openModal('modalEditarAgente');
+            break;
+        }
+        case 'adm-guardarEdicionAgente': guardarEdicionAgente(); break;
+        case 'adm-verHistorialCoord': verHistorialCoord(el.dataset.id, el.dataset.nombre); break;
     }
 });
 
 // Cerrar modal al clic en overlay
 document.addEventListener('click', e => {
-    if (e.target.classList.contains('modal-overlay')) {
-        e.target.classList.remove('active'); document.body.style.overflow='';
-    }
+    if (e.target.classList.contains('modal-overlay')) { e.target.classList.remove('active'); document.body.style.overflow=''; }
 });
 
-// ── Change / Input ────────────────────────────────────────────────────────────
 document.addEventListener('change', function(e) {
     if (e.target.id === 'selFiltroAgente')
         return void (location.href = '?tab=rendimiento' + (e.target.value ? '&agente_id='+e.target.value : ''));
@@ -1752,300 +1537,140 @@ document.addEventListener('input', function(e) {
 
 // ── Paginación ────────────────────────────────────────────────────────────────
 function setupPag(tbId, pgId, pp=15) {
-    const tb = document.getElementById(tbId); if (!tb) return;
-    const pg = document.getElementById(pgId); let cp = 1;
-    const rows = () => [...tb.querySelectorAll('tr')];
-    const vis  = () => rows().filter(r => r.getAttribute('data-filtered') !== 'hide');
-    function render() {
-        const vr=vis(), total=vr.length, pages=Math.max(1,Math.ceil(total/pp));
-        if (cp>pages) cp=pages;
-        rows().forEach(r => {
-            if (r.getAttribute('data-filtered')==='hide') { r.style.display='none'; return; }
-            const i = vr.indexOf(r);
-            r.style.display = (i>=(cp-1)*pp && i<cp*pp) ? '' : 'none';
+    const tb=document.getElementById(tbId); if (!tb) return;
+    const pg=document.getElementById(pgId); let cp=1;
+    const rows=()=>[...tb.querySelectorAll('tr')];
+    const vis=()=>rows().filter(r=>r.getAttribute('data-filtered')!=='hide');
+    function render(){
+        const vr=vis(),total=vr.length,pages=Math.max(1,Math.ceil(total/pp));
+        if(cp>pages) cp=pages;
+        rows().forEach(r=>{
+            if(r.getAttribute('data-filtered')==='hide'){r.style.display='none';return;}
+            const i=vr.indexOf(r); r.style.display=(i>=(cp-1)*pp&&i<cp*pp)?'':'none';
         });
-        if (!pg||pages<=1) { if(pg) pg.innerHTML=''; return; }
-        let h = pagBtn('‹', cp-1, tbId, cp===1);
-        for (let i=1;i<=pages;i++) {
-            if (i===1||i===pages||Math.abs(i-cp)<=1) h += pagBtn(i, i, tbId, false, i===cp);
-            else if (Math.abs(i-cp)===2) h += '<span class="page-btn" style="border:none;cursor:default;">…</span>';
+        if(!pg||pages<=1){if(pg)pg.innerHTML='';return;}
+        let h=pagBtn('‹',cp-1,tbId,cp===1);
+        for(let i=1;i<=pages;i++){
+            if(i===1||i===pages||Math.abs(i-cp)<=1) h+=pagBtn(i,i,tbId,false,i===cp);
+            else if(Math.abs(i-cp)===2) h+='<span class="page-btn" style="border:none;cursor:default;">…</span>';
         }
-        h += pagBtn('›', cp+1, tbId, cp===pages);
-        pg.innerHTML = h;
+        h+=pagBtn('›',cp+1,tbId,cp===pages);
+        pg.innerHTML=h;
     }
-    window['_p_'+tbId] = { render, go: p => { cp=p; render(); } };
+    window['_p_'+tbId]={render,go:p=>{cp=p;render();}};
     render();
 }
-function pagBtn(lbl, p, tb, disabled, active=false) {
+function pagBtn(lbl,p,tb,disabled,active=false){
     return `<button class="page-btn${active?' active':''}" data-action="adm-page" data-p="${p}" data-tb="${tb}" ${disabled?'disabled':''}>${lbl}</button>`;
 }
-
-function filtA() {
-    const tx = (document.getElementById('srchA')?.value||'').toLowerCase(); let v=0;
-    [...document.querySelectorAll('#tbA tr')].forEach(r => {
-        const ok = !tx||(r.dataset.n||'').includes(tx)||(r.dataset.c||'').includes(tx);
-        r.setAttribute('data-filtered',ok?'show':'hide'); if(ok) v++;
-    });
-    const cnt=document.getElementById('cntA'); if(cnt) cnt.textContent=v;
-    window['_p_tbA']?.go(1);
-}
-function filtC() {
-    const tx=(document.getElementById('srchC')?.value||'').toLowerCase();
-    const ag=document.getElementById('flAg')?.value||'todos';
-    const es=document.getElementById('flEst')?.value||'todos'; let v=0;
-    [...document.querySelectorAll('#tbC tr')].forEach(r => {
-        const ok = (!tx||(r.dataset.f||'').includes(tx)||(r.dataset.cl||'').includes(tx)||(r.dataset.co||'').includes(tx))
-                && (ag==='todos'||r.dataset.ag===ag)
-                && (es==='todos'||r.dataset.st===es);
-        r.setAttribute('data-filtered',ok?'show':'hide'); if(ok) v++;
-    });
-    const cnt=document.getElementById('cntC'); if(cnt) cnt.textContent=v;
-    window['_p_tbC']?.go(1);
-}
-function filtCl() {
-    const tx=(document.getElementById('srchCl')?.value||'').toLowerCase();
-    document.querySelectorAll('#clientesList .cb-row').forEach(r =>
-        r.classList.toggle('cl-hidden', !(!tx||(r.dataset.n||'').includes(tx))));
-    if (typeof window._renderCl==='function') window._renderCl();
-}
+function filtA(){const tx=(document.getElementById('srchA')?.value||'').toLowerCase();let v=0;[...document.querySelectorAll('#tbA tr')].forEach(r=>{const ok=!tx||(r.dataset.n||'').includes(tx)||(r.dataset.c||'').includes(tx);r.setAttribute('data-filtered',ok?'show':'hide');if(ok)v++;});const cnt=document.getElementById('cntA');if(cnt)cnt.textContent=v;window['_p_tbA']?.go(1);}
+function filtC(){const tx=(document.getElementById('srchC')?.value||'').toLowerCase();const ag=document.getElementById('flAg')?.value||'todos';const es=document.getElementById('flEst')?.value||'todos';let v=0;[...document.querySelectorAll('#tbC tr')].forEach(r=>{const ok=(!tx||(r.dataset.f||'').includes(tx)||(r.dataset.cl||'').includes(tx)||(r.dataset.co||'').includes(tx))&&(ag==='todos'||r.dataset.ag===ag)&&(es==='todos'||r.dataset.st===es);r.setAttribute('data-filtered',ok?'show':'hide');if(ok)v++;});const cnt=document.getElementById('cntC');if(cnt)cnt.textContent=v;window['_p_tbC']?.go(1);}
+function filtCl(){const tx=(document.getElementById('srchCl')?.value||'').toLowerCase();document.querySelectorAll('#clientesList .cb-row').forEach(r=>r.classList.toggle('cl-hidden',!(!tx||(r.dataset.n||'').includes(tx))));if(typeof window._renderCl==='function')window._renderCl();}
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
-function chgRol(id, rol) {
-    if (!confirm(`¿Cambiar rol a "${rol}"?`)) return;
-    post({accion:'cambiar_rol',agente_id:id,rol}).then(d=>d.ok?toast('Rol actualizado','success'):toast(d.msg,'error'));
+function chgRol(id,rol){if(!confirm(`¿Cambiar rol a "${rol}"?`))return;post({accion:'cambiar_rol',agente_id:id,rol}).then(d=>d.ok?toast('Rol actualizado','success'):toast(d.msg,'error'));}
+function delAg(id,n,activo){const accion=activo?'eliminar_agente':'reactivar_agente';if(!confirm(activo?`¿Desactivar al asesor ${n}?`:`¿Reactivar al asesor ${n}?`))return;post({accion,agente_id:id}).then(d=>{if(d.ok){toast(d.msg||'OK','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
+function crearAgente(){const n=document.getElementById('nN').value.trim(),a=document.getElementById('nA').value.trim(),c=document.getElementById('nC').value.trim(),t=document.getElementById('nT').value.trim(),p=document.getElementById('nP').value.trim(),r=document.getElementById('nR').value;if(!n||!a||!c||!p){toast('Completa los campos requeridos','error');return;}if(p.length<8){toast('Contraseña mínimo 8 caracteres','error');return;}post({accion:'crear_agente',nombre:n,apellido:a,correo:c,telefono:t,password:p,rol:r}).then(d=>{if(d.ok){toast('Asesor creado','success');closeModal('modalCrearAgente');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
+function delCot(id,f){if(!confirm(`¿Eliminar cotización ${f}? Esta acción no se puede deshacer.`))return;post({accion:'eliminar_cotizacion',cotizacion_id:id}).then(d=>{if(d.ok){toast('Eliminada','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
+
+// PARCHE: Guardar edición de agente (nombre + contraseña)
+async function guardarEdicionAgente() {
+    const id    = document.getElementById('editAgenteId').value;
+    const nombre= document.getElementById('editNombre').value.trim();
+    const apell = document.getElementById('editApellido').value.trim();
+    const pw    = document.getElementById('editPassword').value;
+    const pw2   = document.getElementById('editPasswordConfirm').value;
+    if (!nombre || !apell) { toast('Nombre y apellido son requeridos', 'error'); return; }
+    if (pw && pw !== pw2)  { toast('Las contraseñas no coinciden', 'error'); return; }
+    if (pw && pw.length < 8) { toast('Contraseña mínimo 8 caracteres', 'error'); return; }
+    const fd1 = new FormData(); fd1.append('accion','editar_agente_nombre'); fd1.append('agente_id',id); fd1.append('nombre',nombre); fd1.append('apellido',apell);
+    const r1 = await fetch('/admin',{method:'POST',body:fd1}).then(r=>r.json());
+    if (!r1.ok) { toast(r1.msg||'Error al guardar nombre','error'); return; }
+    if (pw) {
+        const fd2 = new FormData(); fd2.append('accion','cambiar_password_agente'); fd2.append('agente_id',id); fd2.append('password',pw);
+        const r2 = await fetch('/admin',{method:'POST',body:fd2}).then(r=>r.json());
+        if (!r2.ok) { toast(r2.msg||'Error al cambiar contraseña','error'); return; }
+    }
+    toast('Agente actualizado correctamente','success');
+    closeModal('modalEditarAgente');
+    setTimeout(()=>location.reload(),1000);
 }
-function delAg(id, n, activo) {
-    const accion=activo?'eliminar_agente':'reactivar_agente';
-    if (!confirm(activo?`¿Desactivar al asesor ${n}?`:`¿Reactivar al asesor ${n}?`)) return;
-    post({accion,agente_id:id}).then(d=>{
-        if(d.ok){toast(d.msg||'OK','success');setTimeout(()=>location.reload(),900);}
-        else toast(d.msg,'error');
-    });
-}
-function crearAgente() {
-    const n=document.getElementById('nN').value.trim(), a=document.getElementById('nA').value.trim();
-    const c=document.getElementById('nC').value.trim(), t=document.getElementById('nT').value.trim();
-    const p=document.getElementById('nP').value.trim(), r=document.getElementById('nR').value;
-    if(!n||!a||!c||!p){toast('Completa los campos requeridos','error');return;}
-    if(p.length<8){toast('Contraseña mínimo 8 caracteres','error');return;}
-    post({accion:'crear_agente',nombre:n,apellido:a,correo:c,telefono:t,password:p,rol:r}).then(d=>{
-        if(d.ok){toast('Asesor creado','success');closeModal('modalCrearAgente');setTimeout(()=>location.reload(),900);}
-        else toast(d.msg,'error');
-    });
-}
-function delCot(id, f) {
-    if(!confirm(`¿Eliminar cotización ${f}? Esta acción no se puede deshacer.`)) return;
-    post({accion:'eliminar_cotizacion',cotizacion_id:id}).then(d=>{
-        if(d.ok){toast('Eliminada','success');setTimeout(()=>location.reload(),900);}
-        else toast(d.msg,'error');
-    });
+
+// PARCHE: Ver historial coordinador
+function verHistorialCoord(id, nombre) {
+    document.querySelector('#modalHistorialCoord .modal-title').textContent = `📋 Historial de ${nombre||'coordinador'}`;
+    document.getElementById('historialCoordBody').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>';
+    openModal('modalHistorialCoord');
+    const fd=new FormData(); fd.append('accion','get_historial_coordinador'); fd.append('agente_id',id);
+    fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+        if(!d.ok){document.getElementById('historialCoordBody').innerHTML='<p style="color:var(--danger-color);text-align:center;padding:24px;">Error al cargar.</p>';return;}
+        if(!d.historial.length){document.getElementById('historialCoordBody').innerHTML='<p style="color:var(--text-muted);text-align:center;padding:40px;">Sin acciones registradas.</p>';return;}
+        const typeIcon={cobro:'💳',comprobante:'📄',renovacion:'🔁',nota:'📝'};
+        let html='<div style="display:flex;flex-direction:column;">';
+        d.historial.forEach(h=>{
+            html+=`<div style="display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border-color);">
+                <div style="font-size:20px;flex-shrink:0;">${typeIcon[h.tipo]||'•'}</div>
+                <div style="flex:1;">
+                    <div style="font-size:13px;font-weight:600;">${h.titulo}</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${h.cliente_nombre?h.cliente_nombre+' · ':''}${h.fecha_fmt}</div>
+                    ${h.descripcion?`<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${h.descripcion}</div>`:''}
+                </div></div>`;
+        });
+        html+='</div>';
+        document.getElementById('historialCoordBody').innerHTML=html;
+    }).catch(()=>{document.getElementById('historialCoordBody').innerHTML='<p style="color:var(--danger-color);text-align:center;padding:24px;">Error de conexión.</p>';});
 }
 
 // ── Reasignación ──────────────────────────────────────────────────────────────
-const seleccionados = new Set();
-function toggleTodos(checked) {
-    document.querySelectorAll('#clientesList .cb-row').forEach(row => {
-        if (row.classList.contains('cl-hidden')||row.style.display==='none') return;
-        const cb=row.querySelector('input[type=checkbox]'); if(!cb) return;
-        const id=+cb.value; cb.checked=checked;
-        if(checked){seleccionados.add(id);row.style.background='var(--info-light)';}
-        else{seleccionados.delete(id);row.style.background='';}
-    });
-    actualizarBarraReasignar();
-}
+const seleccionados=new Set();
+function toggleTodos(checked){document.querySelectorAll('#clientesList .cb-row').forEach(row=>{if(row.classList.contains('cl-hidden')||row.style.display==='none')return;const cb=row.querySelector('input[type=checkbox]');if(!cb)return;const id=+cb.value;cb.checked=checked;if(checked){seleccionados.add(id);row.style.background='var(--info-light)';}else{seleccionados.delete(id);row.style.background='';}});actualizarBarraReasignar();}
 function deseleccionarTodos(){document.getElementById('selectAll').checked=false;toggleTodos(false);}
-function actualizarBarraReasignar(){
-    const bar=document.getElementById('reasignarBar');
-    const cnt=document.getElementById('selCount');
-    if(bar) bar.style.display=seleccionados.size>0?'flex':'none';
-    if(cnt) cnt.textContent=seleccionados.size+' cliente'+(seleccionados.size!==1?'s':'')+' seleccionado'+(seleccionados.size!==1?'s':'');
-}
-function ejecutarReasignacion(){
-    const nuevoId=document.getElementById('nuevoAsesor')?.value;
-    if(!nuevoId){toast('Selecciona el asesor destino','error');return;}
-    if(!seleccionados.size){toast('Selecciona al menos un cliente','error');return;}
-    const nom=document.getElementById('nuevoAsesor').options[document.getElementById('nuevoAsesor').selectedIndex].text;
-    if(!confirm(`¿Reasignar ${seleccionados.size} cliente(s) a ${nom}?`)) return;
-    post({accion:'reasignar_clientes',cliente_ids:[...seleccionados].join(','),nuevo_asesor_id:nuevoId})
-        .then(d=>{if(d.ok){toast(`${d.reasignados} cliente(s) reasignados`,'success');setTimeout(()=>location.reload(),1200);}else toast(d.msg,'error');});
-}
+function actualizarBarraReasignar(){const bar=document.getElementById('reasignarBar');const cnt=document.getElementById('selCount');if(bar)bar.style.display=seleccionados.size>0?'flex':'none';if(cnt)cnt.textContent=seleccionados.size+' cliente'+(seleccionados.size!==1?'s':'')+' seleccionado'+(seleccionados.size!==1?'s':'');}
+function ejecutarReasignacion(){const nuevoId=document.getElementById('nuevoAsesor')?.value;if(!nuevoId){toast('Selecciona el asesor destino','error');return;}if(!seleccionados.size){toast('Selecciona al menos un cliente','error');return;}const nom=document.getElementById('nuevoAsesor').options[document.getElementById('nuevoAsesor').selectedIndex].text;if(!confirm(`¿Reasignar ${seleccionados.size} cliente(s) a ${nom}?`))return;post({accion:'reasignar_clientes',cliente_ids:[...seleccionados].join(','),nuevo_asesor_id:nuevoId}).then(d=>{if(d.ok){toast(`${d.reasignados} cliente(s) reasignados`,'success');setTimeout(()=>location.reload(),1200);}else toast(d.msg,'error');});}
 
 // ── ATC ───────────────────────────────────────────────────────────────────────
-document.getElementById('btnGuardarATC')?.addEventListener('click', function(){
-    const items=[];
-    for(let i=1;i<=3;i++){
-        items.push({clave:'atc_numero_'+i,valor:document.getElementById('atc_numero_'+i)?.value.trim()||'',descripcion:'Número ATC '+i});
-        items.push({clave:'atc_nombre_'+i, valor:document.getElementById('atc_nombre_'+i)?.value.trim()||'', descripcion:'Nombre ATC '+i});
-    }
-    fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})})
-        .then(r=>r.json()).then(d=>{if(d.ok){toast('Números ATC guardados','success');setTimeout(()=>location.reload(),900);}else toast(d.msg||'Error','error');});
-});
+document.getElementById('btnGuardarATC')?.addEventListener('click',function(){const items=[];for(let i=1;i<=3;i++){items.push({clave:'atc_numero_'+i,valor:document.getElementById('atc_numero_'+i)?.value.trim()||'',descripcion:'Número ATC '+i});items.push({clave:'atc_nombre_'+i,valor:document.getElementById('atc_nombre_'+i)?.value.trim()||'',descripcion:'Nombre ATC '+i});}fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})}).then(r=>r.json()).then(d=>{if(d.ok){toast('Números ATC guardados','success');setTimeout(()=>location.reload(),900);}else toast(d.msg||'Error','error');});});
 
 // ── Exportar ──────────────────────────────────────────────────────────────────
 document.getElementById('btnExportarExcel')?.addEventListener('click',()=>exportar('excel'));
 document.getElementById('btnExportarPdf')  ?.addEventListener('click',()=>exportar('pdf'));
-function exportar(fmt){
-    const mes=document.getElementById('expMes')?.value||'';
-    const estado=document.getElementById('expEstado')?.value||'';
-    const ag=<?php echo json_encode($filtroAgente); ?>;
-    let url=`/exportar?formato=${fmt}&tipo=cotizaciones`;
-    if(ag) url+=`&agente_id=${ag}`;
-    if(estado) url+=`&estado=${estado}`;
-    if(mes){const[y,m]=mes.split('-');const ult=new Date(+y,+m,0).getDate();url+=`&desde=${y}-${m}-01&hasta=${y}-${m}-${String(ult).padStart(2,'0')}`;}
-    if(fmt==='pdf') window.open(url,'_blank'); else location.href=url;
-}
+function exportar(fmt){const mes=document.getElementById('expMes')?.value||'';const estado=document.getElementById('expEstado')?.value||'';const ag=<?php echo json_encode($filtroAgente); ?>;let url=`/exportar?formato=${fmt}&tipo=cotizaciones`;if(ag)url+=`&agente_id=${ag}`;if(estado)url+=`&estado=${estado}`;if(mes){const[y,m]=mes.split('-');const ult=new Date(+y,+m,0).getDate();url+=`&desde=${y}-${m}-01&hasta=${y}-${m}-${String(ult).padStart(2,'0')}`;}if(fmt==='pdf')window.open(url,'_blank');else location.href=url;}
 
 // ── Sort por vencimiento ──────────────────────────────────────────────────────
-document.getElementById('btnAdminSortVence')?.addEventListener('click', toggleAdminSortVence);
-var _admSortActivo=false, _admOrdenOrig=null;
-function toggleAdminSortVence(){
-    const tbody=document.getElementById('tbC'), btn=document.getElementById('btnAdminSortVence');
-    if(!tbody||!btn) return;
-    if(!_admSortActivo){
-        _admOrdenOrig=[...tbody.querySelectorAll('tr')].map(tr=>tr.dataset.id);
-        const rows=[...tbody.querySelectorAll('tr')];
-        const hoy=new Date(); hoy.setHours(0,0,0,0);
-        const conV=rows.filter(tr=>tr.dataset.vence), sinV=rows.filter(tr=>!tr.dataset.vence);
-        conV.sort((a,b)=>new Date(a.dataset.vence)-new Date(b.dataset.vence));
-        [...conV,...sinV].forEach(tr=>tbody.appendChild(tr));
-        rows.forEach(tr=>{
-            if(!tr.dataset.vence) return;
-            const d=Math.ceil((new Date(tr.dataset.vence+'T00:00:00')-hoy)/86400000);
-            if(d<=0) {tr.style.outline='2px solid #ef4444';tr.style.outlineOffset='-2px';}
-            else if(d<=7) {tr.style.outline='2px solid #f97316';tr.style.outlineOffset='-2px';}
-            else if(d<=30){tr.style.outline='2px solid #f59e0b';tr.style.outlineOffset='-2px';}
-        });
-        btn.style.cssText='background:#fef3c7;border-color:#f59e0b;color:#92400e;';
-        btn.innerHTML='<i class="bi bi-clock-history"></i> Ordenado <span style="font-size:10px;font-weight:700;background:#f59e0b;color:#fff;padding:1px 5px;border-radius:4px;margin-left:4px;">ACTIVO</span>';
-        _admSortActivo=true;
-    } else {
-        if(_admOrdenOrig) _admOrdenOrig.forEach(id=>{const tr=tbody.querySelector(`tr[data-id="${id}"]`);if(tr)tbody.appendChild(tr);});
-        tbody.querySelectorAll('tr').forEach(tr=>{tr.style.outline='';tr.style.outlineOffset='';});
-        btn.style.cssText=''; btn.innerHTML='<i class="bi bi-clock-history" style="font-size:14px;"></i> Próximos a vencer';
-        _admSortActivo=false;
-    }
-}
+document.getElementById('btnAdminSortVence')?.addEventListener('click',toggleAdminSortVence);
+var _admSortActivo=false,_admOrdenOrig=null;
+function toggleAdminSortVence(){const tbody=document.getElementById('tbC'),btn=document.getElementById('btnAdminSortVence');if(!tbody||!btn)return;if(!_admSortActivo){_admOrdenOrig=[...tbody.querySelectorAll('tr')].map(tr=>tr.dataset.id);const rows=[...tbody.querySelectorAll('tr')];const hoy=new Date();hoy.setHours(0,0,0,0);const conV=rows.filter(tr=>tr.dataset.vence),sinV=rows.filter(tr=>!tr.dataset.vence);conV.sort((a,b)=>new Date(a.dataset.vence)-new Date(b.dataset.vence));[...conV,...sinV].forEach(tr=>tbody.appendChild(tr));rows.forEach(tr=>{if(!tr.dataset.vence)return;const d=Math.ceil((new Date(tr.dataset.vence+'T00:00:00')-hoy)/86400000);if(d<=0){tr.style.outline='2px solid #ef4444';tr.style.outlineOffset='-2px';}else if(d<=7){tr.style.outline='2px solid #f97316';tr.style.outlineOffset='-2px';}else if(d<=30){tr.style.outline='2px solid #f59e0b';tr.style.outlineOffset='-2px';}});btn.style.cssText='background:#fef3c7;border-color:#f59e0b;color:#92400e;';btn.innerHTML='<i class="bi bi-clock-history"></i> Ordenado <span style="font-size:10px;font-weight:700;background:#f59e0b;color:#fff;padding:1px 5px;border-radius:4px;margin-left:4px;">ACTIVO</span>';_admSortActivo=true;}else{if(_admOrdenOrig)_admOrdenOrig.forEach(id=>{const tr=tbody.querySelector(`tr[data-id="${id}"]`);if(tr)tbody.appendChild(tr);});tbody.querySelectorAll('tr').forEach(tr=>{tr.style.outline='';tr.style.outlineOffset='';});btn.style.cssText='';btn.innerHTML='<i class="bi bi-clock-history" style="font-size:14px;"></i> Próximos a vencer';_admSortActivo=false;}}
 
 // ── Post helper ───────────────────────────────────────────────────────────────
-function post(data){
-    const fd=new FormData(); Object.entries(data).forEach(([k,v])=>fd.append(k,v));
-    return fetch('/admin',{method:'POST',body:fd}).then(r=>r.json());
-}
+function post(data){const fd=new FormData();Object.entries(data).forEach(([k,v])=>fd.append(k,v));return fetch('/admin',{method:'POST',body:fd}).then(r=>r.json());}
 
 // ── Doble clic en tabla cotizaciones ─────────────────────────────────────────
-document.addEventListener('dblclick', e => {
-    const tr=e.target.closest('#tbC tr'); if(!tr) return;
-    try {
-        const cot=JSON.parse(tr.dataset.cot||'{}'); if(!cot.id) return;
-        window._adminCotId=cot.id;
-        const eBadge={pendiente:'badge-warning',enviada:'badge-info',aceptada:'badge-success',rechazada:'badge-danger',pagado:'badge-success'};
-        const eLabel={pendiente:'Pendiente',enviada:'Enviada',aceptada:'Aceptada',rechazada:'Rechazada',pagado:'Pagado'};
-        document.getElementById('adminCotFolio').textContent=cot.folio||'#'+cot.id;
-        document.getElementById('adminCotContent').innerHTML=`
-            <div style="display:flex;flex-direction:column;gap:12px;">
-                <div style="background:linear-gradient(135deg,#0f2940,#1a3a5c);border-radius:10px;padding:18px 22px;color:#fff;">
-                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-                        <div><div style="font-size:10px;opacity:.65;text-transform:uppercase;">Folio</div>
-                        <div style="font-family:'Courier New',monospace;font-size:17px;font-weight:800;">${cot.folio||'Sin folio'}</div></div>
-                        <span class="badge ${eBadge[cot.estado]||'badge-neutral'}" style="font-size:12px;padding:5px 12px;">${eLabel[cot.estado]||cot.estado}</span>
-                    </div>
-                    <div style="margin-top:10px;font-size:13px;opacity:.85;">📋 ${cot.compania} — ${cot.tipo_cobertura||''}</div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Cliente</div><div style="font-weight:600;">${cot.cliente_nombre}</div></div>
-                    <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Asesor</div><div style="font-weight:600;">${cot.agente_nombre}</div></div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Prima</div><div style="font-size:20px;font-weight:800;color:var(--success-color);">$${parseFloat(cot.precio||0).toLocaleString('es-MX',{minimumFractionDigits:2})}</div></div>
-                    <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Fecha</div><div style="font-weight:600;">${cot.fecha?new Date(cot.fecha+'T12:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—'}</div></div>
-                </div>
-            </div>`;
-        openModal('modalAdminVerCot');
-    } catch(_){}
+document.addEventListener('dblclick',e=>{
+    const tr=e.target.closest('#tbC tr');if(!tr)return;
+    try{const cot=JSON.parse(tr.dataset.cot||'{}');if(!cot.id)return;window._adminCotId=cot.id;
+    const eBadge={pendiente:'badge-warning',enviada:'badge-info',aceptada:'badge-success',rechazada:'badge-danger',pagado:'badge-success'};
+    const eLabel={pendiente:'Pendiente',enviada:'Enviada',aceptada:'Aceptada',rechazada:'Rechazada',pagado:'Pagado'};
+    document.getElementById('adminCotFolio').textContent=cot.folio||'#'+cot.id;
+    document.getElementById('adminCotContent').innerHTML=`<div style="display:flex;flex-direction:column;gap:12px;"><div style="background:linear-gradient(135deg,#0f2940,#1a3a5c);border-radius:10px;padding:18px 22px;color:#fff;"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"><div><div style="font-size:10px;opacity:.65;text-transform:uppercase;">Folio</div><div style="font-family:'Courier New',monospace;font-size:17px;font-weight:800;">${cot.folio||'Sin folio'}</div></div><span class="badge ${eBadge[cot.estado]||'badge-neutral'}" style="font-size:12px;padding:5px 12px;">${eLabel[cot.estado]||cot.estado}</span></div><div style="margin-top:10px;font-size:13px;opacity:.85;">📋 ${cot.compania} — ${cot.tipo_cobertura||''}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Cliente</div><div style="font-weight:600;">${cot.cliente_nombre}</div></div><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Asesor</div><div style="font-weight:600;">${cot.agente_nombre}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Prima</div><div style="font-size:20px;font-weight:800;color:var(--success-color);">$${parseFloat(cot.precio||0).toLocaleString('es-MX',{minimumFractionDigits:2})}</div></div><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Fecha</div><div style="font-weight:600;">${cot.fecha?new Date(cot.fecha+'T12:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—'}</div></div></div></div>`;
+    openModal('modalAdminVerCot');}catch(_){}
 });
 window._adminCotId=null;
 
-function abrirDocumentosAdmin(cotId){
-    if(!cotId) return;
-    document.getElementById('adminDocsFolio').textContent='...';
-    document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);">⏳ Cargando...</div>';
-    openModal('modalAdminDocs');
-    const fd=new FormData(); fd.append('accion','get_documentos_admin'); fd.append('cotizacion_id',cotId);
-    fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
-        if(!d.ok){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error al cargar documentos.</div>';return;}
-        document.getElementById('adminDocsFolio').textContent=d.folio||'#'+cotId;
-        if(!d.docs?.length){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:48px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-size:15px;font-weight:600;">Sin documentos adjuntos</div></div>';return;}
-        const cards=d.docs.map(doc=>{
-            const bi=doc.en_idrive?'<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">☁️ iDrive</span>':'<span style="font-size:10px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 8px;border-radius:99px;">Local</span>';
-            const th=doc.es_imagen&&doc.url_local
-                ?`<div style="height:110px;border-radius:7px;overflow:hidden;margin-bottom:10px;cursor:pointer;" data-href="${doc.url_local}"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`
-                :`<div style="height:110px;background:var(--bg-secondary);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;">${doc.es_pdf||doc.url_local?'📄':'📎'}</div>`;
-            const bd=doc.url_local?`<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="flex:1;text-align:center;font-size:11px;">⬇ Descargar</a>`:`<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;">${doc.en_idrive?'Solo en ☁️ iDrive':'No disponible'}</span>`;
-            return `<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;display:flex;flex-direction:column;">${th}<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">${doc.tipo_label}</div><div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px;" title="${doc.nombre_orig}">${doc.nombre_orig}</div><div style="display:flex;align-items:center;gap:8px;">${bi}${bd}</div></div>`;
-        }).join('');
-        document.getElementById('adminDocsContent').innerHTML=`<p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">${d.docs.length} documento${d.docs.length!==1?'s':''}</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;">${cards}</div>`;
-        document.querySelectorAll('#adminDocsContent [data-href]').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.href,'_blank')));
-    }).catch(()=>{document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error de conexión.</div>';});
-}
+function abrirDocumentosAdmin(cotId){if(!cotId)return;document.getElementById('adminDocsFolio').textContent='...';document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);">⏳ Cargando...</div>';openModal('modalAdminDocs');const fd=new FormData();fd.append('accion','get_documentos_admin');fd.append('cotizacion_id',cotId);fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(!d.ok){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error al cargar documentos.</div>';return;}document.getElementById('adminDocsFolio').textContent=d.folio||'#'+cotId;if(!d.docs?.length){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:48px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-size:15px;font-weight:600;">Sin documentos adjuntos</div></div>';return;}const cards=d.docs.map(doc=>{const bi=doc.en_idrive?'<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">☁️ iDrive</span>':'<span style="font-size:10px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 8px;border-radius:99px;">Local</span>';const th=doc.es_imagen&&doc.url_local?`<div style="height:110px;border-radius:7px;overflow:hidden;margin-bottom:10px;cursor:pointer;" data-href="${doc.url_local}"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`:`<div style="height:110px;background:var(--bg-secondary);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;">${doc.es_pdf||doc.url_local?'📄':'📎'}</div>`;const bd=doc.url_local?`<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="flex:1;text-align:center;font-size:11px;">⬇ Descargar</a>`:`<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;">${doc.en_idrive?'Solo en ☁️ iDrive':'No disponible'}</span>`;return `<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;display:flex;flex-direction:column;">${th}<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">${doc.tipo_label}</div><div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px;" title="${doc.nombre_orig}">${doc.nombre_orig}</div><div style="display:flex;align-items:center;gap:8px;">${bi}${bd}</div></div>`;}).join('');document.getElementById('adminDocsContent').innerHTML=`<p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">${d.docs.length} documento${d.docs.length!==1?'s':''}</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;">${cards}</div>`;document.querySelectorAll('#adminDocsContent [data-href]').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.href,'_blank')));}).catch(()=>{document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error de conexión.</div>';});}
 
 // ── Paginación clientes del asesor ────────────────────────────────────────────
-(function(){
-    const list=document.getElementById('clientesList'), pg=document.getElementById('pgClientes');
-    if(!list||!pg) return;
-    const PP=10; let cp=1;
-    function vis(){return[...list.querySelectorAll('.cb-row')].filter(r=>!r.classList.contains('cl-hidden'));}
-    function renderCl(){
-        const v=vis(), tp=Math.max(1,Math.ceil(v.length/PP));
-        if(cp>tp) cp=tp;
-        [...list.querySelectorAll('.cb-row')].forEach(r=>{
-            if(r.classList.contains('cl-hidden')){r.style.display='none';return;}
-            const i=v.indexOf(r); r.style.display=(i>=(cp-1)*PP&&i<cp*PP)?'':'none';
-        });
-        if(tp<=1){pg.innerHTML='';return;}
-        let h=pagBtn('‹',cp-1,'_cl',cp===1);
-        for(let i=1;i<=tp;i++){
-            if(i===1||i===tp||Math.abs(i-cp)<=1) h+=pagBtn(i,i,'_cl',false,i===cp);
-            else if(Math.abs(i-cp)===2) h+='<span class="page-btn" style="border:none;cursor:default;">…</span>';
-        }
-        h+=pagBtn('›',cp+1,'_cl',cp===tp);
-        pg.innerHTML=h;
-    }
-    window.goClPg=p=>{cp=Math.max(1,p);renderCl();};
-    window._renderCl=renderCl;
-    renderCl();
-})();
+(function(){const list=document.getElementById('clientesList'),pg=document.getElementById('pgClientes');if(!list||!pg)return;const PP=10;let cp=1;function vis(){return[...list.querySelectorAll('.cb-row')].filter(r=>!r.classList.contains('cl-hidden'));}function renderCl(){const v=vis(),tp=Math.max(1,Math.ceil(v.length/PP));if(cp>tp)cp=tp;[...list.querySelectorAll('.cb-row')].forEach(r=>{if(r.classList.contains('cl-hidden')){r.style.display='none';return;}const i=v.indexOf(r);r.style.display=(i>=(cp-1)*PP&&i<cp*PP)?'':'none';});if(tp<=1){pg.innerHTML='';return;}let h=pagBtn('‹',cp-1,'_cl',cp===1);for(let i=1;i<=tp;i++){if(i===1||i===tp||Math.abs(i-cp)<=1)h+=pagBtn(i,i,'_cl',false,i===cp);else if(Math.abs(i-cp)===2)h+='<span class="page-btn" style="border:none;cursor:default;">…</span>';}h+=pagBtn('›',cp+1,'_cl',cp===tp);pg.innerHTML=h;}window.goClPg=p=>{cp=Math.max(1,p);renderCl();};window._renderCl=renderCl;renderCl();})();
 
 // ── Paginación actividad ──────────────────────────────────────────────────────
-(function(){
-    const feed=document.getElementById('actFeed'), pag=document.getElementById('actPag');
-    if(!feed||!pag) return;
-    const items=[...feed.querySelectorAll('.act-item')], pp=10; let cp=1;
-    const pages=()=>Math.max(1,Math.ceil(items.length/pp));
-    function renderFeed(){
-        const p=pages(); items.forEach((el,i)=>{el.style.display=(i>=(cp-1)*pp&&i<cp*pp)?'':'none';});
-        if(p<=1){pag.innerHTML='';return;}
-        let h=pagBtn('‹',cp-1,'_act',cp===1);
-        for(let i=1;i<=p;i++) h+=pagBtn(i,i,'_act',false,i===cp);
-        h+=pagBtn('›',cp+1,'_act',cp===p);
-        pag.innerHTML=h;
-    }
-    window.aFeed=p=>{cp=Math.max(1,Math.min(p,pages()));renderFeed();};
-    renderFeed();
-})();
+(function(){const feed=document.getElementById('actFeed'),pag=document.getElementById('actPag');if(!feed||!pag)return;const items=[...feed.querySelectorAll('.act-item')],pp=10;let cp=1;const pages=()=>Math.max(1,Math.ceil(items.length/pp));function renderFeed(){const p=pages();items.forEach((el,i)=>{el.style.display=(i>=(cp-1)*pp&&i<cp*pp)?'':'none';});if(p<=1){pag.innerHTML='';return;}let h=pagBtn('‹',cp-1,'_act',cp===1);for(let i=1;i<=p;i++)h+=pagBtn(i,i,'_act',false,i===cp);h+=pagBtn('›',cp+1,'_act',cp===p);pag.innerHTML=h;}window.aFeed=p=>{cp=Math.max(1,Math.min(p,pages()));renderFeed();};renderFeed();})();
 
 // ── Inicializar paginación tablas principales ─────────────────────────────────
-document.addEventListener('DOMContentLoaded',()=>{
-    setupPag('tbA','pgA',10);
-    setupPag('tbC','pgC',20);
-});
+document.addEventListener('DOMContentLoaded',()=>{setupPag('tbA','pgA',10);setupPag('tbC','pgC',20);});
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
-function toast(msg,type='success'){
-    const c=document.getElementById('toastContainer'); if(!c) return;
-    const t=document.createElement('div'); t.className=`toast ${type}`;
-    t.innerHTML=`<div class="toast-icon">${type==='error'?'✗':'✓'}</div><div class="toast-message">${msg}</div><button class="toast-close" data-action="toast-close">&times;</button>`;
-    c.appendChild(t); setTimeout(()=>{t.classList.add('hiding');setTimeout(()=>t.remove(),300);},5000);
-}
+function toast(msg,type='success'){const c=document.getElementById('toastContainer');if(!c)return;const t=document.createElement('div');t.className=`toast ${type}`;t.innerHTML=`<div class="toast-icon">${type==='error'?'✗':'✓'}</div><div class="toast-message">${msg}</div><button class="toast-close" data-action="toast-close">&times;</button>`;c.appendChild(t);setTimeout(()=>{t.classList.add('hiding');setTimeout(()=>t.remove(),300);},5000);}
+// Alias para compatibilidad con código externo que use showToast
+function showToast(msg,type='success'){toast(msg,type);}
 </script>
 <?php if ($tab === 'emision'): ?>
 <script src="/js/emision.js" nonce="<?= $cspNonce ?>"></script>

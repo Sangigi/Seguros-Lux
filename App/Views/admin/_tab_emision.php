@@ -1,512 +1,569 @@
 <?php
 /**
- * _tab_emision.php — Tab "Emisión de Pólizas" para admin/index.php
+ * _tab_emision.php
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Pestaña de Emisión en el Panel Admin.
  *
- * Incluir dentro del bloque `elseif ($tab === 'emision')` en admin/index.php.
- * Variables disponibles del scope padre:
- *   $db, $agenteId, $isSuperadmin, $asesores, $cspNonce
+ * ROLES:
+ *  - coordinador / administrador : solo lectura de pólizas + sube comprobante de pago
+ *  - superadmin                  : igual que coordinador + puede ver todo
  *
- * Acciones AJAX manejadas en el switch del POST de admin/index.php:
- *   get_ventas_emitir, tomar_emision, marcar_checklist, subir_poliza_final,
- *   rechazar_docs, get_checklist
+ * El ASESOR tiene su propio flujo en su panel de cliente/cotización.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
-// ── Docs requeridos por ramo ──────────────────────────────────────────────────
-$DOCS_REQUERIDOS = [
-    'autos' => [
-        'ine'                 => 'INE',
-        'comprobante_dom'     => 'Comp. domicilio',
-        'tarjeta_circulacion' => 'T. circulación',
-        'foto_coche_1'        => 'Foto vehículo 1',
-        'foto_coche_2'        => 'Foto vehículo 2',
-        'foto_coche_3'        => 'Foto vehículo 3',
-        'comprobante_pago'    => 'Comp. de pago',
-    ],
-    'vida' => [
-        'ine'             => 'INE',
-        'comprobante_dom' => 'Comp. domicilio',
-        'comprobante_pago'=> 'Comp. de pago',
-    ],
-    'gastos_medicos' => [
-        'ine'             => 'INE',
-        'comprobante_dom' => 'Comp. domicilio',
-        'comprobante_pago'=> 'Comp. de pago',
-    ],
+use Database\Connection;
+
+$db = Connection::getConnection();
+
+// ── Paginación y filtros ──────────────────────────────────────────────────────
+$emiPage    = max(1, (int)($_GET['emi_pag'] ?? 1));
+$emiPP      = 15;
+$emiOffset  = ($emiPage - 1) * $emiPP;
+$emiSearch  = trim($_GET['emi_q'] ?? '');
+$emiEstado  = trim($_GET['emi_estado'] ?? '');
+$emiEstatoPago = trim($_GET['emi_pago'] ?? '');
+
+// Ramones disponibles + estados de póliza
+$RAMOS_LABEL = ['autos'=>'Autos','vida'=>'Vida','gastos_medicos'=>'Gastos Médicos'];
+$REQS = [
+    'autos'         => ['ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2','comprobante_pago'],
+    'vida'          => ['ine','comprobante_dom','comprobante_pago'],
+    'gastos_medicos'=> ['ine','comprobante_dom','comprobante_pago'],
+];
+$TIPO_LABEL = [
+    'ine'=>'INE','comprobante_dom'=>'Comp. domicilio','tarjeta_circulacion'=>'T. circulación',
+    'foto_coche_1'=>'Foto vehículo 1','foto_coche_2'=>'Foto vehículo 2','foto_coche_3'=>'Foto vehículo 3',
+    'foto_coche_4'=>'Foto vehículo 4','foto_coche_5'=>'Foto vehículo 5',
+    'comprobante_pago'=>'Comprobante de pago','constancia_fiscal'=>'Constancia fiscal',
+    'poliza'=>'Póliza (documento)',
+];
+$METODOS_PAGO = [
+    'efectivo'        => 'Efectivo',
+    'tarjeta_credito' => 'Tarjeta de crédito',
+    'tarjeta_debito'  => 'Tarjeta de débito',
+    'transferencia'   => 'Transferencia bancaria',
+    'msi_3'           => '3 MSI',
+    'msi_6'           => '6 MSI',
+    'msi_12'          => '12 MSI',
+    'msi_18'          => '18 MSI',
+    'deposito_banco'  => 'Depósito en banco',
 ];
 
-// ── Query: ventas por emitir (estado=pagado, emision_estado != emitida) ───────
-$stVentas = $db->query(
-    "SELECT c.id, c.folio, c.compania, c.tipo_cobertura, c.precio,
-            c.ramo, c.estado, c.emision_estado, c.emision_nota,
-            c.fecha, c.fecha_fin_vigencia, c.periodicidad,
-            c.emision_fecha,
-            CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',cl.apellido_materno) AS cliente_nombre,
-            cl.id AS cliente_id,
-            CONCAT(a.nombre,' ',a.apellido) AS agente_nombre,
-            a.id AS agente_id,
-            coord.nombre AS coord_nombre,
-            (SELECT COUNT(*) FROM cotizacion_archivos ca
-             WHERE ca.cotizacion_id = c.id AND ca.eliminado_en IS NULL) AS total_docs,
-            (SELECT COUNT(*) FROM cotizacion_archivos ca
-             WHERE ca.cotizacion_id = c.id
-               AND ca.tipo_documento = 'comprobante_pago'
-               AND ca.eliminado_en IS NULL) AS tiene_comprobante
-            ,
-            (SELECT COUNT(*) FROM cotizacion_pagos cp
-             WHERE cp.cotizacion_id = c.id
-               AND COALESCE(NULLIF(cp.ruta,''), NULLIF(cp.nombre_archivo,'')) IS NOT NULL) AS tiene_pago_registrado
-     FROM cotizaciones c
-     JOIN clientes cl ON cl.id = c.cliente_id
-     JOIN agentes a   ON a.id  = c.agente_id
-     LEFT JOIN agentes coord ON coord.id = c.emision_coordinador_id
-     WHERE (
-           c.estado = 'pagado'
-           OR (SELECT COUNT(*) FROM cotizacion_archivos ca
-               WHERE ca.cotizacion_id = c.id
-                 AND ca.tipo_documento = 'comprobante_pago'
-                 AND ca.eliminado_en IS NULL) > 0
-           OR (SELECT COUNT(*) FROM cotizacion_pagos cp
-               WHERE cp.cotizacion_id = c.id
-                 AND COALESCE(NULLIF(cp.ruta,''), NULLIF(cp.nombre_archivo,'')) IS NOT NULL) > 0
-     )
-       AND (c.emision_estado IS NULL OR c.emision_estado != 'emitida')
-     ORDER BY
-       CASE c.emision_estado WHEN 'en_proceso' THEN 0 ELSE 1 END,
-       c.fecha_creacion DESC
-     LIMIT 200"
-);
-$ventasEmitir = $stVentas->fetchAll(\PDO::FETCH_ASSOC);
+// ── Query de cotizaciones ─────────────────────────────────────────────────────
+$where = ["c.eliminado_en IS NULL"];
+$params = [];
 
-// ── Query: pólizas ya emitidas (para historial) ────────────────────────────────
-$stEmitidas = $db->query(
-    "SELECT c.id, c.folio, c.compania, c.precio, c.ramo,
-            c.emision_fecha, c.fecha_fin_vigencia, c.periodicidad,
-            CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre,
-            CONCAT(a.nombre,' ',a.apellido) AS agente_nombre,
-            p.numero_poliza, p.fecha_fin AS poliza_fin, p.estado AS poliza_estado,
-            DATEDIFF(COALESCE(p.fecha_fin, c.fecha_fin_vigencia), CURDATE()) AS dias_restantes
-     FROM cotizaciones c
-     JOIN clientes cl ON cl.id = c.cliente_id
-     JOIN agentes a   ON a.id  = c.agente_id
-     LEFT JOIN polizas p ON p.cotizacion_id = c.id AND p.eliminado_en IS NULL
-     WHERE c.emision_estado = 'emitida'
-     ORDER BY c.emision_fecha DESC
-     LIMIT 300"
-);
-$polizasEmitidas = $stEmitidas->fetchAll(\PDO::FETCH_ASSOC);
+if ($emiSearch !== '') {
+    $where[] = "(c.folio LIKE ? OR CONCAT(cl.nombre,' ',cl.apellido_paterno) LIKE ? OR c.compania LIKE ?)";
+    $like = "%{$emiSearch}%";
+    $params = array_merge($params, [$like, $like, $like]);
+}
+if ($emiEstado !== '') {
+    $where[] = "c.estado = ?";
+    $params[] = $emiEstado;
+}
+if ($emiEstatoPago !== '') {
+    $where[] = "c.estado_pago = ?";
+    $params[] = $emiEstatoPago;
+}
 
-// ── KPIs del tab ─────────────────────────────────────────────────────────────
-$kpiPendientes  = count(array_filter($ventasEmitir, fn($v) => ($v['emision_estado'] ?? '') !== 'en_proceso'));
-$kpiEnProceso   = count(array_filter($ventasEmitir, fn($v) => ($v['emision_estado'] ?? '') === 'en_proceso'));
-$kpiEmitidas    = count($polizasEmitidas);
+$whereSQL = implode(' AND ', $where);
 
-// Pólizas por vencer en 30 días
-$stVencer = $db->query(
+$stTotal = $db->prepare(
     "SELECT COUNT(*) FROM cotizaciones c
-     LEFT JOIN polizas p ON p.cotizacion_id = c.id AND p.eliminado_en IS NULL
-     WHERE c.emision_estado = 'emitida'
-       AND DATEDIFF(COALESCE(p.fecha_fin, c.fecha_fin_vigencia), CURDATE()) BETWEEN 1 AND 30"
+     JOIN clientes cl ON cl.id = c.cliente_id
+     WHERE {$whereSQL}"
 );
-$kpiPorVencer = (int)$stVencer->fetchColumn();
+$stTotal->execute($params);
+$emiTotal = (int)$stTotal->fetchColumn();
+$emiPages = max(1, ceil($emiTotal / $emiPP));
+
+$stCots = $db->prepare(
+    "SELECT c.id, c.folio, c.ramo, c.compania, c.tipo_cobertura,
+            c.estado, c.estado_pago, c.precio, c.periodicidad,
+            c.fecha, c.fecha_fin_vigencia,
+            CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',COALESCE(cl.apellido_materno,'')) AS cliente_nombre,
+            cl.id AS cliente_id,
+            CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre,
+            a.id AS asesor_id,
+            -- Cuenta archivos subidos (incluyendo póliza)
+            (SELECT COUNT(*) FROM cotizacion_archivos ca
+             WHERE ca.cotizacion_id = c.id AND ca.eliminado_en IS NULL) AS total_archivos,
+            -- ¿Tiene póliza subida?
+            (SELECT COUNT(*) FROM cotizacion_archivos ca
+             WHERE ca.cotizacion_id = c.id AND ca.tipo_documento = 'poliza' AND ca.eliminado_en IS NULL) AS tiene_poliza,
+            -- Comprobante de pago del coordinador
+            (SELECT id FROM cotizacion_comprobantes_pago cp
+             WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
+             ORDER BY cp.creado_en DESC LIMIT 1) AS comprobante_id
+     FROM cotizaciones c
+     JOIN clientes cl ON cl.id = c.cliente_id
+     JOIN agentes  a  ON a.id  = c.agente_id
+     WHERE {$whereSQL}
+     ORDER BY c.fecha DESC
+     LIMIT {$emiPP} OFFSET {$emiOffset}"
+);
+$stCots->execute($params);
+$emiCots = $stCots->fetchAll(\PDO::FETCH_ASSOC);
+
+// KPIs rápidos
+$kpiCots  = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE eliminado_en IS NULL")->fetchColumn();
+$kpiConPol= $db->query("SELECT COUNT(DISTINCT cotizacion_id) FROM cotizacion_archivos WHERE tipo_documento='poliza' AND eliminado_en IS NULL")->fetchColumn();
+$kpiPagConf = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='confirmado' AND eliminado_en IS NULL")->fetchColumn();
+$kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='pendiente' AND eliminado_en IS NULL")->fetchColumn();
 ?>
 
-<!-- ── KPIs ──────────────────────────────────────────────────────────────── -->
+<!-- ── KPIs ─────────────────────────────────────────────────────────────────── -->
 <div class="kpi4" style="margin-bottom:20px;">
-    <div class="stat-card warning">
-        <div class="stat-card-value"><?= $kpiPendientes ?></div>
-        <div class="stat-card-label">⏳ Por Emitir</div>
-    </div>
     <div class="stat-card info">
-        <div class="stat-card-value"><?= $kpiEnProceso ?></div>
-        <div class="stat-card-label">🔄 En Proceso</div>
+        <div class="stat-card-value"><?= $kpiCots ?></div>
+        <div class="stat-card-label">📋 Total cotizaciones</div>
     </div>
     <div class="stat-card success">
-        <div class="stat-card-value"><?= $kpiEmitidas ?></div>
-        <div class="stat-card-label">✅ Emitidas</div>
+        <div class="stat-card-value"><?= $kpiConPol ?></div>
+        <div class="stat-card-label">📄 Con póliza subida</div>
     </div>
-    <div class="stat-card <?= $kpiPorVencer > 0 ? 'danger' : 'accent' ?>">
-        <div class="stat-card-value"><?= $kpiPorVencer ?></div>
-        <div class="stat-card-label">🔔 Vencen en 30d</div>
+    <div class="stat-card success">
+        <div class="stat-card-value"><?= $kpiPagConf ?></div>
+        <div class="stat-card-label">✅ Pago confirmado</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-card-value"><?= $kpiPendPago ?></div>
+        <div class="stat-card-label">⏳ Pago pendiente</div>
     </div>
 </div>
 
-<!-- ── Sub-tabs ───────────────────────────────────────────────────────────── -->
-<div style="display:flex;gap:4px;margin-bottom:20px;border-bottom:2px solid var(--border-color);">
-    <?php foreach ([
-        ['pendientes', '⏳ Cola de Emisión', true],
-        ['historial',  '📁 Historial',       false],
-        ['vencer',     '🔔 Por Vencer',      false],
-    ] as [$st, $label, $def]): ?>
-    <button class="admin-tab emi-sub <?= $def ? 'active' : '' ?>"
-            data-sub="<?= $st ?>"
-            style="border:none;cursor:pointer;">
-        <?= $label ?>
-    </button>
-    <?php endforeach; ?>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     SUB-TAB: Cola de Emisión
-════════════════════════════════════════════════════════════════════════════ -->
-<div id="emiSub-pendientes" class="emi-panel">
-
-    <?php if (empty($ventasEmitir)): ?>
-    <div class="card" style="text-align:center;padding:48px;">
-        <div style="font-size:48px;margin-bottom:12px;">🎉</div>
-        <div style="font-size:16px;font-weight:700;color:var(--text-primary);">Sin ventas pendientes de emitir</div>
-        <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">Todas las pólizas pagadas han sido procesadas.</div>
+<!-- ── Toolbar filtros ────────────────────────────────────────────────────────── -->
+<form method="GET" action="/admin" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+    <input type="hidden" name="tab" value="emision">
+    <div class="search-bar" style="flex:1;min-width:220px;">
+        <span class="search-bar-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" name="emi_q" class="search-bar-input" placeholder="Folio, cliente, compañía…" value="<?= htmlspecialchars($emiSearch) ?>">
     </div>
-    <?php else: ?>
+    <select name="emi_estado" class="filter-select">
+        <option value="">Todos los estados</option>
+        <option value="pendiente"  <?= $emiEstado==='pendiente'  ?'selected':'' ?>>Pendiente</option>
+        <option value="enviada"    <?= $emiEstado==='enviada'    ?'selected':'' ?>>Enviada</option>
+        <option value="aceptada"   <?= $emiEstado==='aceptada'   ?'selected':'' ?>>Aceptada</option>
+        <option value="pagado"     <?= $emiEstado==='pagado'     ?'selected':'' ?>>Pagado</option>
+    </select>
+    <select name="emi_pago" class="filter-select">
+        <option value="">Todos los pagos</option>
+        <option value="pendiente"  <?= $emiEstatoPago==='pendiente'  ?'selected':'' ?>>⏳ Pago pendiente</option>
+        <option value="confirmado" <?= $emiEstatoPago==='confirmado' ?'selected':'' ?>>✅ Pago confirmado</option>
+    </select>
+    <button type="submit" class="btn btn-outline btn-sm">Filtrar</button>
+    <?php if ($emiSearch || $emiEstado || $emiEstatoPago): ?>
+    <a href="/admin?tab=emision" class="btn btn-ghost btn-sm">✕ Limpiar</a>
+    <?php endif; ?>
+</form>
 
-    <div class="toolbar" style="margin-bottom:14px;">
-        <div class="search-bar" style="flex:1;min-width:180px;">
-            <span class="search-bar-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-            <input type="text" id="srchEmi" class="search-bar-input" placeholder="Folio, cliente, compañía…">
-        </div>
-        <select id="flEmiRamo" class="filter-select">
-            <option value="">Todos los ramos</option>
-            <option value="autos">🚗 Autos</option>
-            <option value="vida">❤️ Vida</option>
-            <option value="gastos_medicos">🏥 GMM</option>
-        </select>
+<!-- ── Tabla ──────────────────────────────────────────────────────────────────── -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            Emisión de Pólizas
+            <span class="badge badge-neutral"><?= $emiTotal ?></span>
+        </h3>
+        <span style="font-size:12px;color:var(--text-muted);">Clic en una fila para ver documentos y gestionar pago</span>
     </div>
-
-    <div style="display:flex;flex-direction:column;gap:14px;" id="eListaColas">
-    <?php foreach ($ventasEmitir as $v):
-        $enProceso = ($v['emision_estado'] ?? '') === 'en_proceso';
-        $rechazado = ($v['emision_estado'] ?? '') === 'rechazada_docs';
-        $ramoLabel = ['autos'=>'🚗 Autos','vida'=>'❤️ Vida','gastos_medicos'=>'🏥 GMM'][$v['ramo']] ?? $v['ramo'];
-        $periLabel = ['mensual'=>'Mensual','trimestral'=>'Trimestral','semestral'=>'Semestral','anual'=>'Anual'][$v['periodicidad']] ?? '—';
-    ?>
-    <div class="card emi-card"
-         data-id="<?= $v['id'] ?>"
-         data-folio="<?= strtolower($v['folio'] ?? '') ?>"
-         data-cliente="<?= strtolower($v['cliente_nombre']) ?>"
-         data-compania="<?= strtolower($v['compania']) ?>"
-         data-ramo="<?= $v['ramo'] ?>"
-         style="border-left:4px solid <?= $enProceso ? 'var(--accent-color)' : ($rechazado ? 'var(--danger-color)' : 'var(--warning-color)') ?>;">
-        <div class="card-body" style="padding:16px 20px;">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
-
-                <!-- Info principal -->
-                <div style="flex:1;min-width:220px;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
-                        <?php if (!empty($v['folio'])): ?>
-                        <span class="fmono"><?= htmlspecialchars($v['folio']) ?></span>
-                        <?php endif; ?>
-                        <span class="badge <?= $enProceso ? 'badge-info' : ($rechazado ? 'badge-danger' : 'badge-warning') ?>">
-                            <?= $enProceso ? '🔄 En proceso' : ($rechazado ? '⚠️ Docs rechazados' : '⏳ Pendiente') ?>
-                        </span>
-                        <span style="font-size:11px;background:var(--bg-secondary);padding:2px 8px;border-radius:4px;"><?= $ramoLabel ?></span>
-                    </div>
-                    <div style="font-size:15px;font-weight:700;margin-bottom:4px;"><?= htmlspecialchars($v['cliente_nombre']) ?></div>
-                    <div style="font-size:12px;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap;">
-                        <span>🏢 <?= htmlspecialchars($v['compania']) ?> — <?= htmlspecialchars($v['tipo_cobertura']) ?></span>
-                        <span>👤 Asesor: <?= htmlspecialchars($v['agente_nombre']) ?></span>
-                        <span>💰 $<?= number_format((float)$v['precio'], 0) ?></span>
-                        <span>📅 <?= $periLabel ?></span>
-                    </div>
-                    <?php if ($rechazado && !empty($v['emision_nota'])): ?>
-                    <div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border-radius:6px;font-size:12px;color:#dc2626;">
-                        <strong>Motivo de rechazo:</strong> <?= htmlspecialchars($v['emision_nota']) ?>
-                    </div>
+    <div class="card-body" style="padding:0;overflow-x:auto;">
+        <table class="adt" id="tbEmision">
+            <thead>
+                <tr>
+                    <th>Folio</th>
+                    <th>Cliente / Asesor</th>
+                    <th>Ramo / Compañía</th>
+                    <th>Prima</th>
+                    <th>Estado</th>
+                    <th>Pago</th>
+                    <th>Póliza</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php
+            $BADGE_ESTADO = [
+                'pendiente' =>'badge-warning','enviada'=>'badge-info',
+                'aceptada'  =>'badge-success','rechazada'=>'badge-danger',
+                'pagado'    =>'badge-success',
+            ];
+            $BADGE_PAGO = [
+                'pendiente'  => ['badge-warning', '⏳ Pendiente'],
+                'confirmado' => ['badge-success',  '✅ Confirmado'],
+                'rechazado'  => ['badge-danger',   '✗ Rechazado'],
+            ];
+            foreach ($emiCots as $cot):
+                $bEst   = $BADGE_ESTADO[$cot['estado']] ?? 'badge-neutral';
+                [$bPago, $lPago] = $BADGE_PAGO[$cot['estado_pago'] ?? 'pendiente'] ?? ['badge-neutral','—'];
+                $tienePoliza = (int)$cot['tiene_poliza'] > 0;
+            ?>
+            <tr style="cursor:pointer;"
+                data-cot-id="<?= (int)$cot['id'] ?>"
+                data-asesor-id="<?= (int)$cot['asesor_id'] ?>"
+                data-folio="<?= htmlspecialchars($cot['folio'] ?? '') ?>"
+                data-comprobante-id="<?= (int)($cot['comprobante_id'] ?? 0) ?>"
+                data-estado-pago="<?= htmlspecialchars($cot['estado_pago'] ?? 'pendiente') ?>"
+                onclick="emiAbrirDetalle(this)">
+                <td>
+                    <?php if (!empty($cot['folio'])): ?>
+                    <span class="fmono"><?= htmlspecialchars($cot['folio']) ?></span>
+                    <?php else: ?><span style="color:var(--text-muted);">#<?= $cot['id'] ?></span><?php endif; ?>
+                </td>
+                <td>
+                    <div style="font-weight:600;font-size:13px;"><?= htmlspecialchars($cot['cliente_nombre']) ?></div>
+                    <div style="font-size:11px;color:var(--text-muted);"><?= htmlspecialchars($cot['asesor_nombre']) ?></div>
+                </td>
+                <td>
+                    <div><?= htmlspecialchars($RAMOS_LABEL[$cot['ramo']] ?? $cot['ramo']) ?></div>
+                    <div style="font-size:11px;color:var(--text-muted);"><?= htmlspecialchars($cot['compania']) ?></div>
+                </td>
+                <td><strong style="color:var(--success-color);">$<?= number_format((float)$cot['precio'], 0) ?></strong></td>
+                <td><span class="badge <?= $bEst ?>"><?= ucfirst($cot['estado']) ?></span></td>
+                <td><span class="badge <?= $bPago ?>"><?= $lPago ?></span></td>
+                <td>
+                    <?php if ($tienePoliza): ?>
+                    <span style="color:var(--success-color);font-weight:700;font-size:13px;">✓ Subida</span>
+                    <?php else: ?>
+                    <span style="color:var(--text-muted);font-size:12px;">Sin póliza</span>
                     <?php endif; ?>
-                    <!-- Mini checklist rápido -->
-                    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;" id="minick_<?= $v['id'] ?>">
-                        <span style="font-size:11px;color:var(--text-muted);">📎 <?= $v['total_docs'] ?> doc(s) subidos</span>
-                        <?php if (!(int)$v['tiene_comprobante'] && !(int)$v['tiene_pago_registrado'] && ($v['estado'] ?? '') !== 'pagado'): ?>
-                        <span style="font-size:11px;color:#dc2626;font-weight:600;">⚠ Sin comp. pago</span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Acciones -->
-                <div style="display:flex;flex-direction:column;gap:8px;min-width:180px;align-items:flex-end;">
-                    <button class="btn btn-outline btn-sm"
-                            style="width:100%;"
-                            data-action="emi-verChecklist"
-                            data-id="<?= $v['id'] ?>"
-                            data-folio="<?= htmlspecialchars($v['folio'] ?? '#'.$v['id'], ENT_QUOTES) ?>"
-                            data-ramo="<?= $v['ramo'] ?>">
-                        📋 Ver checklist
-                    </button>
-                    <?php if (!$enProceso): ?>
+                    <div style="font-size:10px;color:var(--text-muted);"><?= $cot['total_archivos'] ?> docs</div>
+                </td>
+                <td onclick="event.stopPropagation()">
+                    <?php if (!$tienePoliza): ?>
+                    <span style="font-size:11px;color:var(--text-muted);">Esperando asesor</span>
+                    <?php elseif (($cot['estado_pago'] ?? 'pendiente') !== 'confirmado'): ?>
                     <button class="btn btn-primary btn-sm"
-                            style="width:100%;"
-                            data-action="emi-tomarCaso"
-                            data-id="<?= $v['id'] ?>"
-                            data-folio="<?= htmlspecialchars($v['folio'] ?? '#'.$v['id'], ENT_QUOTES) ?>">
-                        🔄 Tomar caso
+                            onclick="emiAbrirComprobante(<?= $cot['id'] ?>, '<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>', <?= (int)$cot['asesor_id'] ?>)">
+                        💳 Registrar pago
                     </button>
                     <?php else: ?>
-                    <button class="btn btn-success btn-sm"
-                            style="width:100%;"
-                            data-action="emi-subirPoliza"
-                            data-id="<?= $v['id'] ?>"
-                            data-folio="<?= htmlspecialchars($v['folio'] ?? '#'.$v['id'], ENT_QUOTES) ?>"
-                            data-cliente="<?= htmlspecialchars($v['cliente_nombre'], ENT_QUOTES) ?>">
-                        ✅ Subir póliza final
-                    </button>
                     <button class="btn btn-ghost btn-sm"
-                            style="width:100%;color:var(--danger-color);"
-                            data-action="emi-rechazarDocs"
-                            data-id="<?= $v['id'] ?>"
-                            data-folio="<?= htmlspecialchars($v['folio'] ?? '#'.$v['id'], ENT_QUOTES) ?>">
-                        ⊗ Rechazar documentación
+                            onclick="emiVerComprobante(<?= (int)$cot['comprobante_id'] ?>)">
+                        👁 Ver comprobante
                     </button>
                     <?php endif; ?>
-                </div>
-            </div>
-        </div>
+                    <a href="/admin?accion=emi_pdf_checklist&cotizacion_id=<?= $cot['id'] ?>"
+                       target="_blank" class="btn btn-outline btn-sm" style="margin-top:4px;display:block;text-align:center;">
+                        📋 Checklist
+                    </a>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            <?php if (empty($emiCots)): ?>
+            <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">Sin cotizaciones que mostrar</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
     </div>
-    <?php endforeach; ?>
+
+    <!-- Paginación -->
+    <?php if ($emiPages > 1): ?>
+    <div style="display:flex;gap:4px;justify-content:center;padding:16px;flex-wrap:wrap;border-top:1px solid var(--border-color);">
+        <?php for ($p = 1; $p <= $emiPages; $p++):
+            $url = "/admin?tab=emision&emi_pag={$p}" .
+                   ($emiSearch  ? "&emi_q=".urlencode($emiSearch)   : '') .
+                   ($emiEstado  ? "&emi_estado=".urlencode($emiEstado) : '') .
+                   ($emiEstatoPago ? "&emi_pago=".urlencode($emiEstatoPago) : '');
+        ?>
+        <a href="<?= $url ?>"
+           class="page-btn <?= $p === $emiPage ? 'active' : '' ?>"><?= $p ?></a>
+        <?php endfor; ?>
     </div>
     <?php endif; ?>
-</div><!-- /emiSub-pendientes -->
+</div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     SUB-TAB: Historial de emitidas
-════════════════════════════════════════════════════════════════════════════ -->
-<div id="emiSub-historial" class="emi-panel" style="display:none;">
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">Pólizas Emitidas</h3>
-            <span style="font-size:11px;color:var(--text-muted);"><?= count($polizasEmitidas) ?> registros</span>
-        </div>
-        <div class="card-body" style="padding:0;">
-            <table class="adt">
-                <thead>
-                    <tr>
-                        <th>Folio</th>
-                        <th>Cliente</th>
-                        <th>Asesor</th>
-                        <th>Compañía</th>
-                        <th>No. Póliza</th>
-                        <th>Prima</th>
-                        <th>Vence</th>
-                        <th>Estado</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($polizasEmitidas as $p):
-                    $dias = (int)($p['dias_restantes'] ?? 9999);
-                    $vCol = $dias <= 7  ? '#dc2626' : ($dias <= 30 ? '#a16207' : 'var(--text-muted)');
-                    $estLabel = ['vigente'=>'✅ Vigente','por_vencer'=>'⚠️ Por vencer','vencida'=>'❌ Vencida','cancelada'=>'🚫 Cancelada'][$p['poliza_estado'] ?? 'vigente'] ?? '—';
-                    $estBadge = ['vigente'=>'badge-success','por_vencer'=>'badge-warning','vencida'=>'badge-danger','cancelada'=>'badge-neutral'][$p['poliza_estado'] ?? 'vigente'] ?? 'badge-neutral';
-                ?>
-                <tr>
-                    <td><?php if (!empty($p['folio'])): ?><span class="fmono"><?= htmlspecialchars($p['folio']) ?></span><?php else: ?>—<?php endif; ?></td>
-                    <td style="font-weight:600;"><?= htmlspecialchars($p['cliente_nombre']) ?></td>
-                    <td style="font-size:12px;color:var(--text-muted);"><?= htmlspecialchars($p['agente_nombre']) ?></td>
-                    <td><?= htmlspecialchars($p['compania']) ?></td>
-                    <td><code style="font-size:11px;"><?= htmlspecialchars($p['numero_poliza'] ?? '—') ?></code></td>
-                    <td><strong style="color:var(--success-color);">$<?= number_format((float)$p['precio'], 0) ?></strong></td>
-                    <td>
-                        <?php $fechaVence = $p['poliza_fin'] ?? $p['fecha_fin_vigencia'] ?? null; ?>
-                        <?php if ($fechaVence && $fechaVence !== '0000-00-00'): ?>
-                        <span style="font-size:12px;color:<?= $vCol ?>;font-weight:<?= $dias <= 30 ? '700' : '400' ?>;">
-                            <?= date('d/m/Y', strtotime($fechaVence)) ?>
-                        </span>
-                        <?php if ($dias <= 30 && $dias > 0): ?>
-                        <div style="font-size:10px;color:<?= $vCol ?>;"><?= $dias ?>d restantes</div>
-                        <?php elseif ($dias <= 0): ?>
-                        <div style="font-size:10px;color:#dc2626;font-weight:700;">VENCIDA</div>
-                        <?php endif; ?>
-                        <?php else: ?>—<?php endif; ?>
-                    </td>
-                    <td><span class="badge <?= $estBadge ?>" style="font-size:10px;"><?= $estLabel ?></span></td>
-                </tr>
-                <?php endforeach; ?>
-                <?php if (empty($polizasEmitidas)): ?>
-                <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">Sin pólizas emitidas aún</td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div><!-- /emiSub-historial -->
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     SUB-TAB: Por Vencer
-════════════════════════════════════════════════════════════════════════════ -->
-<div id="emiSub-vencer" class="emi-panel" style="display:none;">
-    <?php
-    $stPV = $db->query(
-        "SELECT c.id, c.folio, c.compania, c.precio, c.ramo,
-                c.fecha_fin_vigencia,
-                CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre,
-                cl.correo AS cliente_correo, cl.telefono AS cliente_tel,
-                CONCAT(a.nombre,' ',a.apellido) AS agente_nombre,
-                a.id AS agente_id,
-                p.numero_poliza,
-                COALESCE(p.fecha_fin, c.fecha_fin_vigencia) AS fecha_vence,
-                DATEDIFF(COALESCE(p.fecha_fin, c.fecha_fin_vigencia), CURDATE()) AS dias
-         FROM cotizaciones c
-         JOIN clientes cl ON cl.id = c.cliente_id
-         JOIN agentes a   ON a.id  = c.agente_id
-         LEFT JOIN polizas p ON p.cotizacion_id = c.id AND p.eliminado_en IS NULL
-         WHERE c.emision_estado = 'emitida'
-           AND DATEDIFF(COALESCE(p.fecha_fin, c.fecha_fin_vigencia), CURDATE()) BETWEEN 0 AND 30
-         ORDER BY dias ASC
-         LIMIT 100"
-    );
-    $porVencer = $stPV->fetchAll(\PDO::FETCH_ASSOC);
-    ?>
-    <?php if (empty($porVencer)): ?>
-    <div class="card" style="text-align:center;padding:48px;">
-        <div style="font-size:48px;margin-bottom:12px;">✅</div>
-        <div style="font-size:16px;font-weight:700;">Sin pólizas por vencer en los próximos 30 días</div>
-    </div>
-    <?php else: ?>
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">🔔 Pólizas que vencen en los próximos 30 días</h3>
-            <span style="font-size:11px;background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:99px;font-weight:700;"><?= count($porVencer) ?> alertas</span>
-        </div>
-        <div class="card-body" style="padding:0;">
-            <table class="adt">
-                <thead><tr><th>Días</th><th>Cliente</th><th>Asesor</th><th>Compañía</th><th>No. Póliza</th><th>Vence</th><th>Acción</th></tr></thead>
-                <tbody>
-                <?php foreach ($porVencer as $pv):
-                    $d = (int)$pv['dias'];
-                    $urgente = $d <= 7;
-                    $dCol = $urgente ? '#dc2626' : '#a16207';
-                    $dBg  = $urgente ? '#fee2e2' : '#fef3c7';
-                ?>
-                <tr style="<?= $urgente ? 'background:rgba(220,38,38,.04);' : '' ?>">
-                    <td>
-                        <div style="background:<?= $dBg ?>;color:<?= $dCol ?>;font-weight:800;font-size:16px;width:42px;height:42px;border-radius:8px;display:flex;align-items:center;justify-content:center;">
-                            <?= $d <= 0 ? '0' : $d ?>
-                        </div>
-                    </td>
-                    <td>
-                        <div style="font-weight:600;"><?= htmlspecialchars($pv['cliente_nombre']) ?></div>
-                        <div style="font-size:11px;color:var(--text-muted);"><?= htmlspecialchars($pv['cliente_correo'] ?? '') ?></div>
-                    </td>
-                    <td style="font-size:12px;color:var(--text-muted);"><?= htmlspecialchars($pv['agente_nombre']) ?></td>
-                    <td><?= htmlspecialchars($pv['compania']) ?></td>
-                    <td><code style="font-size:11px;"><?= htmlspecialchars($pv['numero_poliza'] ?? '—') ?></code></td>
-                    <td style="font-weight:700;color:<?= $dCol ?>;font-size:13px;"><?= date('d/m/Y', strtotime($pv['fecha_vence'])) ?></td>
-                    <td>
-                        <button class="btn btn-sm btn-outline"
-                                style="white-space:nowrap;"
-                                data-action="emi-alertarRenovacion"
-                                data-id="<?= $pv['id'] ?>"
-                                data-agente="<?= $pv['agente_id'] ?>"
-                                data-folio="<?= htmlspecialchars($pv['folio'] ?? '#'.$pv['id'], ENT_QUOTES) ?>">
-                            📨 Notificar asesor
-                        </button>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <?php endif; ?>
-</div><!-- /emiSub-vencer -->
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     MODALES
-════════════════════════════════════════════════════════════════════════════ -->
-
-<!-- Modal: Checklist de Documentos -->
-<div class="modal-overlay" id="modalEmiChecklist">
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL: Detalle de cotización (solo lectura para coordinador)
+══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalEmiDetalle">
     <div class="modal modal-lg">
         <div class="modal-header">
-            <h3 class="modal-title">📋 Checklist — <span id="eckFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
-            <button class="modal-close" data-close="modalEmiChecklist">&times;</button>
+            <h3 class="modal-title">📄 Expediente — <span id="emiDetalleFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+            <button class="modal-close" data-close="modalEmiDetalle">&times;</button>
         </div>
-        <div class="modal-body" id="eckBody" style="min-height:200px;">
-            <div style="text-align:center;padding:40px;color:var(--text-muted);">⏳ Cargando…</div>
+        <div class="modal-body" id="emiDetalleBody" style="min-height:200px;">
+            <div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-outline" data-close="modalEmiChecklist">Cerrar</button>
-            <button class="btn btn-ghost" id="eckBtnDescargar" style="display:none;" data-action="emi-descargarChecklist">📄 Descargar resumen PDF</button>
+            <button class="btn btn-outline" data-close="modalEmiDetalle">Cerrar</button>
+            <button class="btn btn-primary" id="btnEmiRegistrarPagoDesdeDetalle" style="display:none;">
+                💳 Registrar pago
+            </button>
         </div>
     </div>
 </div>
 
-<!-- Modal: Subir Póliza Final -->
-<div class="modal-overlay" id="modalEmiSubirPoliza">
-    <div class="modal">
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL: Registrar comprobante de pago
+══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalEmiComprobante">
+    <div class="modal" style="max-width:560px;">
         <div class="modal-header">
-            <h3 class="modal-title">✅ Subir Póliza Final — <span id="spFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
-            <button class="modal-close" data-close="modalEmiSubirPoliza">&times;</button>
+            <h3 class="modal-title">💳 Registrar pago — <span id="emiCompFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+            <button class="modal-close" data-close="modalEmiComprobante">&times;</button>
         </div>
         <div class="modal-body">
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
-                Al subir la póliza, el caso quedará marcado como <strong>Emitido</strong> y se notificará al asesor.
-            </p>
-            <input type="hidden" id="spCotId">
-            <div class="form-group">
-                <label class="form-label required">Número de Póliza (de la aseguradora)</label>
-                <input type="text" class="form-input" id="spNumero" placeholder="Ej: GNP-2026-001234">
+            <input type="hidden" id="emiCompCotizacionId">
+            <input type="hidden" id="emiCompAsesorId">
+
+            <!-- Info visual -->
+            <div id="emiCompInfoBanner" style="background:var(--info-light);border:1px solid var(--info-color,#3b82f6);border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:13px;display:none;">
+                <strong>Cliente:</strong> <span id="emiCompCliente"></span>
             </div>
+
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label required">Fecha de Inicio</label>
-                    <input type="date" class="form-input" id="spFechaInicio">
+                    <label class="form-label required">Método de pago</label>
+                    <select class="form-select" id="emiCompMetodo">
+                        <?php foreach ($METODOS_PAGO as $val => $lbl): ?>
+                        <option value="<?= $val ?>"><?= $lbl ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group" id="grpBanco" style="display:none;">
+                    <label class="form-label">Banco</label>
+                    <input type="text" class="form-input" id="emiCompBanco" placeholder="Ej. BBVA, HSBC, Banamex…">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Monto cobrado ($)</label>
+                    <input type="number" step="0.01" min="0" class="form-input" id="emiCompMonto" placeholder="0.00">
                 </div>
                 <div class="form-group">
-                    <label class="form-label required">Fecha de Fin / Vencimiento</label>
-                    <input type="date" class="form-input" id="spFechaFin">
+                    <label class="form-label">Referencia / Folio</label>
+                    <input type="text" class="form-input" id="emiCompReferencia" placeholder="Número de autorización…">
                 </div>
             </div>
+
             <div class="form-group">
-                <label class="form-label required">Periodicidad de Pago</label>
-                <select class="form-select" id="spPeriodicidad">
-                    <option value="mensual">Mensual</option>
-                    <option value="trimestral">Trimestral</option>
-                    <option value="semestral">Semestral</option>
-                    <option value="anual" selected>Anual</option>
-                </select>
+                <label class="form-label">Comprobante (archivo)</label>
+                <input type="file" class="form-input" id="emiCompArchivo"
+                       accept=".pdf,.jpg,.jpeg,.png,.webp"
+                       style="padding:6px;">
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">PDF o imagen. Opcional si el pago fue en efectivo.</div>
             </div>
+
             <div class="form-group">
-                <label class="form-label">Archivo de Póliza (PDF/imagen)</label>
-                <div id="spDropZone"
-                     style="border:2px dashed var(--border-color);border-radius:8px;padding:28px;text-align:center;cursor:pointer;transition:border-color .15s;"
-                     data-action="emi-clickDropzone">
-                    <div style="font-size:28px;margin-bottom:6px;">📄</div>
-                    <div style="font-size:13px;font-weight:600;">Haz clic o arrastra el archivo aquí</div>
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">PDF, JPG, PNG — máx 10 MB</div>
+                <label class="form-label">Comentarios</label>
+                <textarea class="form-input" id="emiCompComentarios" rows="3"
+                          placeholder="Detalles adicionales del cobro, acuerdos, notas…"
+                          style="resize:vertical;"></textarea>
+            </div>
+
+            <!-- Progress de subida -->
+            <div id="emiCompProgress" style="display:none;margin-top:8px;">
+                <div style="background:var(--border-color);border-radius:99px;height:6px;overflow:hidden;">
+                    <div id="emiCompProgressBar" style="height:100%;background:var(--accent-color);width:0%;transition:width .3s;border-radius:99px;"></div>
                 </div>
-                <input type="file" id="spFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;">
-                <div id="spFileName" style="margin-top:8px;font-size:12px;color:var(--accent-color);display:none;"></div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Notas adicionales</label>
-                <textarea class="form-textarea" id="spNotas" rows="2" placeholder="Observaciones de la póliza…"></textarea>
+                <div id="emiCompProgressLabel" style="font-size:11px;color:var(--text-muted);margin-top:4px;text-align:center;">Subiendo…</div>
             </div>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-outline" data-close="modalEmiSubirPoliza">Cancelar</button>
-            <button class="btn btn-success" id="spBtnSubir" data-action="emi-confirmarSubirPoliza">✅ Confirmar emisión</button>
+            <button class="btn btn-outline" data-close="modalEmiComprobante">Cancelar</button>
+            <button class="btn btn-primary" id="btnEmiGuardarComprobante">💾 Confirmar pago</button>
         </div>
     </div>
 </div>
 
-<!-- Modal: Rechazar documentación -->
-<div class="modal-overlay" id="modalEmiRechazar">
-    <div class="modal">
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL: Ver comprobante existente
+══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalEmiVerComp">
+    <div class="modal" style="max-width:480px;">
         <div class="modal-header">
-            <h3 class="modal-title">⊗ Rechazar Documentación — <span id="rdFolio" style="font-family:'Courier New',monospace;color:var(--danger-color);"></span></h3>
-            <button class="modal-close" data-close="modalEmiRechazar">&times;</button>
+            <h3 class="modal-title">✅ Comprobante de pago</h3>
+            <button class="modal-close" data-close="modalEmiVerComp">&times;</button>
         </div>
-        <div class="modal-body">
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
-                El asesor recibirá una notificación con el motivo del rechazo para que corrija los documentos.
-            </p>
-            <input type="hidden" id="rdCotId">
-            <div class="form-group">
-                <label class="form-label required">Motivo del rechazo</label>
-                <textarea class="form-textarea" id="rdMotivo" rows="3"
-                          placeholder="Ej: INE borrosa, falta comprobante de domicilio reciente…"></textarea>
-            </div>
+        <div class="modal-body" id="emiVerCompBody">
+            <div style="text-align:center;padding:32px;color:var(--text-muted);">Cargando…</div>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-outline" data-close="modalEmiRechazar">Cancelar</button>
-            <button class="btn btn-danger" data-action="emi-confirmarRechazo">⊗ Rechazar y notificar</button>
+            <button class="btn btn-outline" data-close="modalEmiVerComp">Cerrar</button>
         </div>
     </div>
 </div>
+
+<script nonce="<?= $cspNonce ?>">
+(function () {
+    // ── Método pago → mostrar banco ───────────────────────────────────────────
+    document.getElementById('emiCompMetodo')?.addEventListener('change', function () {
+        const necesitaBanco = ['tarjeta_credito','tarjeta_debito','transferencia','msi_3','msi_6','msi_12','msi_18','deposito_banco'].includes(this.value);
+        document.getElementById('grpBanco').style.display = necesitaBanco ? '' : 'none';
+    });
+
+    // ── Abrir detalle de cotización ───────────────────────────────────────────
+    window.emiAbrirDetalle = function (tr) {
+        const cotId  = tr.dataset.cotId;
+        const folio  = tr.dataset.folio || ('#' + cotId);
+        const asesorId = tr.dataset.asesorId;
+        const pagado = tr.dataset.estadoPago === 'confirmado';
+        const compId = parseInt(tr.dataset.comprobanteId || '0');
+
+        document.getElementById('emiDetalleFolio').textContent = folio;
+        document.getElementById('emiDetalleBody').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>';
+
+        // Botón pago desde modal
+        const btnPago = document.getElementById('btnEmiRegistrarPagoDesdeDetalle');
+        if (pagado) {
+            btnPago.style.display = 'none';
+        } else {
+            btnPago.style.display = '';
+            btnPago.onclick = () => {
+                closeModal('modalEmiDetalle');
+                emiAbrirComprobante(cotId, folio, asesorId);
+            };
+        }
+
+        openModal('modalEmiDetalle');
+
+        // Cargar docs
+        const fd = new FormData();
+        fd.append('accion', 'emi_get_docs');
+        fd.append('cotizacion_id', cotId);
+        fetch('/admin', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) {
+                    document.getElementById('emiDetalleBody').innerHTML = '<p style="color:var(--danger-color);text-align:center;padding:24px;">Error al cargar documentos.</p>';
+                    return;
+                }
+                const tipoLabel = <?= json_encode($TIPO_LABEL) ?>;
+                let html = `<div style="margin-bottom:16px;">
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+                        <span class="badge badge-info">Ramo: ${d.ramo || '—'}</span>
+                        <span class="badge badge-neutral">Compañía: ${d.compania || '—'}</span>
+                        <span class="badge badge-neutral">Cobertura: ${d.tipo_cobertura || '—'}</span>
+                    </div>
+                    <div style="font-size:13px;color:var(--text-secondary);">
+                        👤 <strong>${d.cliente_nombre}</strong> &nbsp;·&nbsp; Asesor: ${d.asesor_nombre}
+                    </div>
+                </div>`;
+                if (!d.docs || !d.docs.length) {
+                    html += '<p style="color:var(--text-muted);text-align:center;padding:24px;">Sin documentos subidos por el asesor aún.</p>';
+                } else {
+                    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">';
+                    d.docs.forEach(doc => {
+                        const thumb = doc.es_imagen && doc.url_local
+                            ? `<div style="height:90px;border-radius:6px;overflow:hidden;margin-bottom:8px;cursor:pointer;" onclick="window.open('${doc.url_local}','_blank')"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`
+                            : `<div style="height:90px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;">${doc.es_pdf ? '📄' : '📎'}</div>`;
+                        const dl = doc.url_local
+                            ? `<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="width:100%;text-align:center;font-size:11px;">⬇ Descargar</a>`
+                            : `<span style="font-size:11px;color:var(--text-muted);">No disponible</span>`;
+                        html += `<div style="background:var(--bg-secondary);border-radius:8px;padding:12px;">
+                            ${thumb}
+                            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;margin-bottom:3px;">${tipoLabel[doc.tipo] || doc.tipo}</div>
+                            <div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px;" title="${doc.nombre_orig}">${doc.nombre_orig}</div>
+                            ${dl}
+                        </div>`;
+                    });
+                    html += '</div>';
+                }
+                document.getElementById('emiDetalleBody').innerHTML = html;
+            })
+            .catch(() => {
+                document.getElementById('emiDetalleBody').innerHTML = '<p style="color:var(--danger-color);text-align:center;padding:24px;">Error de conexión.</p>';
+            });
+    };
+
+    // ── Abrir modal registrar comprobante ─────────────────────────────────────
+    window.emiAbrirComprobante = function (cotId, folio, asesorId) {
+        document.getElementById('emiCompCotizacionId').value = cotId;
+        document.getElementById('emiCompAsesorId').value     = asesorId;
+        document.getElementById('emiCompFolio').textContent  = folio;
+        document.getElementById('emiCompMetodo').value       = 'efectivo';
+        document.getElementById('emiCompBanco').value        = '';
+        document.getElementById('emiCompMonto').value        = '';
+        document.getElementById('emiCompReferencia').value   = '';
+        document.getElementById('emiCompComentarios').value  = '';
+        document.getElementById('emiCompArchivo').value      = '';
+        document.getElementById('emiCompProgress').style.display = 'none';
+        document.getElementById('grpBanco').style.display   = 'none';
+        openModal('modalEmiComprobante');
+    };
+
+    // ── Guardar comprobante ───────────────────────────────────────────────────
+    document.getElementById('btnEmiGuardarComprobante')?.addEventListener('click', async function () {
+        const btn    = this;
+        const cotId  = document.getElementById('emiCompCotizacionId').value;
+        const asesor = document.getElementById('emiCompAsesorId').value;
+        const metodo = document.getElementById('emiCompMetodo').value;
+        const monto  = document.getElementById('emiCompMonto').value;
+
+        if (!cotId || !metodo) { if(typeof toast==='function') toast('Completa los campos requeridos', 'error'); return; }
+
+        btn.disabled = true; btn.textContent = 'Guardando…';
+        document.getElementById('emiCompProgress').style.display = '';
+
+        const fd = new FormData();
+        fd.append('accion',        'emi_registrar_comprobante');
+        fd.append('cotizacion_id', cotId);
+        fd.append('asesor_id',     asesor);
+        fd.append('metodo_pago',   metodo);
+        fd.append('banco',         document.getElementById('emiCompBanco').value.trim());
+        fd.append('monto',         monto);
+        fd.append('referencia',    document.getElementById('emiCompReferencia').value.trim());
+        fd.append('comentarios',   document.getElementById('emiCompComentarios').value.trim());
+
+        const archivo = document.getElementById('emiCompArchivo').files[0];
+        if (archivo) fd.append('comprobante', archivo);
+
+        try {
+            const r = await fetch('/admin', { method: 'POST', body: fd });
+            const d = await r.json();
+            btn.disabled = false; btn.textContent = '💾 Confirmar pago';
+            document.getElementById('emiCompProgress').style.display = 'none';
+            if (d.ok) {
+                if (typeof toast === 'function') toast('Pago confirmado. Notificación enviada al asesor.', 'success');
+                closeModal('modalEmiComprobante');
+                setTimeout(() => location.reload(), 1400);
+            } else {
+                if (typeof toast === 'function') toast(d.msg || 'Error al guardar', 'error');
+            }
+        } catch {
+            btn.disabled = false; btn.textContent = '💾 Confirmar pago';
+            document.getElementById('emiCompProgress').style.display = 'none';
+            if (typeof toast === 'function') toast('Error de conexión', 'error');
+        }
+    });
+
+    // ── Ver comprobante existente ─────────────────────────────────────────────
+    window.emiVerComprobante = function (compId) {
+        if (!compId) return;
+        document.getElementById('emiVerCompBody').innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-muted);">Cargando…</div>';
+        openModal('modalEmiVerComp');
+        const fd = new FormData();
+        fd.append('accion', 'emi_get_comprobante');
+        fd.append('comprobante_id', compId);
+        fetch('/admin', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) { document.getElementById('emiVerCompBody').innerHTML = '<p style="color:var(--danger-color);text-align:center;">Error al cargar.</p>'; return; }
+                const c = d.comprobante;
+                const metodos = <?= json_encode($METODOS_PAGO) ?>;
+                document.getElementById('emiVerCompBody').innerHTML = `
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div style="background:var(--bg-secondary);border-radius:8px;padding:14px;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                                <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Método</div>
+                                     <div style="font-weight:600;">${metodos[c.metodo_pago] || c.metodo_pago}</div></div>
+                                <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Monto</div>
+                                     <div style="font-weight:700;font-size:16px;color:var(--success-color);">${c.monto ? '$'+parseFloat(c.monto).toLocaleString('es-MX',{minimumFractionDigits:2}) : '—'}</div></div>
+                                ${c.banco ? `<div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Banco</div><div>${c.banco}</div></div>` : ''}
+                                ${c.referencia ? `<div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Referencia</div><div style="font-family:monospace;">${c.referencia}</div></div>` : ''}
+                            </div>
+                        </div>
+                        ${c.comentarios ? `<div style="background:var(--bg-secondary);border-radius:8px;padding:12px;font-size:13px;color:var(--text-secondary);">💬 ${c.comentarios}</div>` : ''}
+                        ${c.url_local ? `<a href="${c.url_local}" target="_blank" class="btn btn-outline" style="text-align:center;">📄 Ver archivo del comprobante</a>` : ''}
+                        <div style="font-size:11px;color:var(--text-muted);text-align:right;">Registrado: ${c.creado_en}</div>
+                    </div>`;
+            })
+            .catch(() => { document.getElementById('emiVerCompBody').innerHTML = '<p style="color:var(--danger-color);text-align:center;">Error de conexión.</p>'; });
+    };
+
+    // Cerrar modales al clic overlay (delegado global en admin/index.php)
+})();
+</script>
