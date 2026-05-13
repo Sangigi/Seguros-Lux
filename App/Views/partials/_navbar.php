@@ -220,7 +220,7 @@ if (!in_array($_agenteRol ?? '', ['coordinador', 'administrador', 'superadmin'],
     display: none;
     position: fixed;
     top: 14px;
-    left: 14px;
+    right: 14px;
     z-index: 200;
     width: 40px;
     height: 40px;
