@@ -458,7 +458,7 @@ button.sidebar-link {
         </a>
         <?php endforeach; ?>
 
-        <div class="sidebar-section-label" style="margin-top:8px;">Mi trabajo (Asesor)</div>
+        <!-- <div class="sidebar-section-label" style="margin-top:8px;">Mi trabajo (Asesor)</div>
         <a href="/dashboard" class="sidebar-link <?php echo _navActive('/dashboard', $_uri); ?>">
             <i class="bi bi-grid-1x2-fill"></i>
             Dashboard
@@ -474,7 +474,7 @@ button.sidebar-link {
         <a href="/citas" class="sidebar-link <?php echo _navActive('/citas', $_uri); ?>">
             <i class="bi bi-calendar2-check-fill"></i>
             Citas
-        </a>
+        </a> -->
 
         <!-- Notificaciones para superadmin también -->
         <button type="button"
