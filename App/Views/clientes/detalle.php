@@ -16,6 +16,18 @@ $citaModel       = new CitaModel();
 $cotizacionModel = new CotizacionModel();
 $historialModel  = new HistorialModel();
 
+$MARCAS_VEHICULO = [
+    'ACURA','ALFA ROMEO','AUDI','BMW','BUICK','CADILLAC','CHEVROLET','CHRYSLER',
+    'CUPRA','DACIA','DODGE','DS','FERRARI','FIAT','FORD','GMC','HONDA','HYUNDAI',
+    'INFINITI','JAGUAR','JEEP','KIA','LAMBORGHINI','LAND ROVER','LEXUS','LINCOLN',
+    'LOTUS','MASERATI','MAZDA','MERCEDES-BENZ','MINI','MITSUBISHI','NISSAN','OPEL',
+    'PEUGEOT','PORSCHE','RAM','RENAULT','ROLLS-ROYCE','SEAT','SKODA','SMART',
+    'SUBARU','SUZUKI','TESLA','TOYOTA','VOLKSWAGEN','VOLVO',
+    // Marcas populares en México
+    'BAIC','BYD','CHANGAN','CHIREY','GREAT WALL','HAVAL','JAC','JETOUR','MG',
+    'OTRA',
+];
+
 // Cargar modelos de pólizas y notificaciones (si existen)
 $polizaModel = null;
 try {
@@ -519,17 +531,148 @@ $pageTitle=$nombreCompleto;
                         <?php $ramoCliente = $cliente['ramo'] ?? 'autos'; ?>
 
                         <?php if ($ramoCliente === 'autos'): ?>
-                        <div class="section-subtitle">Vehículo</div>
-                        <div class="info-grid">
-                            <div class="info-item"><span class="info-label">Marca</span><span class="info-value"><?php echo ucfirst($cliente['marca']??'—'); ?></span></div>
-                            <div class="info-item"><span class="info-label">Modelo</span><span class="info-value"><?php echo $cliente['modelo']??'—'; ?></span></div>
-                            <div class="info-item"><span class="info-label">Año</span><span class="info-value"><?php echo $cliente['anio_vehiculo']??'—'; ?></span></div>
-                            <div class="info-item"><span class="info-label">Tipo</span><span class="info-value"><?php echo ucfirst($cliente['tipo_vehiculo']??'—'); ?></span></div>
-                            <div class="info-item"><span class="info-label">Asegurado</span>
-                                <span class="info-value"><span class="badge <?php echo $cliente['asegurado']?'badge-success':'badge-danger'; ?>"><?php echo $cliente['asegurado']?'Sí':'No'; ?></span></span></div>
-                            <div class="info-item"><span class="info-label">Intención de compra</span>
-                                <span class="info-value"><?php echo ucwords(str_replace('_',' ',$cliente['tiempo_compra']??'—')); ?></span></div>
-                        </div>
+                        <!-- ── Vehículo del cliente ──────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <h3 class="card-title">🚗 Vehículo</h3>
+        <button type="button" class="btn btn-outline btn-sm" id="btnEditarVehiculo">✏️ Editar</button>
+    </div>
+    <div class="card-body" id="vehiculoViewMode">
+        <?php if (!empty($vehiculo)): ?>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
+            <?php
+            $campos = [
+                ['Marca',        $vehiculo['marca'] ?? '—'],
+                ['Submarca',     $vehiculo['submarca'] ?? '—'],
+                ['Versión',      $vehiculo['version'] ?? '—'],
+                ['Modelo (año)', $vehiculo['modelo'] ?? '—'],
+                ['Color',        $vehiculo['color'] ?? '—'],
+                ['Placas',       $vehiculo['placas'] ?? '—'],
+                ['VIN / Serie',  $vehiculo['vin'] ?? '—'],
+                ['Tipo',         $vehiculo['tipo'] ?? '—'],
+            ];
+            foreach ($campos as [$lbl, $val]): ?>
+            <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;">
+                <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;"><?= $lbl ?></div>
+                <div style="font-weight:600;font-size:13px;"><?= htmlspecialchars($val) ?></div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php if (!empty($vehiculo['tiene_adaptaciones'])): ?>
+        <div style="margin-top:12px;background:var(--info-light);border-radius:8px;padding:12px;font-size:13px;">
+            <strong>🔧 Adaptaciones / Modificaciones:</strong><br>
+            <?= nl2br(htmlspecialchars($vehiculo['detalle_adaptaciones'] ?? '—')) ?>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($vehiculo['info_adicional'])): ?>
+        <div style="margin-top:8px;background:var(--bg-secondary);border-radius:8px;padding:12px;font-size:12px;color:var(--text-secondary);">
+            📝 <?= nl2br(htmlspecialchars($vehiculo['info_adicional'])) ?>
+        </div>
+        <?php endif; ?>
+        <?php else: ?>
+        <p style="color:var(--text-muted);font-size:13px;">Sin vehículo registrado.</p>
+        <?php endif; ?>
+    </div>
+ 
+    <!-- Modo edición -->
+    <div id="vehiculoEditMode" style="display:none;padding:16px 20px;">
+        <input type="hidden" name="vehiculo_id" value="<?= (int)($vehiculo['id'] ?? 0) ?>">
+ 
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Marca</label>
+                <select class="form-select" name="vehiculo_marca" id="inpMarca">
+                    <option value="">Selecciona marca…</option>
+                    <?php foreach ($MARCAS_VEHICULO as $m): ?>
+                    <option value="<?= $m ?>" <?= ($vehiculo['marca'] ?? '') === $m ? 'selected' : '' ?>><?= $m ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Submarca / Línea</label>
+                <input type="text" class="form-input" name="vehiculo_submarca" id="inpSubmarca"
+                       value="<?= htmlspecialchars($vehiculo['submarca'] ?? '') ?>"
+                       placeholder="Ej. Jetta, Tiguan, Civic…">
+            </div>
+        </div>
+ 
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Versión / Trim</label>
+                <input type="text" class="form-input" name="vehiculo_version" id="inpVersion"
+                       value="<?= htmlspecialchars($vehiculo['version'] ?? '') ?>"
+                       placeholder="Ej. SE, Sport, Highline, 1.4T…">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Modelo (año)</label>
+                <input type="number" class="form-input" name="vehiculo_modelo"
+                       value="<?= htmlspecialchars($vehiculo['modelo'] ?? '') ?>"
+                       min="1990" max="<?= date('Y') + 1 ?>" placeholder="<?= date('Y') ?>">
+            </div>
+        </div>
+ 
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Color</label>
+                <input type="text" class="form-input" name="vehiculo_color"
+                       value="<?= htmlspecialchars($vehiculo['color'] ?? '') ?>"
+                       placeholder="Ej. Blanco perla">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Placas</label>
+                <input type="text" class="form-input" name="vehiculo_placas"
+                       value="<?= htmlspecialchars($vehiculo['placas'] ?? '') ?>"
+                       placeholder="Ej. ABC-123-D">
+            </div>
+        </div>
+ 
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">VIN / Número de serie</label>
+                <input type="text" class="form-input" name="vehiculo_vin"
+                       value="<?= htmlspecialchars($vehiculo['vin'] ?? '') ?>"
+                       placeholder="17 caracteres">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tipo</label>
+                <select class="form-select" name="vehiculo_tipo">
+                    <?php foreach (['Sedán','SUV','Pickup','Hatchback','Coupé','Convertible','Minivan','Van','Camión','Motocicleta','Otro'] as $t): ?>
+                    <option value="<?= $t ?>" <?= ($vehiculo['tipo'] ?? '') === $t ? 'selected' : '' ?>><?= $t ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+ 
+        <!-- Adaptaciones -->
+        <div class="form-group" style="margin-top:8px;">
+            <label class="form-label" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <input type="checkbox" name="vehiculo_tiene_adaptaciones" id="chkAdapt"
+                       value="1" <?= !empty($vehiculo['tiene_adaptaciones']) ? 'checked' : '' ?>
+                       onchange="document.getElementById('grpAdapt').style.display=this.checked?'':'none'">
+                <span>¿Cuenta con alguna adaptación o modificación?</span>
+            </label>
+        </div>
+        <div id="grpAdapt" style="<?= !empty($vehiculo['tiene_adaptaciones']) ? '' : 'display:none' ?>">
+            <div class="form-group">
+                <label class="form-label">¿Cuáles adaptaciones o modificaciones?</label>
+                <textarea class="form-input" name="vehiculo_detalle_adaptaciones" rows="2"
+                          placeholder="Describe las adaptaciones o modificaciones del vehículo…"
+                          style="resize:vertical;"><?= htmlspecialchars($vehiculo['detalle_adaptaciones'] ?? '') ?></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">¿Deseas agregar algo más?</label>
+                <textarea class="form-input" name="vehiculo_info_adicional" rows="2"
+                          placeholder="Información adicional relevante del vehículo…"
+                          style="resize:vertical;"><?= htmlspecialchars($vehiculo['info_adicional'] ?? '') ?></textarea>
+            </div>
+        </div>
+ 
+        <div style="display:flex;gap:10px;margin-top:16px;">
+            <button type="button" class="btn btn-outline btn-sm" id="btnCancelarVehiculo">Cancelar</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btnGuardarVehiculo">💾 Guardar vehículo</button>
+        </div>
+    </div>
+</div>
                         <?php endif; ?>
 
                         <?php if (in_array($ramoCliente, ['vida','gastos_medicos'], true)): ?>
@@ -786,6 +929,17 @@ $pageTitle=$nombreCompleto;
                             $estI =$estadosCot[$cot['estado']]??['label'=>'—','class'=>'badge-neutral'];
                             $archs=$archivosPorCot[$cot['id']]??[];
                         ?>
+                        <?php
+$BADGE_PAGO_CL = [
+    'pendiente'  => ['badge-warning', '⏳ Pago pendiente'],
+    'confirmado' => ['badge-success', '✅ Pagado'],
+    'rechazado'  => ['badge-danger',  '✗ Rechazado'],
+];
+
+[$bPagoClass, $bPagoLabel] =
+    $BADGE_PAGO_CL[$cot['estado_pago'] ?? 'pendiente']
+    ?? ['badge-neutral','—'];
+?>
                         <div class="cot-item" style="padding:14px 0;border-bottom:1px solid var(--border-color,#e5e7eb);">
                             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                                 <div style="flex:1;min-width:0;">
