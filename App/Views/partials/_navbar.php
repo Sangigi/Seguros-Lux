@@ -477,7 +477,7 @@ button.sidebar-link {
         </a> -->
 
         <!-- Notificaciones para superadmin también -->
-        <button type="button"
+        <!-- <button type="button"
                 class="sidebar-link <?php echo $_sidebarNotifCount > 0 ? 'has-alert' : ''; ?>"
                 id="sidebarNotifToggle"
                 aria-expanded="false"
@@ -495,13 +495,13 @@ button.sidebar-link {
                 <button type="button" id="sidebarNotifClearAll" style="color:#fca5a5;border-color:rgba(239,68,68,.3);">🗑 Limpiar todo</button>
             </div>
             <div id="sidebarNotifList" style="font-size:12px;color:rgba(255,255,255,.5);padding:10px;text-align:center;">Cargando…</div>
-        </div>
+        </div> -->
 
-        <div class="sidebar-section-label" style="margin-top:8px;">Acciones</div>
+        <!-- <div class="sidebar-section-label" style="margin-top:8px;">Acciones</div>
         <a href="/crear-cotizacion" class="sidebar-link <?php echo _navActive('/crear-cotizacion', $_uri); ?>">
             <i class="bi bi-plus-circle-fill"></i>
             Nueva Cotización
-        </a>
+        </a> -->
 
         <?php endif; ?>
 
