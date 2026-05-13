@@ -611,26 +611,6 @@ function closeModal(id){document.getElementById(id)?.classList.remove('active');
     </div>
 </header>
 
-<div class="admin-tabs">
-    <?php $tabs = [
-        'resumen'       => ['📊','Resumen',false],
-        'rendimiento'   => ['🏆','Rendimiento',false],
-        'pipeline'      => ['🔄','Pipeline',false],
-        'actividad'     => ['⚡','Actividad',false],
-        'asesores'      => ['👥','Asesores',false],
-        'emision'       => ['📄','Emisión',false],
-        'renovaciones'  => ['🔁','Renovaciones',false],
-        'cotizaciones'  => ['📋','Cotizaciones',$isSuperadmin],
-        'configuracion' => ['⚙️','Configuración',$isSuperadmin],
-    ];
-    foreach ($tabs as $key => [$ico,$lbl,$saOnly]):
-        if ($saOnly && !$isSuperadmin) continue; ?>
-    <a href="?tab=<?php echo $key; ?>" class="admin-tab <?php echo $tab===$key?'active':''; ?>">
-        <?php echo $ico; ?> <?php echo $lbl; ?>
-    </a>
-    <?php endforeach; ?>
-</div>
-
 <?php if ($tab === 'resumen'): ?>
 <div class="kpi4">
     <?php foreach([
