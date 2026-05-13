@@ -52,19 +52,27 @@ function createTestPdo(): PDO
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES,   false);
 
+    // SQLite no tiene NOW() ni funciones MySQL de fecha — las registramos
+    // como funciones PHP para que el código de producción funcione sin cambios.
+    $pdo->sqliteCreateFunction('NOW',      fn() => date('Y-m-d H:i:s'), 0);
+    $pdo->sqliteCreateFunction('CURDATE',  fn() => date('Y-m-d'),       0);
+    $pdo->sqliteCreateFunction('DATEDIFF', fn($a, $b) => (int)((strtotime($a) - strtotime($b)) / 86400), 2);
+    $pdo->sqliteCreateFunction('INTERVAL', fn($n, $unit) => $n, 2); // stub — solo para parsing
+
     // SQLite no tiene ENUM — se usa TEXT con CHECK para aproximar.
     $pdo->exec(<<<'SQL'
 
         CREATE TABLE agentes (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre      TEXT    NOT NULL,
-            apellido    TEXT    NOT NULL DEFAULT '',
-            correo      TEXT    NOT NULL UNIQUE,
-            telefono    TEXT    NOT NULL DEFAULT '',
-            contrasena  TEXT    NOT NULL,
-            rol         TEXT    NOT NULL DEFAULT 'asesor'
-                            CHECK(rol IN ('asesor','agente','coordinador','administrador','superadmin')),
-            activo      INTEGER NOT NULL DEFAULT 1
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre            TEXT    NOT NULL,
+            apellido          TEXT    NOT NULL DEFAULT '',
+            correo            TEXT    NOT NULL UNIQUE,
+            telefono          TEXT    NOT NULL DEFAULT '',
+            contrasena        TEXT    NOT NULL,
+            rol               TEXT    NOT NULL DEFAULT 'asesor'
+                                  CHECK(rol IN ('asesor','agente','coordinador','administrador','superadmin')),
+            activo            INTEGER NOT NULL DEFAULT 1,
+            telegram_chat_id  TEXT    DEFAULT NULL
         );
 
         CREATE TABLE clientes (
@@ -72,18 +80,46 @@ function createTestPdo(): PDO
             nombre            TEXT    NOT NULL,
             apellido_paterno  TEXT    NOT NULL DEFAULT '',
             apellido_materno  TEXT    NOT NULL DEFAULT '',
+            fecha_nacimiento  TEXT,
             correo            TEXT,
             telefono          TEXT,
+            sexo              TEXT,
+            estado_civil      TEXT,
+            calle             TEXT,
+            colonia           TEXT,
+            ciudad            TEXT,
+            estado            TEXT,
+            codigo_postal     TEXT,
             marca             TEXT,
             modelo            TEXT,
             anio_vehiculo     INTEGER,
             tipo_vehiculo     TEXT,
-            ciudad            TEXT,
-            estado_cliente    TEXT    DEFAULT 'activo',
+            recien_comprado   TEXT,
             asegurado         TEXT,
+            tiempo_compra     TEXT,
+            fecha_cita        TEXT,
+            hora_cita         TEXT,
+            estado_cliente    TEXT    DEFAULT 'nuevo',
             fecha_registro    TEXT    DEFAULT (datetime('now')),
             agente_id         INTEGER,
-            ramo              TEXT
+            ramo              TEXT    NOT NULL DEFAULT 'autos',
+            giro_empresa      TEXT,
+            num_empleados     INTEGER,
+            facturacion_anual REAL,
+            telegram_chat_id  TEXT    DEFAULT NULL,
+            whatsapp_chat_id  TEXT    DEFAULT NULL
+        );
+
+        CREATE TABLE citas (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id  INTEGER NOT NULL,
+            agente_id   INTEGER,
+            tipo        TEXT    NOT NULL DEFAULT 'llamada',
+            fecha       TEXT    NOT NULL,
+            hora        TEXT    NOT NULL,
+            comentarios TEXT,
+            estado      TEXT    NOT NULL DEFAULT 'programada',
+            ramo        TEXT    NOT NULL DEFAULT 'autos'
         );
 
         CREATE TABLE cotizaciones (
@@ -124,8 +160,11 @@ function createTestPdo(): PDO
         CREATE TABLE notificaciones (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             agente_id   INTEGER NOT NULL,
-            mensaje     TEXT,
-            leida       INTEGER DEFAULT 0,
+            tipo        TEXT    NOT NULL DEFAULT 'sistema',
+            titulo      TEXT    NOT NULL DEFAULT '',
+            mensaje     TEXT    NOT NULL DEFAULT '',
+            referencia  TEXT    DEFAULT NULL,
+            leida       INTEGER NOT NULL DEFAULT 0,
             creada_en   TEXT    DEFAULT (datetime('now'))
         );
 

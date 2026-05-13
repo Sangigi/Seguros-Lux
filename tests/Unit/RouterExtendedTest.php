@@ -1,23 +1,24 @@
 <?php
 declare(strict_types=1);
 
-namespace Tests\Unit;
-
 use PHPUnit\Framework\TestCase;
-use Router;
 
 /**
- * Tests unitarios del Router.
+ * Tests unitarios del Router — cobertura extendida.
+ *
+ * SIN namespace deliberadamente: Router es una clase global (no usa namespace)
+ * y PHPUnit requiere que el nombre de la clase coincida con el nombre del archivo.
  *
  * Cubre:
- *   - Despacho de rutas GET y POST
- *   - Rutas con parámetros dinámicos (:id)
+ *   - Despacho GET y POST con callable
+ *   - Rutas con parámetros dinámicos (:id, múltiples parámetros)
  *   - Respuesta 404 para rutas no registradas
- *   - Handler como callable, array [Clase, método] y clase con handle()
- *   - normalizePath
- *   - Trailing slashes
+ *   - Handler como callable, array [Clase, método] y clase con handle() estático
+ *   - normalizePath — separadores mixtos Windows/Linux
+ *   - Trailing slashes normalizados
+ *   - Query string ignorada en el match de ruta
  */
-final class RouterTest extends TestCase
+final class RouterExtendedTest extends TestCase
 {
     private Router $router;
 
@@ -116,7 +117,7 @@ final class RouterTest extends TestCase
     public function testRutaNoRegistradaDevuelve404(): void
     {
         ob_start();
-        $this->router->dispatch('GET', '/ruta-que-no-existe');
+        $this->router->dispatch('GET', '/ruta-que-no-existe-jamas');
         ob_end_clean();
 
         $this->assertSame(404, http_response_code());
@@ -140,15 +141,14 @@ final class RouterTest extends TestCase
 
     public function testDespachaHandlerComoArray(): void
     {
-        // Definir clase de prueba inline
-        if (!class_exists('TestHandlerClass')) {
-            eval('class TestHandlerClass { public function index(): void { echo "ok"; } }');
+        if (!class_exists('RouterTestHandlerArray')) {
+            eval('class RouterTestHandlerArray { public function index(): void { echo "ok"; } }');
         }
 
-        $this->router->add('GET', '/handler-array', ['TestHandlerClass', 'index']);
+        $this->router->add('GET', '/handler-array-lux', ['RouterTestHandlerArray', 'index']);
 
         ob_start();
-        $this->router->dispatch('GET', '/handler-array');
+        $this->router->dispatch('GET', '/handler-array-lux');
         $output = ob_get_clean();
 
         $this->assertSame('ok', $output);
@@ -158,14 +158,14 @@ final class RouterTest extends TestCase
 
     public function testDespachaHandlerComoClaseConHandle(): void
     {
-        if (!class_exists('TestStaticHandler')) {
-            eval('class TestStaticHandler { public static function handle(): void { echo "handled"; } }');
+        if (!class_exists('RouterTestStaticHandler')) {
+            eval('class RouterTestStaticHandler { public static function handle(): void { echo "handled"; } }');
         }
 
-        $this->router->add('GET', '/handler-static', 'TestStaticHandler');
+        $this->router->add('GET', '/handler-static-lux', 'RouterTestStaticHandler');
 
         ob_start();
-        $this->router->dispatch('GET', '/handler-static');
+        $this->router->dispatch('GET', '/handler-static-lux');
         $output = ob_get_clean();
 
         $this->assertSame('handled', $output);
