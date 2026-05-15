@@ -57,7 +57,7 @@ function waSend(string $to, string $text, string $pid, string $tok, ?array $butt
     } else {
         $body = ['messaging_product'=>'whatsapp','to'=>$to,'type'=>'text','text'=>['body'=>$text]];
     }
-    $ch = curl_init("https://graph.facebook.com/v19.0/{$pid}/messages");
+    $ch = curl_init("https://graph.facebook.com/v21.0/{$pid}/messages");
     curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($body),
         CURLOPT_HTTPHEADER=>['Content-Type: application/json',"Authorization: Bearer {$tok}"],
         CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10,
@@ -76,7 +76,7 @@ function waList(string $to,string $hdr,string $body,string $btn,array $rows,stri
          'interactive'=>['type'=>'list','header'=>['type'=>'text','text'=>$hdr],
                          'body'=>['text'=>$body],
                          'action'=>['button'=>mb_substr($btn,0,20),'sections'=>$secs]]];
-    $ch=curl_init("https://graph.facebook.com/v19.0/{$pid}/messages");
+    $ch=curl_init("https://graph.facebook.com/v21.0/{$pid}/messages");
     curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($pl),
         CURLOPT_HTTPHEADER=>['Content-Type: application/json',"Authorization: Bearer {$tok}"],
         CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10,

@@ -7,8 +7,8 @@ declare(strict_types=1);
  * Mantiene vivos los webhooks de WhatsApp y Telegram.
  * Corre cada 5 minutos vía cron en Hostgator:
  *
- *   HOSTGATOR CRON (cada 5 minutos):
- *   *\/5 * * * * /usr/local/bin/php /home2/grupoide/seguroslux.mx/App/Cron/WebhookKeepAlive.php >> /dev/null 2>&1
+ *   HOSTGATOR CRON (cada 23 minutos):
+ *   23 * * * * /usr/local/bin/php /home2/grupoide/seguroslux.mx/App/Cron/WebhookKeepAlive.php
  *
  * Qué hace:
  *   1. Hace ping al propio servidor para evitar que PHP-FPM duerma.
@@ -30,7 +30,7 @@ function kaLog(string $msg, string $logFile): void
 {
     $line = date('Y-m-d H:i:s') . ' [KeepAlive] ' . $msg . PHP_EOL;
     file_put_contents($logFile, $line, FILE_APPEND);
-    echo $line;
+    // Sin echo: el cron no genera output y no dispara emails del sistema
 }
 
 function kaCurl(string $url, array $opts = []): array
@@ -106,19 +106,39 @@ $waToken   = getenv('WHATSAPP_TOKEN')    ?: '';
 $waPhoneId = getenv('WHATSAPP_PHONE_ID') ?: '';
 
 if ($waToken && $waPhoneId) {
+    // Verificar token y número usando /{phone-number-id}?fields=display_phone_number
+    // Este es el endpoint correcto — /webhook_subscribed_apps fue deprecado en v20+
     $waInfo = kaCurl(
-        "https://graph.facebook.com/v19.0/{$waPhoneId}/webhook_subscribed_apps",
+        "https://graph.facebook.com/v21.0/{$waPhoneId}?fields=display_phone_number,verified_name,quality_rating",
         [
             CURLOPT_HTTPHEADER => ["Authorization: Bearer {$waToken}"],
         ]
     );
-    kaLog("WhatsApp webhook check → HTTP {$waInfo['code']}: " . substr($waInfo['body'], 0, 300), $logFile);
+    $waBody = json_decode($waInfo['body'], true);
+    if ($waInfo['code'] === 200 && isset($waBody['display_phone_number'])) {
+        $phone   = $waBody['display_phone_number'] ?? '?';
+        $quality = $waBody['quality_rating']        ?? '?';
+        kaLog("WhatsApp token OK → número={$phone} calidad={$quality}", $logFile);
+    } else {
+        $errMsg = $waBody['error']['message'] ?? substr($waInfo['body'], 0, 200);
+        kaLog("WhatsApp token ERROR → HTTP {$waInfo['code']}: {$errMsg}", $logFile);
+    }
 
-    // Hacer también un ping al propio webhook endpoint de WA para que PHP no duerma
-    $waPing = kaCurl('https://seguroslux.mx/whatsapp/webhook', [
-        CURLOPT_TIMEOUT => 8,
-    ]);
-    kaLog("WhatsApp self-ping → HTTP {$waPing['code']}", $logFile);
+    // Self-ping correcto: GET con hub_challenge para que el webhook responda 200
+    // (el webhook solo acepta GET si lleva hub_mode=subscribe + hub_verify_token)
+    $waVerifyToken = getenv('WHATSAPP_VERIFY_TOKEN') ?: '';
+    if ($waVerifyToken) {
+        $challenge = 'keepalive_' . time();
+        $pingUrl   = 'https://seguroslux.mx/whatsapp/webhook'
+                   . '?hub_mode=subscribe'
+                   . '&hub_verify_token=' . urlencode($waVerifyToken)
+                   . '&hub_challenge='    . urlencode($challenge);
+        $waPing = kaCurl($pingUrl, [CURLOPT_TIMEOUT => 8]);
+        $pingOk = ($waPing['code'] === 200 && trim($waPing['body']) === $challenge);
+        kaLog('WhatsApp self-ping → HTTP ' . $waPing['code'] . ' ' . ($pingOk ? '✓ webhook activo' : '✗ respuesta inesperada'), $logFile);
+    } else {
+        kaLog('WhatsApp self-ping → omitido (WHATSAPP_VERIFY_TOKEN no configurado)', $logFile);
+    }
 } else {
     kaLog('WhatsApp: tokens no configurados, saltando.', $logFile);
 }

@@ -377,7 +377,7 @@ class VidaSolicitudController
             'type' => 'text',
             'text' => ['body' => $msg],
         ];
-        $ch = curl_init("https://graph.facebook.com/v18.0/{$pid}/messages");
+        $ch = curl_init("https://graph.facebook.com/v21.0/{$pid}/messages");
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
