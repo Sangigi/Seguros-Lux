@@ -57,7 +57,7 @@ function waSend(string $to, string $text, string $pid, string $tok, ?array $butt
     } else {
         $body = ['messaging_product'=>'whatsapp','to'=>$to,'type'=>'text','text'=>['body'=>$text]];
     }
-    $ch = curl_init("https://graph.facebook.com/v21.0/{$pid}/messages");
+    $ch = curl_init("https://graph.facebook.com/v19.0/{$pid}/messages");
     curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($body),
         CURLOPT_HTTPHEADER=>['Content-Type: application/json',"Authorization: Bearer {$tok}"],
         CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10,
@@ -76,7 +76,7 @@ function waList(string $to,string $hdr,string $body,string $btn,array $rows,stri
          'interactive'=>['type'=>'list','header'=>['type'=>'text','text'=>$hdr],
                          'body'=>['text'=>$body],
                          'action'=>['button'=>mb_substr($btn,0,20),'sections'=>$secs]]];
-    $ch=curl_init("https://graph.facebook.com/v21.0/{$pid}/messages");
+    $ch=curl_init("https://graph.facebook.com/v19.0/{$pid}/messages");
     curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($pl),
         CURLOPT_HTTPHEADER=>['Content-Type: application/json',"Authorization: Bearer {$tok}"],
         CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10,
@@ -436,10 +436,22 @@ if($step==='confirm_cancel'){
         || in_array($textNorm,['❌ no, conservar','no, conservar','no','cancelar acción'],true)
         || $interactiveId==='b1';
     if($esConfirmar){
-        $ok=$citaModel->cancelarPorId((int)$state['cita_id'],$phone);
+        $citaIdToCancel = (int)$state['cita_id'];
+        $ok=$citaModel->cancelarPorId($citaIdToCancel,$phone);
+
+        // Log detallado para diagnóstico
+        file_put_contents(WA_LOG_PATH,
+            date('Y-m-d H:i:s') . " CANCEL_RESULT cita_id=[{$citaIdToCancel}] phone=[{$phone}] ok=[" . ($ok?'1':'0') . "]\n",
+            FILE_APPEND);
+
         waSetState($phone,[]);
-        waSend($phone,$ok?"✅ *Cita cancelada.*\n\n🌐 seguroslux.mx/formulario para nueva cita"
-            :"❌ No se pudo cancelar. Intenta de nuevo o contacta a tu asesor.",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']);
+        if($ok){
+            waSend($phone,"✅ *Cita cancelada correctamente.*\n\n¿Deseas agendar una nueva cita?\n🌐 seguroslux.mx/formulario",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']);
+        } else {
+            // La cancelación falló — probablemente el cita_id no coincide con el teléfono en BD
+            // Avisar al usuario y dar opción de contactar asesor
+            waSend($phone,"⚠️ *No pudimos cancelar la cita automáticamente.*\n\nPor favor contacta directamente a tu asesor para cancelarla.\n📞 O escribe a nuestro equipo.",$WA_PHONE_ID,$WA_TOKEN,['📞 Contactar asesor','🏠 Menú principal']);
+        }
     }elseif($esConservar){
         waSetState($phone,[]);
         $c=waGetCita($phone,$_waDb);
