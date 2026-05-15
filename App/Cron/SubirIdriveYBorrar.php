@@ -74,7 +74,6 @@ function log_msg_id(string $msg, string $file): void
 {
     $line = date('[Y-m-d H:i:s] ') . $msg . "\n";
     file_put_contents($file, $line, FILE_APPEND);
-    echo $line;
 }
 
 function clienteSlug(string $nombre): string
