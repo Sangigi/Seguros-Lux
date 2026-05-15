@@ -42,7 +42,7 @@ function log_msg_tg(string $msg, string $file): void
 {
     $line = date('[Y-m-d H:i:s] ') . $msg . "\n";
     file_put_contents($file, $line, FILE_APPEND);
-    echo $line;
+    // Sin echo: el cron no genera output y no dispara emails del sistema
 }
 
 function sendTelegramMsg(string $chatId, string $text, string $token): bool

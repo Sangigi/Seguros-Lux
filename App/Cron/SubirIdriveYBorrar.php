@@ -20,7 +20,6 @@ register_shutdown_function(function () {
         $logFile = $logsDir . '/idrive_' . date('Y-m') . '.log';
         $msg = date('[Y-m-d H:i:s] ') . "💀 ERROR FATAL: {$error['message']} en {$error['file']}:{$error['line']}\n";
         file_put_contents($logFile, $msg, FILE_APPEND);
-        echo $msg;
     }
 });
 
@@ -30,7 +29,6 @@ set_exception_handler(function (\Throwable $e) {
     $msg = date('[Y-m-d H:i:s] ') . "💀 EXCEPCIÓN NO CAPTURADA: " . $e->getMessage()
          . " en " . $e->getFile() . ":" . $e->getLine() . "\n";
     file_put_contents($logFile, $msg, FILE_APPEND);
-    echo $msg;
     exit(1);
 });
 
@@ -74,6 +72,7 @@ function log_msg_id(string $msg, string $file): void
 {
     $line = date('[Y-m-d H:i:s] ') . $msg . "\n";
     file_put_contents($file, $line, FILE_APPEND);
+    // Sin echo: el cron no genera output y no dispara emails del sistema
 }
 
 function clienteSlug(string $nombre): string

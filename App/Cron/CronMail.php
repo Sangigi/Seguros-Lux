@@ -6,7 +6,7 @@ declare(strict_types=1);
  * Procesa la cola de emails pendientes en la tabla mail_queue.
  *
  * HOSTGATOR CRON (cada minuto):
- *   * * * * * /usr/local/bin/php /home2/grupoide/seguroslux.mx/App/Cron/CronMail.php >> /dev/null 2>&1
+ *   * * * * * /usr/local/bin/php /home2/grupoide/seguroslux.mx/App/Cron/CronMail.php >> /home2/grupoide/seguroslux.mx/logs/cron_mail.log 2>&1
  *
  * DESARROLLO LOCAL (ejecutar manualmente o con Task Scheduler):
  *   php App/Cron/CronMail.php
@@ -29,21 +29,39 @@ require_once PROJECT_ROOT . '/Core/Autoloader.php';
 // Verificar que PHPMailer esté disponible
 $autoload = PROJECT_ROOT . '/vendor/autoload.php';
 if (!file_exists($autoload)) {
-    fwrite(STDERR, "[CronMail] vendor/autoload.php no encontrado. Ejecuta composer install.\n");
+    $logsDir = PROJECT_ROOT . '/logs';
+    if (!is_dir($logsDir)) mkdir($logsDir, 0755, true);
+    file_put_contents($logsDir . '/cron_mail.log', date('[Y-m-d H:i:s] ') . "[CronMail] vendor/autoload.php no encontrado. Ejecuta composer install.\n", FILE_APPEND);
     exit(1);
 }
 require_once $autoload;
 
 use App\Services\MailQueue;
 
+// ── Log ───────────────────────────────────────────────────────────────────────
+$logsDir = PROJECT_ROOT . '/logs';
+if (!is_dir($logsDir)) mkdir($logsDir, 0755, true);
+$logFile = $logsDir . '/cron_mail.log';
+
+function log_cron_mail(string $msg, string $file): void
+{
+    $line = date('[Y-m-d H:i:s] ') . $msg . "\n";
+    file_put_contents($file, $line, FILE_APPEND);
+}
+
+// Rotar si supera 5 MB
+if (file_exists($logFile) && filesize($logFile) > 5 * 1024 * 1024) {
+    rename($logFile, $logFile . '.' . date('Y-m-d') . '.bak');
+}
+
 $start = microtime(true);
 
 try {
     MailQueue::flush(batchSize: 20);
 } catch (\Throwable $e) {
-    fwrite(STDERR, '[CronMail] ' . $e->getMessage() . "\n");
+    log_cron_mail('[CronMail] ERROR: ' . $e->getMessage(), $logFile);
     exit(1);
 }
 
 $elapsed = round((microtime(true) - $start) * 1000);
-echo '[CronMail] OK en ' . $elapsed . " ms\n";
+log_cron_mail('[CronMail] OK en ' . $elapsed . ' ms', $logFile);
