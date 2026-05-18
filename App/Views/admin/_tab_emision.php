@@ -205,7 +205,7 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
                 data-folio="<?= htmlspecialchars($cot['folio'] ?? '') ?>"
                 data-comprobante-id="<?= (int)($cot['comprobante_id'] ?? 0) ?>"
                 data-estado-pago="<?= htmlspecialchars($cot['estado_pago'] ?? 'pendiente') ?>"
-                onclick="emiAbrirDetalle(this)">
+                data-action="emi-abrirDetalle">
                 <td>
                     <?php if (!empty($cot['folio'])): ?>
                     <span class="fmono"><?= htmlspecialchars($cot['folio']) ?></span>
@@ -230,17 +230,21 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
                     <?php endif; ?>
                     <div style="font-size:10px;color:var(--text-muted);"><?= $cot['total_archivos'] ?> docs</div>
                 </td>
-                <td onclick="event.stopPropagation()">
+                <td class="emi-stop-prop">
                     <?php if (!$tienePoliza): ?>
                     <span style="font-size:11px;color:var(--text-muted);">Esperando asesor</span>
                     <?php elseif (($cot['estado_pago'] ?? 'pendiente') !== 'confirmado'): ?>
                     <button class="btn btn-primary btn-sm"
-                            onclick="emiAbrirComprobante(<?= $cot['id'] ?>, '<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>', <?= (int)$cot['asesor_id'] ?>)">
+                            data-action="emi-abrirComprobante"
+                            data-cot-id="<?= $cot['id'] ?>"
+                            data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
+                            data-asesor-id="<?= (int)$cot['asesor_id'] ?>">
                         💳 Registrar pago
                     </button>
                     <?php else: ?>
                     <button class="btn btn-ghost btn-sm"
-                            onclick="emiVerComprobante(<?= (int)$cot['comprobante_id'] ?>)">
+                            data-action="emi-verComprobante"
+                            data-comprobante-id="<?= (int)$cot['comprobante_id'] ?>">
                         👁 Ver comprobante
                     </button>
                     <?php endif; ?>
@@ -412,10 +416,9 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
             btnPago.style.display = 'none';
         } else {
             btnPago.style.display = '';
-            btnPago.onclick = () => {
-                closeModal('modalEmiDetalle');
-                emiAbrirComprobante(cotId, folio, asesorId);
-            };
+            btnPago.dataset.cotId   = cotId;
+            btnPago.dataset.folio   = folio;
+            btnPago.dataset.asesorId = asesorId;
         }
 
         openModal('modalEmiDetalle');
@@ -448,7 +451,7 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
                     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">';
                     d.docs.forEach(doc => {
                         const thumb = doc.es_imagen && doc.url_local
-                            ? `<div style="height:90px;border-radius:6px;overflow:hidden;margin-bottom:8px;cursor:pointer;" onclick="window.open('${doc.url_local}','_blank')"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`
+                            ? `<div style="height:90px;border-radius:6px;overflow:hidden;margin-bottom:8px;cursor:pointer;" data-action="emi-openImg"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`
                             : `<div style="height:90px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;">${doc.es_pdf ? '📄' : '📎'}</div>`;
                         const dl = doc.url_local
                             ? `<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="width:100%;text-align:center;font-size:11px;">⬇ Descargar</a>`
@@ -565,5 +568,44 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
     };
 
     // Cerrar modales al clic overlay (delegado global en admin/index.php)
+
+    // ── Delegación de eventos (sustituye inline onclick, compatible con CSP) ──
+    document.addEventListener('click', function(e) {
+        const el = e.target.closest('[data-action]');
+        if (!el) return;
+        const action = el.dataset.action;
+
+        if (action === 'emi-abrirDetalle') {
+            const tr = e.target.closest('tr[data-action="emi-abrirDetalle"]');
+            if (tr) { e.stopPropagation(); emiAbrirDetalle(tr); }
+            return;
+        }
+        if (action === 'emi-abrirComprobante') {
+            e.stopPropagation();
+            emiAbrirComprobante(el.dataset.cotId, el.dataset.folio, el.dataset.asesorId);
+            return;
+        }
+        if (action === 'emi-verComprobante') {
+            e.stopPropagation();
+            emiVerComprobante(el.dataset.comprobanteId);
+            return;
+        }
+        if (action === 'emi-openImg') {
+            const img = el.querySelector('img');
+            if (img) window.open(img.src, '_blank');
+            return;
+        }
+        // Botón pago desde modal detalle
+        if (el.id === 'btnEmiRegistrarPagoDesdeDetalle') {
+            closeModal('modalEmiDetalle');
+            emiAbrirComprobante(el.dataset.cotId, el.dataset.folio, el.dataset.asesorId);
+            return;
+        }
+    });
+
+    // Stop propagation on action cells without inline onclick
+    document.querySelectorAll('td.emi-stop-prop').forEach(td => {
+        td.addEventListener('click', e => e.stopPropagation());
+    });
 })();
 </script>
