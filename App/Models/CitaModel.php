@@ -338,12 +338,13 @@ class CitaModel extends BaseModel
         $conPlus = '+' . $sinPlus;
 
         // Intento 1: con verificación de propiedad
+        // Incluye 'vencida' para que un cliente pueda "cancelar" (limpiar) una cita que ya pasó.
         $stmt = $this->db()->prepare(
             "UPDATE citas ci
              JOIN clientes cl ON cl.id = ci.cliente_id
              SET ci.estado = 'cancelada'
              WHERE ci.id = :id
-               AND ci.estado IN ('programada','pendiente')
+               AND ci.estado IN ('programada','pendiente','vencida')
                AND (
                    cl.whatsapp_chat_id = :chatId
                    OR cl.telegram_chat_id = :chatId
@@ -357,7 +358,7 @@ class CitaModel extends BaseModel
         // Intento 2: fallback por id solo (el dueño ya fue verificado por waGetCita al inicio del flujo)
         $stmt2 = $this->db()->prepare(
             "UPDATE citas SET estado = 'cancelada'
-             WHERE id = ? AND estado IN ('programada','pendiente')"
+             WHERE id = ? AND estado IN ('programada','pendiente','vencida')"
         );
         $stmt2->execute([$citaId]);
         return $stmt2->rowCount() > 0;
@@ -374,12 +375,13 @@ class CitaModel extends BaseModel
         $conPlus = '+' . $sinPlus;
 
         // Intento 1: con verificación de propiedad por chatId/teléfono
+        // Incluye 'vencida': el usuario puede reprogramar una cita que pasó sin ser atendida.
         $stmt = $this->db()->prepare(
             "UPDATE citas ci
              JOIN clientes cl ON cl.id = ci.cliente_id
-             SET ci.fecha = :fecha, ci.hora = :hora, ci.telegram_enviado = NULL
+             SET ci.fecha = :fecha, ci.hora = :hora, ci.estado = 'programada', ci.telegram_enviado = NULL
              WHERE ci.id = :id
-               AND ci.estado IN ('programada','pendiente')
+               AND ci.estado IN ('programada','pendiente','vencida')
                AND (
                    cl.whatsapp_chat_id = :chatId
                    OR cl.telegram_chat_id = :chatId
@@ -399,8 +401,8 @@ class CitaModel extends BaseModel
 
         // Intento 2: fallback por id solo (propiedad ya verificada en waGetCita al inicio)
         $stmt2 = $this->db()->prepare(
-            "UPDATE citas SET fecha = ?, hora = ?, telegram_enviado = NULL
-             WHERE id = ? AND estado IN ('programada','pendiente')"
+            "UPDATE citas SET fecha = ?, hora = ?, estado = 'programada', telegram_enviado = NULL
+             WHERE id = ? AND estado IN ('programada','pendiente','vencida')"
         );
         $stmt2->execute([$fecha, $hora, $citaId]);
         return $stmt2->rowCount() > 0;

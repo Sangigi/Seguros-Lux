@@ -413,7 +413,29 @@ if($text==='/micita'){
     return;
 }
 if($text==='/cancelar'){
-    $cita=waGetCita($phone,$_waDb);
+    // Si hay una cita en sesión, verificar que sigue siendo válida (no puede estar completada o cancelada ya)
+    $citaIdEnSesion = (int)($state['cita_id'] ?? 0);
+    if($citaIdEnSesion){
+        $stCheck=$_waDb->prepare("SELECT id, estado FROM citas WHERE id=? LIMIT 1");
+        $stCheck->execute([$citaIdEnSesion]);
+        $citaCheck=$stCheck->fetch();
+        // Si la cita ya fue cancelada o completada, limpiar sesión y buscar de nuevo
+        if(!$citaCheck || in_array($citaCheck['estado'],['cancelada','completada'],true)){
+            $citaIdEnSesion=0;
+            waSetState($phone,[]);
+            $state=[]; $step='';
+        }
+    }
+    $cita=$citaIdEnSesion ? null : waGetCita($phone,$_waDb);
+    // Si venimos de sesión con cita_id válida (programada o vencida), reconstruir la cita
+    if(!$cita && $citaIdEnSesion){
+        $stCita=$_waDb->prepare(
+            "SELECT ci.*, CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
+             FROM citas ci LEFT JOIN agentes a ON a.id=ci.agente_id
+             WHERE ci.id=? LIMIT 1");
+        $stCita->execute([$citaIdEnSesion]);
+        $cita=$stCita->fetch() ?: null;
+    }
     if(!$cita){waSend($phone,"📭 No tienes citas activas.",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']);return;}
     waSetState($phone,['step'=>'confirm_cancel','cita_id'=>$cita['id']]);
     waSend($phone,"⚠️ *¿Confirmas cancelar tu cita?*\n\n".waResumen($cita),$WA_PHONE_ID,$WA_TOKEN,
@@ -421,7 +443,27 @@ if($text==='/cancelar'){
     return;
 }
 if($text==='/reprog'){
-    $cita=waGetCita($phone,$_waDb);
+    // Si hay una cita en sesión, verificar que sigue siendo válida
+    $citaIdEnSesion = (int)($state['cita_id'] ?? 0);
+    if($citaIdEnSesion){
+        $stCheck=$_waDb->prepare("SELECT id, estado FROM citas WHERE id=? LIMIT 1");
+        $stCheck->execute([$citaIdEnSesion]);
+        $citaCheck=$stCheck->fetch();
+        if(!$citaCheck || in_array($citaCheck['estado'],['cancelada','completada'],true)){
+            $citaIdEnSesion=0;
+            waSetState($phone,[]);
+            $state=[]; $step='';
+        }
+    }
+    $cita=$citaIdEnSesion ? null : waGetCita($phone,$_waDb);
+    if(!$cita && $citaIdEnSesion){
+        $stCita=$_waDb->prepare(
+            "SELECT ci.*, CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
+             FROM citas ci LEFT JOIN agentes a ON a.id=ci.agente_id
+             WHERE ci.id=? LIMIT 1");
+        $stCita->execute([$citaIdEnSesion]);
+        $cita=$stCita->fetch() ?: null;
+    }
     if(!$cita){waSend($phone,"📭 No tienes citas activas.",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']);return;}
     waSetState($phone,['step'=>'reprog_fecha','cita_id'=>$cita['id'],'agente_id'=>$cita['agente_id']]);
     waSend($phone,"🗓 *Reprogramar cita*\n\nEscribe la nueva fecha:\n*DD/MM/AAAA*\n\nEj: ".date('d/m/Y',strtotime('+3 days')),$WA_PHONE_ID,$WA_TOKEN);
@@ -431,7 +473,14 @@ if($text==='/reprog'){
 // Flujos multi-paso citas
 if($step==='confirm_cancel'){
     file_put_contents(WA_LOG_PATH, date('Y-m-d H:i:s') . " CANCEL_FLOW text=[{$text}] norm=[{$textNorm}] iid=[{$interactiveId}]\n", FILE_APPEND);
-    // Aceptar confirmación vía alias, textNorm o id de botón interactivo (b0/b1)
+
+    // Si el usuario presiona Salir dentro del flujo de confirmación, cancelar el flujo
+    if($text==='/salir' || in_array($textNorm,['🚪 salir','salir','exit'],true)){
+        waSetState($phone,[]);
+        waSend($phone,"✅ Operación cancelada. Tu cita sigue en pie. 👍",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal','📋 Ver mi cita']);
+        return;
+    }
+
     $esConfirmar=$text==='CONF_CANCEL'
         || in_array($textNorm,['✅ sí, cancelar','sí, cancelar','si, cancelar','sí','si','confirmar','yes'],true)
         || $interactiveId==='b0';
@@ -442,7 +491,6 @@ if($step==='confirm_cancel'){
         $citaIdToCancel = (int)$state['cita_id'];
         $ok=$citaModel->cancelarPorId($citaIdToCancel,$phone);
 
-        // Log detallado para diagnóstico
         file_put_contents(WA_LOG_PATH,
             date('Y-m-d H:i:s') . " CANCEL_RESULT cita_id=[{$citaIdToCancel}] phone=[{$phone}] ok=[" . ($ok?'1':'0') . "]\n",
             FILE_APPEND);
@@ -451,8 +499,6 @@ if($step==='confirm_cancel'){
         if($ok){
             waSend($phone,"✅ *Cita cancelada correctamente.*\n\n¿Deseas agendar una nueva cita?\n🌐 seguroslux.mx/formulario",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']);
         } else {
-            // La cancelación falló — probablemente el cita_id no coincide con el teléfono en BD
-            // Avisar al usuario y dar opción de contactar asesor
             waSend($phone,"⚠️ *No pudimos cancelar la cita automáticamente.*\n\nPor favor contacta directamente a tu asesor para cancelarla.\n📞 O escribe a nuestro equipo.",$WA_PHONE_ID,$WA_TOKEN,['📞 Contactar asesor','🏠 Menú principal']);
         }
     }elseif($esConservar){

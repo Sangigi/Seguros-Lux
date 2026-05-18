@@ -6,6 +6,13 @@ RewriteEngine On
 # RewriteCond %{HTTPS} off
 # RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 
+# ── Webhooks de bots: rutas directas, sin pasar por index.php ─────────────────
+# Telegram: https://seguroslux.mx/telegram/webhook
+RewriteRule ^telegram/webhook/?$ telegram/telegram_webhook.php [L]
+
+# WhatsApp: https://seguroslux.mx/whatsapp/webhook
+RewriteRule ^whatsapp/webhook/?$ whatsapp/whatsapp_webhook.php [L]
+
 # ── Servir archivos y directorios reales ──────────────────────────────────────
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
@@ -42,10 +49,12 @@ RewriteRule ^ index.php [QSA,L]
 </FilesMatch>
 
 # Bloquear acceso directo a cualquier archivo PHP fuera del front-controller
-# (opcional — comenta si alguna vista necesita ser accesible directamente)
+# EXCEPTO los webhooks de Telegram y WhatsApp
 <IfModule mod_rewrite.c>
     RewriteCond %{REQUEST_URI} !^/blog/
     RewriteCond %{REQUEST_URI} !^/index\.php$
+    RewriteCond %{REQUEST_URI} !^/telegram/telegram_webhook\.php$
+    RewriteCond %{REQUEST_URI} !^/whatsapp/whatsapp_webhook\.php$
     RewriteCond %{REQUEST_FILENAME} -f
     RewriteRule \.php$ - [F,L]
 </IfModule>
