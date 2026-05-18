@@ -252,6 +252,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 'Pago confirmado — Folio: ' . ($cot['folio'] ?? '#'.$cotId),
                 ucfirst(str_replace('_',' ',$metodo)) . ($notas ? " · $notas" : '')
             );
+            // Notificación importante al asesor confirmando el pago registrado
+            try {
+                $db->prepare(
+                    "INSERT INTO notificaciones (agente_id, titulo, cuerpo, urgente, color, url_accion, leido, creado_en)
+                     VALUES (?,?,?,1,'green',?,0,NOW())"
+                )->execute([
+                    $agenteId,
+                    '✅ Pago confirmado — ' . ($cot['folio'] ?? '#'.$cotId),
+                    'El pago de la cotización ' . ($cot['folio'] ?? '#'.$cotId) . ' ha sido registrado correctamente. Método: ' . ucfirst(str_replace('_',' ',$metodo)) . '. Recuerda contactar al cliente para gestionar su renovación cuando corresponda.',
+                    '/cliente/' . $clienteId,
+                ]);
+            } catch (\Throwable $ne) { /* No interrumpir el flujo */ }
             $db->commit();
             echo json_encode(['ok'=>true]); exit;
         } catch(\Throwable $e) {
@@ -744,6 +756,11 @@ $pageTitle=$nombreCompleto;
                                 <div style="flex:1;min-width:0;">
                                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
                                         <span class="badge <?php echo $epI['class']; ?>"><?php echo $epI['emoji'].' '.$epI['label']; ?></span>
+                                        <?php if (!empty($pol['pago_confirmado'])): ?>
+                                        <span class="badge badge-success" title="Pago confirmado">✅ Pagada</span>
+                                        <?php else: ?>
+                                        <span class="badge badge-warning" title="Pago pendiente de confirmar">⏳ Pago pendiente</span>
+                                        <?php endif; ?>
                                         <?php if ($pol['idrive_subido']): ?><span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">☁️ iDrive</span><?php endif; ?>
                                         <?php if (!empty($pol['compania'])): ?><span style="font-size:12px;font-weight:600;"><?php echo htmlspecialchars($pol['compania']); ?></span><?php endif; ?>
                                     </div>

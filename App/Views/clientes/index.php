@@ -91,6 +91,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['accion'])) {
         'modelo'           => trim($_POST['modelo']            ?? ''),
         'anio_vehiculo'    => (int)($_POST['anio_vehiculo']    ?? date('Y')),
         'tipo_vehiculo'    => trim($_POST['tipo_vehiculo']     ?? 'auto'),
+        'submarca'         => trim($_POST['submarca']          ?? ''),
+        'version'          => trim($_POST['version']           ?? ''),
+        'tiene_adaptaciones'    => !empty($_POST['detalle_adaptaciones']) ? 1 : (int)($_POST['tiene_adaptaciones'] ?? 0),
+        'detalle_adaptaciones'  => trim($_POST['detalle_adaptaciones']  ?? ''),
         'asegurado'        => trim($_POST['asegurado']         ?? 'no'),
         'tiempo_compra'    => trim($_POST['tiempo_compra']     ?? 'solo_cotizando'),
         'fecha_nacimiento' => $_POST['fecha_nacimiento']       ?? '2000-01-01',
@@ -114,17 +118,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['accion'])) {
         $db->prepare(
             "INSERT INTO clientes
              (nombre, apellido_paterno, apellido_materno, correo, telefono, ciudad, ramo,
-              marca, modelo, anio_vehiculo, tipo_vehiculo, asegurado, tiempo_compra,
+              marca, modelo, anio_vehiculo, tipo_vehiculo, submarca, version,
+              tiene_adaptaciones, detalle_adaptaciones,
+              asegurado, tiempo_compra,
               fecha_nacimiento, sexo, estado_civil,
               giro_empresa, num_empleados, facturacion_anual,
               calle, colonia, estado, codigo_postal,
               fecha_cita, hora_cita, agente_id, estado_cliente)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo')"
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo')"
         )->execute([
             $input['nombre'],         $input['apellido_paterno'], $input['apellido_materno'],
             $input['correo'],         $input['telefono'],         $input['ciudad'],         $input['ramo'],
             $input['marca'],          $input['modelo'],           $input['anio_vehiculo'],
-            $input['tipo_vehiculo'],  $input['asegurado'],        $input['tiempo_compra'],
+            $input['tipo_vehiculo'],  $input['submarca'],         $input['version'],
+            $input['tiene_adaptaciones'], $input['detalle_adaptaciones'],
+            $input['asegurado'],      $input['tiempo_compra'],
             $input['fecha_nacimiento'],$input['sexo'],            $input['estado_civil'],
             $input['giro_empresa'],   $input['num_empleados'],    $input['facturacion_anual'],
             $input['calle'],          $input['colonia'],          $input['estado'],

@@ -377,11 +377,33 @@ class AgentModel extends BaseModel
     {
         if (empty($clienteIds)) return 0;
         $placeholders = implode(',', array_fill(0, count($clienteIds), '?'));
-        $stmt = $this->db()->prepare(
+        $db = $this->db();
+
+        // 1. Reasignar el cliente al nuevo asesor
+        $stmt = $db->prepare(
             "UPDATE clientes SET agente_id = ? WHERE id IN ({$placeholders})"
         );
         $stmt->execute([$nuevoAsesorId, ...$clienteIds]);
-        return $stmt->rowCount();
+        $total = $stmt->rowCount();
+
+        // 2. Reasignar pólizas vinculadas (para que el nuevo asesor las vea)
+        try {
+            $db->prepare(
+                "UPDATE polizas SET agente_id = ? WHERE cliente_id IN ({$placeholders}) AND eliminado_en IS NULL"
+            )->execute([$nuevoAsesorId, ...$clienteIds]);
+        } catch (\Throwable) {}
+
+        // 3. Registrar en historial de cada cliente
+        try {
+            foreach ($clienteIds as $cid) {
+                $db->prepare(
+                    "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha)
+                     VALUES (?, ?, 'nota', '↔️ Cliente reasignado', 'Cliente transferido al asesor actual por un coordinador/superadmin.', NOW())"
+                )->execute([$cid, $nuevoAsesorId]);
+            }
+        } catch (\Throwable) {}
+
+        return $total;
     }
 
     public function getRecentActivity(int $agenteId, int $limit = 8): array

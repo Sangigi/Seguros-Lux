@@ -970,7 +970,7 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
                         <?php else: ?><span style="font-size:12px;color:var(--text-muted);"><?php echo $nc; ?></span><?php endif; ?>
                     </td>
                     <!-- PARCHE: celda de acciones con botón ✏️ editar agente -->
-                    <td onclick="event.stopPropagation()">
+                    <td class="adm-stop-prop">
                         <?php if ($ag['id'] != $agenteId && ($isSuperadmin || $_agenteRol === 'coordinador')): ?>
                         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                             <?php if ($isSuperadmin): ?>
@@ -1604,6 +1604,11 @@ document.addEventListener('click', function(e) {
 document.addEventListener('click', e => {
     if (e.target.classList.contains('modal-overlay')) { e.target.classList.remove('active'); document.body.style.overflow=''; }
 });
+
+// Stop propagation en celdas de acción (CSP-safe, sin onclick inline)
+document.addEventListener('click', function(e) {
+    if (e.target.closest('td.adm-stop-prop')) e.stopPropagation();
+}, true);
 
 document.addEventListener('change', function(e) {
     if (e.target.id === 'selFiltroAgente')
