@@ -153,6 +153,16 @@ switch ($accion) {
                 color: 'green',
                 url: "/cotizacion/{$cotId}",
             );
+            // Notificación adicional: recordar al asesor que debe contactar al cliente para renovación
+            _emi_notificar(
+                db: $db,
+                asesorId: $asesorId,
+                titulo: '🔔 Contacta al cliente para renovación',
+                cuerpo: "Pago de {$datosCot['cliente_nombre']} confirmado. Contáctalo para ofrecerle renovación o actualización de su póliza ({$datosCot['compania']} — Folio {$datosCot['folio']}).",
+                urgente: true,
+                color: 'red',
+                url: "/cotizacion/{$cotId}",
+            );
         }
 
         echo json_encode(['ok'=>true,'comprobante_id'=>$comprobanteId]);

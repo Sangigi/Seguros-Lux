@@ -71,8 +71,11 @@ class PolizaModel extends BaseModel
     public function listarPorCliente(int $clienteId, int $agenteId): array
     {
         $st = $this->db()->prepare(
-            'SELECT p.*, DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes
+            'SELECT p.*, DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
+                    cp.metodo_pago, cp.fecha_pago,
+                    CASE WHEN cp.id IS NOT NULL THEN 1 ELSE 0 END AS pago_confirmado
              FROM   polizas p
+             LEFT JOIN cotizacion_pagos cp ON cp.cotizacion_id = p.cotizacion_id
              WHERE  p.cliente_id = ? AND p.agente_id = ?
                AND  p.eliminado_en IS NULL
              ORDER  BY p.fecha_fin ASC'

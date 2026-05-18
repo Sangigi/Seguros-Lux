@@ -102,8 +102,18 @@ $cspNonce  ??= '';
                 </div>
                 <p style="font-size:13px;font-weight:700;color:var(--accent-color);text-transform:uppercase;margin:20px 0 14px;">Vehículo</p>
                 <div class="form-row">
-                    <div class="form-group"><label class="form-label required">Marca</label><input type="text" class="form-input" name="marca" required></div>
-                    <div class="form-group"><label class="form-label required">Modelo</label><input type="text" class="form-input" name="modelo" required></div>
+                    <div class="form-group">
+                        <label class="form-label required">Marca</label>
+                        <select class="form-select" name="marca" required>
+                            <option value="">Selecciona marca…</option>
+                            <?php
+                            $MARCAS_MODAL = ['ACURA','ALFA ROMEO','AUDI','BMW','BUICK','CADILLAC','CHEVROLET','CHRYSLER','CUPRA','DACIA','DODGE','DS','FERRARI','FIAT','FORD','GMC','HONDA','HYUNDAI','INFINITI','JAGUAR','JEEP','KIA','LAMBORGHINI','LAND ROVER','LEXUS','LINCOLN','LOTUS','MASERATI','MAZDA','MERCEDES-BENZ','MINI','MITSUBISHI','NISSAN','OPEL','PEUGEOT','PORSCHE','RAM','RENAULT','ROLLS-ROYCE','SEAT','SKODA','SMART','SUBARU','SUZUKI','TESLA','TOYOTA','VOLKSWAGEN','VOLVO','BAIC','BYD','CHANGAN','CHIREY','GREAT WALL','HAVAL','JAC','JETOUR','MG','OTRA'];
+                            foreach ($MARCAS_MODAL as $m): ?>
+                            <option value="<?= htmlspecialchars($m) ?>"><?= htmlspecialchars($m) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="form-label required">Modelo</label><input type="text" class="form-input" name="modelo" required placeholder="Ej. Corolla, Jetta…"></div>
                     <div class="form-group">
                         <label class="form-label">Año</label>
                         <input type="number" class="form-input" name="anio_vehiculo"
@@ -111,6 +121,14 @@ $cspNonce  ??= '';
                     </div>
                 </div>
                 <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Submarca</label>
+                        <input type="text" class="form-input" name="submarca" placeholder="Ej. LE, SE, Sport…">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Versión</label>
+                        <input type="text" class="form-input" name="version" placeholder="Ej. 2.0T AT, CVT…">
+                    </div>
                     <div class="form-group">
                         <label class="form-label">Tipo</label>
                         <select class="form-select" name="tipo_vehiculo">
@@ -121,6 +139,8 @@ $cspNonce  ??= '';
                             <option value="otro">Otro</option>
                         </select>
                     </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">¿Asegurado?</label>
                         <select class="form-select" name="asegurado">
@@ -138,7 +158,23 @@ $cspNonce  ??= '';
                         </select>
                     </div>
                 </div>
-                <div class="form-row">
+                <div class="form-group" style="margin-top:8px;">
+                    <label class="form-label" style="font-weight:600;">
+                        ¿Cuenta con alguna adaptación o modificación? <span style="font-weight:400;color:var(--text-muted);">(opcional)</span>
+                    </label>
+                    <textarea class="form-input" name="detalle_adaptaciones" rows="2"
+                              placeholder="¿Cuentas con alguna adaptación o modificación? &#10;¿Quieres agregar algo más?"
+                              style="resize:vertical;"></textarea>
+                    <input type="hidden" name="tiene_adaptaciones" id="hdn_tiene_adaptaciones" value="0">
+                </div>
+                <script nonce="<?= $cspNonce ?>">
+                (function(){
+                    var ta = document.querySelector('[name="detalle_adaptaciones"]');
+                    var hdn = document.getElementById('hdn_tiene_adaptaciones');
+                    if(ta && hdn) ta.addEventListener('input', function(){ hdn.value = ta.value.trim() ? '1' : '0'; });
+                })();
+                </script>
+                <div class="form-row" style="margin-top:8px;">
                     <div class="form-group">
                         <label class="form-label">Fecha de cita</label>
                         <input type="date" class="form-input" name="fecha_cita" value="<?php echo date('Y-m-d'); ?>">

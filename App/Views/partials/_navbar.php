@@ -48,6 +48,7 @@ $_adminTabs = [
     'pipeline'      => ['bi-arrow-repeat',    'Pipeline'],
     'actividad'     => ['bi-lightning-fill',  'Actividad'],
     'asesores'      => ['bi-people-fill',     'Asesores'],
+    'polizas'       => ['bi-shield-check-fill','Pólizas'],
     'emision'       => ['bi-file-earmark-check-fill', 'Emisión'],
     'renovaciones'  => ['bi-arrow-clockwise', 'Renovaciones'],
 ];
