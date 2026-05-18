@@ -1,5 +1,0 @@
-Composer detected issues in your platform:
-
-Your Composer dependencies require a PHP version ">= 8.2.0". You are running 8.1.34.
-
-[2026-05-04 17:34:01] 💀 EXCEPCIÓN NO CAPTURADA: Composer detected issues in your platform: Your Composer dependencies require a PHP version ">= 8.2.0". You are running 8.1.34. en /home2/grupoide/seguroslux.mx/vendor/composer/platform_check.php:22

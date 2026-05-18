@@ -1,1 +1,0 @@
-Could not open input file: /home2/grupoide/seguroslux.mx/App/Cron/DiagnosticoIdrive.php
