@@ -281,13 +281,13 @@ class CitaModel extends BaseModel
                AND ci.fecha >= CURDATE()
                AND (
                    cl.whatsapp_chat_id = :chatId
-                   OR cl.telegram_chat_id = :chatId
+                   OR cl.telegram_chat_id = :chatId2
                    OR REPLACE(REPLACE(REPLACE(cl.telefono, '+', ''), ' ', ''), '-', '') = :sinPlus
                    OR cl.telefono = :conPlus
                )
              ORDER BY ci.fecha ASC, ci.hora ASC LIMIT 1"
         );
-        $stmt->execute([':chatId' => $chatId, ':sinPlus' => $sinPlus, ':conPlus' => $conPlus]);
+        $stmt->execute([':chatId' => $chatId, ':chatId2' => $chatId, ':sinPlus' => $sinPlus, ':conPlus' => $conPlus]);
         return $stmt->fetch() ?: null;
     }
 
@@ -311,13 +311,14 @@ class CitaModel extends BaseModel
                AND ci.fecha >= CURDATE()
                AND (
                    cl.whatsapp_chat_id = :chatId
-                   OR cl.telegram_chat_id = :chatId
+                   OR cl.telegram_chat_id = :chatId2
                    OR REPLACE(REPLACE(REPLACE(cl.telefono, '+', ''), ' ', ''), '-', '') = :sinPlus
                    OR cl.telefono = :conPlus
                )
              ORDER BY ci.fecha ASC, ci.hora ASC LIMIT :lim"
         );
         $stmt->bindValue(':chatId',  $chatId,  \PDO::PARAM_STR);
+        $stmt->bindValue(':chatId2', $chatId,  \PDO::PARAM_STR);
         $stmt->bindValue(':sinPlus', $sinPlus, \PDO::PARAM_STR);
         $stmt->bindValue(':conPlus', $conPlus, \PDO::PARAM_STR);
         $stmt->bindValue(':lim',     $limit,   \PDO::PARAM_INT);
@@ -347,7 +348,7 @@ class CitaModel extends BaseModel
                AND ci.estado IN ('programada','pendiente','vencida')
                AND (
                    cl.whatsapp_chat_id = :chatId
-                   OR cl.telegram_chat_id = :chatId
+                   OR cl.telegram_chat_id = :chatId2
                    OR REPLACE(REPLACE(REPLACE(cl.telefono, '+', ''), ' ', ''), '-', '') = :sinPlus
                    OR cl.telefono = :conPlus
                )"
@@ -394,6 +395,7 @@ class CitaModel extends BaseModel
             ':hora'    => $hora,
             ':id'      => $citaId,
             ':chatId'  => $chatId,
+            ':chatId2' => $chatId,
             ':sinPlus' => $sinPlus,
             ':conPlus' => $conPlus,
         ]);
