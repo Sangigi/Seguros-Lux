@@ -33,7 +33,16 @@ if ($tgDebugLog) {
 // ── 4. Decodificar update ─────────────────────────────────────────────────────
 $update = json_decode($rawBody, true);
 
-if (!$update || !isset($update['message']['chat']['id'])) {
+if (!is_array($update)) {
+    http_response_code(200);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+// Solo procesar updates que tengan 'message' con texto.
+// Ignorar silenciosamente: edited_message, channel_post, callback_query, 
+// delivery/read status, stickers, fotos, etc.
+if (!isset($update['message']['chat']['id']) || !isset($update['message']['text'])) {
     http_response_code(200);
     echo json_encode(['ok' => true]);
     exit;

@@ -126,14 +126,15 @@ function waResumen(array $c): string
 
 function waGetCita(string $phone, $db): ?array
 {
-    // 1. Buscar por whatsapp_chat_id en clientes → cita activa
+    // 1. Buscar por whatsapp_chat_id en clientes → cita activa (solo futuras)
     try {
         $st=$db->prepare(
             "SELECT ci.*, CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
              FROM citas ci JOIN clientes cl ON cl.id=ci.cliente_id
              LEFT JOIN agentes a ON a.id=ci.agente_id
              WHERE cl.whatsapp_chat_id=? AND ci.estado='programada'
-             ORDER BY ci.id DESC LIMIT 1");
+               AND TIMESTAMP(ci.fecha, ci.hora) >= NOW()
+             ORDER BY ci.fecha ASC, ci.hora ASC LIMIT 1");
         $st->execute([$phone]); $r=$st->fetch(); if($r) return $r;
     } catch(\Throwable $e){}
     // 2. Fallback: últimos 10 dígitos del teléfono
@@ -144,7 +145,9 @@ function waGetCita(string $phone, $db): ?array
              FROM citas ci JOIN clientes cl ON cl.id=ci.cliente_id
              LEFT JOIN agentes a ON a.id=ci.agente_id
              WHERE (cl.telefono LIKE ? OR cl.telefono LIKE ? OR cl.telefono LIKE ?)
-               AND ci.estado='programada' ORDER BY ci.id DESC LIMIT 1");
+               AND ci.estado='programada'
+               AND TIMESTAMP(ci.fecha, ci.hora) >= NOW()
+             ORDER BY ci.fecha ASC, ci.hora ASC LIMIT 1");
         $st->execute(["%{$last10}","+52{$last10}","52{$last10}"]); $r=$st->fetch();
         if($r){ $db->prepare("UPDATE clientes SET whatsapp_chat_id=? WHERE id=?")->execute([$phone,$r['cliente_id']]); return $r; }
     } catch(\Throwable $e){}

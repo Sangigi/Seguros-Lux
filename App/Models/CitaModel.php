@@ -134,7 +134,8 @@ class CitaModel extends BaseModel
             "SELECT COUNT(*) AS total,
                     SUM(estado='programada') AS programadas,
                     SUM(estado='completada') AS completadas,
-                    SUM(estado='cancelada')  AS canceladas
+                    SUM(estado='cancelada')  AS canceladas,
+                    SUM(estado='vencida')    AS vencidas
              FROM citas
              WHERE agente_id = ? AND fecha BETWEEN ? AND ? {$ramoFilter}"
         );
@@ -146,6 +147,7 @@ class CitaModel extends BaseModel
             'programadas' => (int)($d['programadas'] ?? 0),
             'completadas' => (int)($d['completadas'] ?? 0),
             'canceladas'  => (int)($d['canceladas']  ?? 0),
+            'vencidas'    => (int)($d['vencidas']    ?? 0),
         ];
     }
 
@@ -407,6 +409,25 @@ class CitaModel extends BaseModel
     public function marcarRecordatorioEnviado(int $citaId): void
     {
         $this->db()->prepare('UPDATE citas SET telegram_enviado = NOW() WHERE id = ?')->execute([$citaId]);
+    }
+
+    /**
+     * Marca como 'vencida' todas las citas 'programada' cuya fecha+hora ya pasó.
+     * Llamar desde el cron VencerCitas.php (cada hora o diariamente).
+     * Requiere que la columna estado incluya 'vencida' en el ENUM.
+     *
+     * @return int Número de citas vencidas en esta ejecución.
+     */
+    public function vencerCitasPasadas(): int
+    {
+        $stmt = $this->db()->prepare(
+            "UPDATE citas
+             SET estado = 'vencida'
+             WHERE estado = 'programada'
+               AND TIMESTAMP(fecha, hora) < NOW()"
+        );
+        $stmt->execute();
+        return $stmt->rowCount();
     }
 
     public function getCitasParaRecordatorio(): array

@@ -174,6 +174,16 @@ $text   = trim($msg['text'] ?? '');
 $from   = $msg['from']['first_name'] ?? 'amigo';
 $state  = tgGetState($chatId);
 
+// Si el mensaje no tiene texto (sticker, foto, audio, contacto, etc.)
+// responder amablemente y salir — no hay nada más que procesar.
+if ($text === '') {
+    tgSend($chatId,
+        "😊 Solo puedo entender mensajes de texto por el momento.\n\nUsa el menú de abajo para decirme qué necesitas. 👇",
+        $BOT_TOKEN
+    );
+    return;
+}
+
 // ── Normalizar botones del teclado → comandos internos ────────────────────────
 $alias = [
     '📋 mis citas'            => '/miscitas',
