@@ -353,7 +353,7 @@ class CitaModel extends BaseModel
                    OR cl.telefono = :conPlus
                )"
         );
-        $stmt->execute([':id' => $citaId, ':chatId' => $chatId, ':sinPlus' => $sinPlus, ':conPlus' => $conPlus]);
+        $stmt->execute([':id' => $citaId, ':chatId' => $chatId, ':chatId2' => $chatId, ':sinPlus' => $sinPlus, ':conPlus' => $conPlus]);
         if ($stmt->rowCount() > 0) return true;
 
         // Intento 2: fallback por id solo (el dueño ya fue verificado por waGetCita al inicio del flujo)
@@ -385,7 +385,7 @@ class CitaModel extends BaseModel
                AND ci.estado IN ('programada','pendiente','vencida')
                AND (
                    cl.whatsapp_chat_id = :chatId
-                   OR cl.telegram_chat_id = :chatId
+                   OR cl.telegram_chat_id = :chatId2
                    OR REPLACE(REPLACE(REPLACE(cl.telefono, '+', ''), ' ', ''), '-', '') = :sinPlus
                    OR cl.telefono = :conPlus
                )"
