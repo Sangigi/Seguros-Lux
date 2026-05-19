@@ -1200,8 +1200,9 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 <?php endif; ?>
 
 <?php elseif ($tab === 'polizas'): ?>
-<?php
-    // Consultamos las cotizaciones cuyo estado ya es 'emitida' (es decir, ya son pólizas)
+    <?php
+    // 1. Obtener datos
+    $db = Database\Connection::getConnection();
     $stmtPol = $db->query("
         SELECT c.*, 
                CONCAT(cl.nombre, ' ', cl.apellido_paterno) AS cliente_nombre,
@@ -1213,83 +1214,42 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
         ORDER BY c.actualizado_en DESC
     ");
     $polizas = $stmtPol->fetchAll(\PDO::FETCH_ASSOC);
+    ?>
 
-    // Calculamos los KPIs basándonos en la información real
-    $totalPol = count($polizas);
-    $pagadasPol = 0;
-    $pendientesPol = 0;
-    foreach ($polizas as $p) {
-        if (($p['estado_pago'] ?? '') === 'confirmado') {
-            $pagadasPol++;
-        } else {
-            $pendientesPol++;
-        }
-    }
-?>
-
-<div class="tab-header" style="margin-bottom: 20px;">
-    <h2>📋 Control de Pólizas Emitidas</h2>
-    <p style="color: var(--text-muted); font-size: 14px;">Listado oficial de contratos cargados y emitidos en el sistema.</p>
-</div>
-
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
-    <div class="stat-card" style="padding: 12px 16px;">
-        <div class="stat-card-value"><?= $totalPol ?></div>
-        <div class="stat-card-label">Total Pólizas</div>
+    <div class="content-header">
+        <h1>📋 Pólizas Emitidas</h1>
     </div>
-    <div class="stat-card success" style="padding: 12px 16px;">
-        <div class="stat-card-value"><?= $pagadasPol ?></div>
-        <div class="stat-card-label">✅ Pagadas / Confirmadas</div>
-    </div>
-    <div class="stat-card warning" style="padding: 12px 16px;">
-        <div class="stat-card-value"><?= $pendientesPol ?></div>
-        <div class="stat-card-label">⏳ Pendientes de Pago</div>
-    </div>
-</div>
 
-<div class="table-responsive">
-    <table class="data-table adt">
-        <thead>
-            <tr>
-                <th>Folio</th>
-                <th>Cliente</th>
-                <th>Asesor</th>
-                <th>Compañía / Ramo</th>
-                <th>Estado Pago</th>
-                <th>Método</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if (empty($polizas)): ?>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
                 <tr>
-                    <td colspan="6" style="padding: 30px; text-align: center; color: var(--text-muted);">
-                        No hay pólizas emitidas registradas en este momento.
-                    </td>
+                    <th>Folio</th>
+                    <th>Cliente</th>
+                    <th>Asesor</th>
+                    <th>Compañía / Ramo</th>
+                    <th>Estado Pago</th>
                 </tr>
-            <?php else: ?>
-                <?php foreach ($polizas as $p): ?>
-                    <tr>
-                        <td style="font-weight: 600; color: var(--accent-color);"><?= htmlspecialchars($p['folio']) ?></td>
-                        <td><?= htmlspecialchars($p['cliente_nombre'] ?? '—') ?></td>
-                        <td><?= htmlspecialchars($p['asesor_nombre'] ?? '—') ?></td>
-                        <td>
-                            <strong><?= htmlspecialchars($p['compania'] ?? '—') ?></strong>
-                            <br><span style="font-size: 11px; color: var(--text-muted);"><?= htmlspecialchars($p['ramo'] ?? '—') ?></span>
-                        </td>
-                        <td>
-                            <?php if (($p['estado_pago'] ?? '') === 'confirmado'): ?>
-                                <span class="badge badge-success">✅ Confirmado</span>
-                            <?php else: ?>
-                                <span class="badge badge-warning">⏳ Pendiente</span>
-                            <?php endif; ?>
-                        </td>
-                        <td><?= htmlspecialchars($p['metodo_pago'] ?: '—') ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </tbody>
-    </table>
-</div>
+            </thead>
+            <tbody>
+                <?php if (empty($polizas)): ?>
+                    <tr><td colspan="5" style="text-align:center;">No hay pólizas registradas.</td></tr>
+                <?php else: ?>
+                    <?php foreach ($polizas as $p): ?>
+                        <tr>
+                            <td><?= htmlspecialchars($p['folio']) ?></td>
+                            <td><?= htmlspecialchars($p['cliente_nombre']) ?></td>
+                            <td><?= htmlspecialchars($p['asesor_nombre']) ?></td>
+                            <td><?= htmlspecialchars($p['compania']) ?> / <?= htmlspecialchars($p['ramo']) ?></td>
+                            <td>
+                                <?= ($p['estado_pago'] === 'confirmado') ? '<span class="badge success">Pagado</span>' : '<span class="badge warning">Pendiente</span>' ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 <?php endif; ?>
 
 <!-- Modal: Gestionar Renovación -->
