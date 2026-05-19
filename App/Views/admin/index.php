@@ -466,12 +466,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                            c.id AS cliente_id_ref,
                            CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre,
                            DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
-                           cp.metodo_pago, cp.fecha_pago
+                           -- Pago: detectar via cotizacion ligada O comprobante de pago
+                           CASE
+                               WHEN cot.estado = 'pagado'          THEN 1
+                               WHEN cot.estado_pago = 'confirmado' THEN 1
+                               WHEN cp.id IS NOT NULL              THEN 1
+                               ELSE 0
+                           END AS pago_confirmado,
+                           cot.metodo_pago, cp.fecha_pago
                     FROM polizas p
-                    JOIN clientes c ON c.id = p.cliente_id
-                    JOIN agentes  a ON a.id = p.agente_id
-                    LEFT JOIN cotizacion_pagos cp ON cp.cotizacion_id = p.cotizacion_id
-                    WHERE 1=1";
+                    JOIN clientes    c   ON c.id  = p.cliente_id
+                    JOIN agentes     a   ON a.id  = p.agente_id
+                    LEFT JOIN cotizaciones       cot ON cot.id = p.cotizacion_id
+                    LEFT JOIN cotizacion_pagos   cp  ON cp.cotizacion_id = p.cotizacion_id
+                    WHERE p.eliminado_en IS NULL";
             $params = [];
             if ($filtroAsesor) { $sql .= ' AND p.agente_id = ?'; $params[] = $filtroAsesor; }
             $sql .= ' ORDER BY p.fecha_fin ASC LIMIT 500';
@@ -485,8 +493,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 exit;
             }
             // Clasificar
-            $pagadas   = array_filter($polizas, fn($p) => $p['metodo_pago'] !== null);
-            $pendientes= array_filter($polizas, fn($p) => $p['metodo_pago'] === null && ($p['estado'] ?? '') !== 'vencida');
+            $pagadas   = array_filter($polizas, fn($p) => !empty($p['pago_confirmado']));
+            $pendientes= array_filter($polizas, fn($p) => empty($p['pago_confirmado']) && ($p['estado'] ?? '') !== 'vencida');
             $vencer    = array_filter($polizas, fn($p) => is_numeric($p['dias_restantes']) && (int)$p['dias_restantes'] >= 0 && (int)$p['dias_restantes'] <= 30);
             echo json_encode(['ok'=>true,
                 'total'=>count($polizas),
@@ -1244,8 +1252,8 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                     // Filtro
                     var filtE = document.getElementById('polFiltroEstado').value;
                     var polizas = d.polizas;
-                    if(filtE==='pagada') polizas = polizas.filter(p=>p.metodo_pago);
-                    else if(filtE==='pendiente') polizas = polizas.filter(p=>!p.metodo_pago && p.estado!=='vencida');
+                    if(filtE==='pagada') polizas = polizas.filter(p=>p.pago_confirmado==1||p.pago_confirmado===true);
+                    else if(filtE==='pendiente') polizas = polizas.filter(p=>!p.pago_confirmado && p.estado!=='vencida');
                     else if(filtE==='por_vencer') polizas = polizas.filter(p=>p.dias_restantes!==null && parseInt(p.dias_restantes)>=0 && parseInt(p.dias_restantes)<=30);
                     else if(filtE==='vencida') polizas = polizas.filter(p=>p.estado==='vencida');
                     if(!polizas.length){document.getElementById('polTablaWrap').innerHTML='<p style="padding:20px;color:var(--text-muted);">Sin pólizas para el filtro seleccionado.</p>';return;}
@@ -1253,7 +1261,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                     var rows = polizas.map(p=>{
                         var dias = parseInt(p.dias_restantes);
                         var diasTxt = isNaN(dias) ? '—' : (dias<0 ? `<span style="color:var(--danger-color);">Vencida hace ${Math.abs(dias)}d</span>` : `<span style="color:${dias<=5?'var(--danger-color)':dias<=15?'var(--warning-color)':'inherit'}">${dias} días</span>`);
-                        var pagoBadge = p.metodo_pago ? `<span class="badge badge-success">✅ Pagada</span>` : `<span class="badge badge-warning">⏳ Pendiente</span>`;
+                        var pagoBadge = (p.pago_confirmado==1||p.pago_confirmado===true) ? `<span class="badge badge-success">✅ Pagada</span>` : `<span class="badge badge-warning">⏳ Pendiente</span>`;
                         return `<tr>
                             <td><a href="/cliente/${p.cliente_id_ref}" style="font-weight:600;color:var(--accent-color);">${p.cliente_nombre??'—'}</a><br><span style="font-size:11px;color:var(--text-muted);">${p.asesor_nombre??''}</span></td>
                             <td>${p.compania??'—'}</td>

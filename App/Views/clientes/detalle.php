@@ -382,6 +382,23 @@ try {
     }
 } catch(\Throwable $e){}
 
+// Documentos de póliza subidos por el coordinador en el flujo de emisión
+$docPolizaPorCot = [];
+try {
+    $db = \Database\Connection::getConnection();
+    foreach ($cotizaciones as $cot) {
+        $st = $db->prepare(
+            "SELECT ca.*, ca.nombre_original, ca.nombre_archivo, ca.ruta
+             FROM cotizacion_archivos ca
+             WHERE ca.cotizacion_id = ? AND ca.tipo_documento = 'poliza' AND ca.eliminado_en IS NULL
+             ORDER BY ca.subido_en DESC LIMIT 5"
+        );
+        $st->execute([(int)$cot['id']]);
+        $docs = $st->fetchAll(\PDO::FETCH_ASSOC);
+        if ($docs) $docPolizaPorCot[(int)$cot['id']] = $docs;
+    }
+} catch(\Throwable $e) {}
+
 // Datos extra del vehículo desde mini-form (en comentarios de cita)
 // Busca en DB directamente para no depender de CitaModel::getByClienteId
 $datosExtrasVehiculo=[];
@@ -735,13 +752,48 @@ $pageTitle=$nombreCompleto;
                             Resumen informativo: la administración registra aquí las pólizas emitidas. Como asesor no puedes subirlas ni descargar el PDF; ante dudas, contacta al coordinador.
                         </p>
                         <?php endif; ?>
-                        <?php if (empty($polizas)): ?>
+                        <?php
+                        // Recopilar documentos de póliza del coordinador para todas las cotizaciones del cliente
+                        $allDocPoliza = [];
+                        foreach ($cotizaciones as $_cot) {
+                            if (!empty($docPolizaPorCot[(int)$_cot['id']])) {
+                                foreach ($docPolizaPorCot[(int)$_cot['id']] as $_doc) {
+                                    $_doc['_folio']   = $_cot['folio'] ?? '#'.$_cot['id'];
+                                    $_doc['_compania'] = $_cot['compania'] ?? '';
+                                    $allDocPoliza[] = $_doc;
+                                }
+                            }
+                        }
+                        ?>
+                        <?php if (empty($polizas) && empty($allDocPoliza)): ?>
                         <div style="text-align:center;padding:28px 0;color:var(--text-muted);">
                             <div style="font-size:36px;margin-bottom:8px;">📄</div>
                             <p style="font-size:13px;margin-bottom:10px;">Sin pólizas registradas.</p>
                             <?php if ($puedeGestionarPolizas): ?>
                             <button class="btn btn-primary btn-sm" data-action="det-open" data-modal="modalSubirPoliza">Subir primera póliza</button>
                             <?php endif; ?>
+                        </div>
+                        <?php elseif (empty($polizas) && !empty($allDocPoliza)): ?>
+                        <!-- El coordinador subió documentos de póliza pero no hay póliza en la tabla polizas -->
+                        <div style="margin-bottom:12px;">
+                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">📋 Documentos de póliza registrados por el coordinador:</p>
+                            <?php foreach ($allDocPoliza as $_dp):
+                                $_rutaF = dirname(__DIR__,3).'/uploads/cotizaciones/'.(int)($_dp['cotizacion_id'] ?? 0).'/'.$_dp['nombre_archivo'];
+                                $_urlD  = file_exists($_rutaF) ? '/archivo?file=cotizaciones/'.(int)$_dp['cotizacion_id'].'/'.$_dp['nombre_archivo'] : null;
+                                $_extD  = strtolower(pathinfo($_dp['nombre_original'] ?? '', PATHINFO_EXTENSION));
+                                $_iconD = $_extD === 'pdf' ? '📄' : '🖼️';
+                            ?>
+                            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;">
+                                <span style="font-size:22px;"><?php echo $_iconD; ?></span>
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($_dp['nombre_original'] ?? $_dp['nombre_archivo']); ?></div>
+                                    <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($_dp['_folio']); ?> · <?php echo htmlspecialchars($_dp['_compania']); ?></div>
+                                </div>
+                                <?php if ($_urlD): ?>
+                                <a href="<?php echo $_urlD; ?>" target="_blank" class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;">Ver</a>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
                         </div>
                         <?php else: ?>
                         <?php foreach ($polizas as $pol):

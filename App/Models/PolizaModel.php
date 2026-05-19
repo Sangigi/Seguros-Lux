@@ -70,17 +70,28 @@ class PolizaModel extends BaseModel
 
     public function listarPorCliente(int $clienteId, int $agenteId): array
     {
+        // Nota: filtramos por cliente_id solamente para que el asesor vea todas
+        // las pólizas de su cliente aunque el coordinador las haya subido.
+        // El pago confirmado se detecta via cotizaciones.estado o cotizacion_pagos.
         $st = $this->db()->prepare(
-            'SELECT p.*, DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
-                    cp.metodo_pago, cp.fecha_pago,
-                    CASE WHEN cp.id IS NOT NULL THEN 1 ELSE 0 END AS pago_confirmado
+            'SELECT p.*,
+                    DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
+                    -- Pago confirmado: cotizacion ligada está pagada O tiene comprobante
+                    CASE
+                        WHEN cot.estado = \'pagado\'          THEN 1
+                        WHEN cot.estado_pago = \'confirmado\' THEN 1
+                        WHEN cp.id IS NOT NULL                THEN 1
+                        ELSE 0
+                    END AS pago_confirmado,
+                    cp.metodo_pago, cp.fecha_pago
              FROM   polizas p
-             LEFT JOIN cotizacion_pagos cp ON cp.cotizacion_id = p.cotizacion_id
-             WHERE  p.cliente_id = ? AND p.agente_id = ?
+             LEFT JOIN cotizaciones         cot ON cot.id = p.cotizacion_id
+             LEFT JOIN cotizacion_pagos     cp  ON cp.cotizacion_id = p.cotizacion_id
+             WHERE  p.cliente_id = ?
                AND  p.eliminado_en IS NULL
              ORDER  BY p.fecha_fin ASC'
         );
-        $st->execute([$clienteId, $agenteId]);
+        $st->execute([$clienteId]);
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
