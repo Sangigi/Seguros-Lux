@@ -9,7 +9,9 @@
  */
 
 use App\Models\NotificacionModel;
-
+// Forzar visualización de errores temporalmente
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 $accion = $_POST['accion'] ?? '';
 
 switch ($accion) {
