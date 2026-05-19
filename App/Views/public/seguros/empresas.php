@@ -136,7 +136,6 @@
 </style>
 </head>
 <body class="product-empresas">
-<?php require __DIR__ . '/../../partials/_navbar.php'; ?>
 
 <!-- ── Hero ─────────────────────────────────────────────────────────── -->
 <section class="hero-emp" id="inicio">
