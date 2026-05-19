@@ -114,6 +114,11 @@ $kpiCots  = $db->query("SELECT COUNT(*) FROM cotizaciones")->fetchColumn();
 $kpiConPol= $db->query("SELECT COUNT(DISTINCT cotizacion_id) FROM cotizacion_archivos WHERE tipo_documento='poliza' AND eliminado_en IS NULL")->fetchColumn();
 $kpiPagConf = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='confirmado'")->fetchColumn();
 $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='pendiente'")->fetchColumn();
+
+// KPIs rápidos
+$kpiPolActivas  = $db->query("SELECT COUNT(*) FROM polizas WHERE estado='activa'")->fetchColumn();
+$kpiPolPorVence = $db->query("SELECT COUNT(*) FROM polizas WHERE estado='por_vencer'")->fetchColumn();
+$kpiPolVencidas = $db->query("SELECT COUNT(*) FROM polizas WHERE estado='vencida'")->fetchColumn();
 ?>
 
 <!-- ── KPIs ─────────────────────────────────────────────────────────────────── -->
