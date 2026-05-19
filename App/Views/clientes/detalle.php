@@ -7,7 +7,8 @@ use App\Models\{ClientModel, CitaModel, CotizacionModel, HistorialModel};
 SessionManager::requireAuth('/login');
 
 $agenteId               = SessionManager::getAgentId();
-$puedeGestionarPolizas   = SessionManager::isAdmin();
+$puedeGestionarPolizas   = true; // Todos pueden ver/gestionar pólizas; el pago solo lo confirma coordinador
+$esCoordi = SessionManager::isAdmin(); // coordinador/admin/superadmin
 $clienteId       = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if (!$clienteId) { header('Location: /clientes'); exit; }
 
@@ -129,9 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     }
 
     if ($_POST['accion'] === 'subir_poliza' && $polizaModel) {
-        // Regla de negocio: el asesor NO puede subir póliza final.
-        // Solo coordinador/admin/superadmin pueden cerrar el caso subiendo la póliza.
-        SessionManager::requireRole('coordinador', '/login');
+        // El ASESOR emite (sube) la póliza; el COORDINADOR confirma el pago.
+        SessionManager::requireAuth('/login');
 
         if (empty($_FILES['archivo_poliza']['name'])||$_FILES['archivo_poliza']['error']!==UPLOAD_ERR_OK) {
             echo json_encode(['ok'=>false,'msg'=>'Archivo no recibido.']); exit;
@@ -196,8 +196,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         } catch(\Throwable $e){ echo json_encode(['ok'=>false,'msg'=>'Error.']); exit; }
     }
 
-    // ── Confirmar pago de cotización ──────────────────────────────────────────
+    // ── Confirmar pago de cotización (SOLO COORDINADOR) ───────────────────────
     if ($_POST['accion'] === 'confirmar_pago') {
+        // Solo el coordinador/admin puede registrar el pago.
+        if (!SessionManager::isAdmin()) {
+            echo json_encode(['ok'=>false,'msg'=>'Solo el coordinador puede confirmar pagos.']); exit;
+        }
         $cotId  = (int)($_POST['cotizacion_id'] ?? 0);
         $metodo = trim($_POST['metodo_pago'] ?? '');
         $notas  = trim($_POST['notas_pago'] ?? '');
@@ -289,6 +293,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     }
 
     // ── Editar datos del cliente ───────────────────────────────────────────────
+    if ($_POST['accion'] === 'editar_vehiculo') {
+        $campos = [
+            'submarca'             => trim($_POST['vehiculo_submarca']              ?? ''),
+            'version'              => trim($_POST['vehiculo_version']               ?? ''),
+            'modelo'               => trim($_POST['vehiculo_modelo']                ?? ''),
+            'marca'                => trim($_POST['vehiculo_marca']                 ?? ''),
+            'tipo_vehiculo'        => trim($_POST['vehiculo_tipo']                  ?? ''),
+            'tiene_adaptaciones'   => (int)($_POST['vehiculo_tiene_adaptaciones']  ?? 0),
+            'detalle_adaptaciones' => trim($_POST['vehiculo_detalle_adaptaciones']  ?? ''),
+        ];
+        // Campos extras que podrían no existir en DB aún; los manejamos con un try
+        $camposExtras = [
+            'color'  => trim($_POST['vehiculo_color']  ?? ''),
+            'placas' => trim($_POST['vehiculo_placas'] ?? ''),
+            'vin'    => trim($_POST['vehiculo_vin']    ?? ''),
+        ];
+        try {
+            $db = \Database\Connection::getConnection();
+            // Intentar guardar todos juntos; si las columnas no existen, guardar solo las seguras
+            try {
+                $todosCampos = array_merge($campos, $camposExtras);
+                $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($todosCampos)));
+                $vals = array_values($todosCampos);
+                $vals[] = $clienteId; $vals[] = $agenteId;
+                $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")->execute($vals);
+            } catch (\Throwable $e2) {
+                // Columnas color/placas/vin no existen aún — guardar solo las seguras
+                $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($campos)));
+                $vals = array_values($campos);
+                $vals[] = $clienteId; $vals[] = $agenteId;
+                $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")->execute($vals);
+            }
+            $historialModel->registrar($clienteId, $agenteId, 'nota', 'Datos del vehículo actualizados', '');
+            echo json_encode(['ok'=>true]); exit;
+        } catch (\Throwable $e) {
+            error_log('editar_vehiculo error: ' . $e->getMessage());
+            echo json_encode(['ok'=>false,'msg'=>'Error al guardar el vehículo.']); exit;
+        }
+    }
+
     if ($_POST['accion'] === 'editar_cliente') {
         $campos = [
             'nombre'           => trim($_POST['nombre']           ?? ''),
@@ -961,23 +1005,19 @@ $pageTitle=$nombreCompleto;
                 <div class="card mb-24">
                     <div class="card-header">
                         <h3 class="card-title">Pólizas <span class="badge badge-neutral"><?php echo count($polizas); ?></span></h3>
-                        <?php if ($puedeGestionarPolizas): ?>
                         <button class="btn btn-sm btn-primary" data-action="det-open" data-modal="modalSubirPoliza">+ Subir Póliza</button>
-                        <?php endif; ?>
                     </div>
                     <div class="card-body">
-                        <?php if (!$puedeGestionarPolizas): ?>
+                        <?php if (!$esCoordi): ?>
                         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.45;">
-                            Resumen informativo: la administración registra aquí las pólizas emitidas. Como asesor no puedes subirlas ni descargar el PDF; ante dudas, contacta al coordinador.
+                            Como asesor puedes subir pólizas y gestionar documentos. El coordinador es quien confirma el pago.
                         </p>
                         <?php endif; ?>
                         <?php if (empty($polizas)): ?>
                         <div style="text-align:center;padding:28px 0;color:var(--text-muted);">
                             <div style="font-size:36px;margin-bottom:8px;">📄</div>
                             <p style="font-size:13px;margin-bottom:10px;">Sin pólizas registradas.</p>
-                            <?php if ($puedeGestionarPolizas): ?>
                             <button class="btn btn-primary btn-sm" data-action="det-open" data-modal="modalSubirPoliza">Subir primera póliza</button>
-                            <?php endif; ?>
                         </div>
                         <?php else: ?>
                         <?php foreach ($polizas as $pol):
@@ -1021,15 +1061,13 @@ $pageTitle=$nombreCompleto;
                                     <a href="/cotizaciones?ver=<?php echo (int)$pol['cotizacion_id']; ?>"
                                        style="font-size:11px;color:var(--accent-color);" title="Ver cotización vinculada">📋 Cotización</a>
                                     <?php endif; ?>
-                                    <?php if ($puedeGestionarPolizas): ?>
-                                        <?php if ($urlP): ?>
+                                    <?php if ($urlP): ?>
                                     <a href="<?php echo $urlP; ?>" target="_blank" class="btn btn-sm btn-outline" title="Ver">👁</a>
                                     <a href="<?php echo $urlP; ?>" download="<?php echo htmlspecialchars($pol['nombre_original']); ?>" class="btn btn-sm btn-outline" title="Descargar">⬇</a>
-                                        <?php endif; ?>
+                                    <?php endif; ?>
                                     <button class="btn btn-sm btn-outline" data-action="det-editarPoliza" data-pol="<?php echo htmlspecialchars(json_encode($pol),ENT_QUOTES); ?>" title="Editar">✏️</button>
+                                    <?php if ($esCoordi): ?>
                                     <button class="btn btn-sm btn-outline" data-action="det-eliminarPoliza" data-id="<?php echo $pol['id']; ?>" title="Eliminar" style="color:var(--danger-color,#ef4444);">🗑</button>
-                                    <?php elseif ($urlP): ?>
-                                    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Archivo en custodia</span>
                                     <?php endif; ?>
                                     <!-- Botón de Renovación: visible siempre para el asesor -->
                                     <button class="btn btn-sm btn-outline"
@@ -1156,9 +1194,7 @@ $pageTitle=$nombreCompleto;
                         <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="quick-action-btn">📋 Nueva Cotización</a>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalCita">📅 Programar Cita</button>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalNota">📝 Agregar Nota</button>
-                        <?php if ($puedeGestionarPolizas): ?>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalSubirPoliza">📄 Subir Póliza</button>
-                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -1220,9 +1256,13 @@ $BADGE_PAGO_CL = [
                                 <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
                                    class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion">&#9999;&#65039; Editar</a>
                                 <?php if ($cot['estado'] !== 'pagado'): ?>
-                                <button class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;color:var(--success-color,#22c55e);border-color:var(--success-color,#22c55e);"
-                                        data-action="det-abrirPago" data-cot="<?php echo htmlspecialchars(json_encode(['id'=>(int)$cot['id'],'folio'=>$cot['folio']??'','compania'=>$cot['compania'],'precio'=>(float)$cot['precio'],'metodo_pago'=>$cot['metodo_pago']??''],JSON_UNESCAPED_UNICODE),ENT_QUOTES); ?>"
-                                        title="Confirmar pago">&#128176; Confirmar Pago</button>
+                                    <?php if ($esCoordi): ?>
+                                    <button class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;color:var(--success-color,#22c55e);border-color:var(--success-color,#22c55e);"
+                                            data-action="det-abrirPago" data-cot="<?php echo htmlspecialchars(json_encode(['id'=>(int)$cot['id'],'folio'=>$cot['folio']??'','compania'=>$cot['compania'],'precio'=>(float)$cot['precio'],'metodo_pago'=>$cot['metodo_pago']??''],JSON_UNESCAPED_UNICODE),ENT_QUOTES); ?>"
+                                            title="Confirmar pago">&#128176; Confirmar Pago</button>
+                                    <?php else: ?>
+                                    <span style="font-size:11px;padding:3px 10px;background:#fef3c7;color:#b45309;border-radius:6px;font-weight:600;">⏳ Pago pendiente (coordinador)</span>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                 <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pagado</span>
                                 <?php endif; ?>
@@ -1367,8 +1407,7 @@ $BADGE_PAGO_CL = [
     </div>
 </div>
 
-<!-- Modal Subir Póliza (solo coordinador) -->
-<?php if ($puedeGestionarPolizas): ?>
+<!-- Modal Subir Póliza -->
 <div class="modal-overlay" id="modalSubirPoliza">
     <div class="modal" style="max-width:580px;">
         <div class="modal-header"><h3 class="modal-title">📄 Subir Póliza</h3><button class="modal-close" data-close="modalSubirPoliza">&times;</button></div>
@@ -1426,10 +1465,8 @@ $BADGE_PAGO_CL = [
         </div>
     </div>
 </div>
-<?php endif; ?>
 
 <!-- Modal Editar Póliza -->
-<?php if ($puedeGestionarPolizas): ?>
 <div class="modal-overlay" id="modalEditarPoliza">
     <div class="modal" style="max-width:520px;">
         <div class="modal-header"><h3 class="modal-title">✏️ Editar Póliza</h3><button class="modal-close" data-close="modalEditarPoliza">&times;</button></div>
@@ -1470,7 +1507,6 @@ $BADGE_PAGO_CL = [
         </div>
     </div>
 </div>
-<?php endif; ?>
 
 <!-- ── Modal: Solicitar Renovación de Póliza ─────────────────────────── -->
 <div class="modal-overlay" id="modalRenovacion">
@@ -1878,6 +1914,55 @@ document.getElementById('selectEstadoCliente')?.addEventListener('change', funct
 </script>
 
 <script nonce="<?= $cspNonce ?>">
+// ── Vehículo: toggle entre vista y edición ────────────────────────────────────
+(function(){
+    const btnEdit   = document.getElementById('btnEditarVehiculo');
+    const btnCancel = document.getElementById('btnCancelarVehiculo');
+    const btnSave   = document.getElementById('btnGuardarVehiculo');
+    const viewMode  = document.getElementById('vehiculoViewMode');
+    const editMode  = document.getElementById('vehiculoEditMode');
+    if (!btnEdit || !viewMode || !editMode) return;
+
+    btnEdit.addEventListener('click', () => {
+        viewMode.style.display = 'none';
+        editMode.style.display = '';
+        btnEdit.style.display  = 'none';
+    });
+    if (btnCancel) btnCancel.addEventListener('click', () => {
+        viewMode.style.display = '';
+        editMode.style.display = 'none';
+        btnEdit.style.display  = '';
+    });
+    if (btnSave) btnSave.addEventListener('click', () => {
+        btnSave.disabled = true;
+        btnSave.textContent = 'Guardando…';
+        const fd = new FormData();
+        fd.append('accion', 'editar_vehiculo');
+        const campos = ['marca','submarca','version','modelo','tipo','color','placas','vin','tiene_adaptaciones','detalle_adaptaciones','info_adicional'];
+        campos.forEach(c => {
+            const el = editMode.querySelector(`[name="vehiculo_${c}"]`);
+            if (el) fd.append(`vehiculo_${c}`, el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value);
+        });
+        fetch(`/cliente/${clienteId}`, {method:'POST', body:fd})
+            .then(r => r.json())
+            .then(d => {
+                btnSave.disabled = false;
+                btnSave.textContent = '💾 Guardar vehículo';
+                if (d.ok) {
+                    showToast('Vehículo actualizado', 'success');
+                    setTimeout(() => location.reload(), 900);
+                } else {
+                    showToast(d.msg || 'Error al guardar', 'error');
+                }
+            })
+            .catch(() => {
+                btnSave.disabled = false;
+                btnSave.textContent = '💾 Guardar vehículo';
+                showToast('Error de conexión', 'error');
+            });
+    });
+})();
+
 function guardarEdicionCliente() {
     const btn = document.getElementById('btnGuardarEdicionCliente');
     btn.disabled = true;
@@ -2000,6 +2085,7 @@ document.addEventListener('click', function(e) {
                 }).catch(()=>showToast('Error de conexión','error'));
             break;
         }
+        case 'det-eliminarArchivo':
             if (typeof eliminarArchivoCot === 'function') eliminarArchivoCot(parseInt(el.dataset.id), el);
             break;
         case 'toast-close':
