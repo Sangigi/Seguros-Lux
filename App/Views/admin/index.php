@@ -4,7 +4,9 @@ declare(strict_types=1);
 use App\Security\SessionManager;
 use App\Models\{AgentModel, CotizacionModel};
 use Database\Connection;
-
+// Forzar visualización de errores temporalmente
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 SessionManager::requireRole('coordinador', '/login');
 
 $agenteId    = SessionManager::getAgentId();
