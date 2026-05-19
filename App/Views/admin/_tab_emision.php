@@ -53,7 +53,7 @@ $METODOS_PAGO = [
 ];
 
 // ── Query de cotizaciones ─────────────────────────────────────────────────────
-$where = ["c.eliminado_en IS NULL"];
+$where = ["1=1"];
 $params = [];
 
 if ($emiSearch !== '') {
@@ -110,10 +110,10 @@ $stCots->execute($params);
 $emiCots = $stCots->fetchAll(\PDO::FETCH_ASSOC);
 
 // KPIs rápidos
-$kpiCots  = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE eliminado_en IS NULL")->fetchColumn();
+$kpiCots  = $db->query("SELECT COUNT(*) FROM cotizaciones")->fetchColumn();
 $kpiConPol= $db->query("SELECT COUNT(DISTINCT cotizacion_id) FROM cotizacion_archivos WHERE tipo_documento='poliza' AND eliminado_en IS NULL")->fetchColumn();
-$kpiPagConf = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='confirmado' AND eliminado_en IS NULL")->fetchColumn();
-$kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='pendiente' AND eliminado_en IS NULL")->fetchColumn();
+$kpiPagConf = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='confirmado'")->fetchColumn();
+$kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='pendiente'")->fetchColumn();
 ?>
 
 <!-- ── KPIs ─────────────────────────────────────────────────────────────────── -->
