@@ -84,6 +84,25 @@
     .obligations-grid { grid-template-columns: 1fr; }
   }
 </style>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18175049842"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'AW-18175049842');
+</script>
+<!-- Event snippet for Compra conversion page -->
+<script>
+  gtag('event', 'conversion', {
+      'send_to': 'AW-18175049842/PcClCPSkirAcEPKAxdpD',
+      'value': 1.0,
+      'currency': 'MXN',
+      'transaction_id': ''
+      // 'new_customer': true /* calculate dynamically, populate with true/false */,
+  });
+</script>
 </head>
 <body>
 
