@@ -217,6 +217,7 @@ function initFormCotizador() {
             extra.empresa      = (form.querySelector('[name="empresa"]')?.value              || '').trim();
             extra.num_unidades = (form.querySelector('[name="num_unidades"]')?.value         || '').trim();
             extra.tipo_flota   = (form.querySelector('[name="tipo_vehiculos_flotilla"]')?.value || '').trim();
+            extra.comentarios  = `Flotilla: ${extra.empresa}, ${extra.num_unidades} unidades, tipo: ${extra.tipo_flota}`.trim();
         }
 
         if (!nombre || !telefono || !correo || !cp) {
@@ -236,28 +237,43 @@ function initFormCotizador() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                nombre, correo,
-                telefono:       '+52' + telefono.replace(/\D/g, ''),
-                ramo:           'autos',
-                tipo_vehiculo:  tipoVeh,
+                ramo:             'autos',
+                nombre,
+                correo,
+                telefono:         '+52' + telefono.replace(/\D/g, ''),
                 fecha_nacimiento: nacimiento,
-                domicilio, cp,
-                marca, submarca, modelo, version, anio,
-                fecha_preferida: '',
+                domicilio,
+                cp,
+                tipo_vehiculo:    tipoVeh,
+                marca,
+                submarca,
+                modelo,
+                version,
+                anio,
+                fecha_preferida:  (() => {
+                    const d = new Date(); d.setDate(d.getDate() + 2);
+                    return d.toISOString().split('T')[0];
+                })(),
                 ...extra,
             })
         })
         .then(r => r.json())
         .then(d => {
             if (d.ok) {
+                let extraMsg = d.advertencia
+                    ? `<p style="color:#b45309;background:#fef3c7;border-radius:8px;padding:10px 14px;margin:10px auto 0;max-width:400px;font-size:14px;">⚠️ ${d.advertencia}</p>`
+                    : '';
                 form.innerHTML = `<div style="text-align:center;padding:32px 16px;">
                     <div style="font-size:52px;margin-bottom:10px;">✅</div>
                     <h3 style="color:var(--accent);margin-bottom:8px;">¡Solicitud recibida!</h3>
                     <p style="color:#555;max-width:400px;margin:0 auto;">
                         Un asesor de Seguros Lux te contactará por WhatsApp y correo
                         con tu cotización personalizada.
-                    </p>
+                    </p>${extraMsg}
                 </div>`;
+            } else if (d.citas_activas) {
+                alert('⚠️ ' + d.msg);
+                if (btn) { btn.disabled = false; btn.textContent = 'Cotiza ahora'; }
             } else {
                 alert('Error: ' + (d.msg || 'Intenta de nuevo.'));
                 if (btn) { btn.disabled = false; btn.textContent = 'Cotiza ahora'; }

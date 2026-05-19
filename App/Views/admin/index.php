@@ -1605,10 +1605,16 @@ document.addEventListener('click', e => {
     if (e.target.classList.contains('modal-overlay')) { e.target.classList.remove('active'); document.body.style.overflow=''; }
 });
 
-// Stop propagation en celdas de acción (CSP-safe, sin onclick inline)
+// Stop propagation en celdas de acción: solo si el click NO fue en un botón/link/select interno
+// Esto permite que los data-action buttons funcionen, pero evita navegar la fila al clickear la celda
 document.addEventListener('click', function(e) {
-    if (e.target.closest('td.adm-stop-prop')) e.stopPropagation();
-}, true);
+    const td = e.target.closest('td.adm-stop-prop');
+    if (!td) return;
+    // Si el click fue en un botón, link, select o su contenido, dejar que el delegador lo maneje
+    if (e.target.closest('button,a,select,input')) return;
+    // Solo si el click fue en la celda vacía, cancelar propagación al tr
+    e.stopPropagation();
+});
 
 document.addEventListener('change', function(e) {
     if (e.target.id === 'selFiltroAgente')

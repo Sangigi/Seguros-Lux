@@ -255,15 +255,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             // Notificación importante al asesor confirmando el pago registrado
             try {
                 $db->prepare(
-                    "INSERT INTO notificaciones (agente_id, titulo, cuerpo, urgente, color, url_accion, leido, creado_en)
-                     VALUES (?,?,?,1,'green',?,0,NOW())"
+                    "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
+                     VALUES (?,?,?,?,1,'green',?,0,NOW())"
                 )->execute([
                     $agenteId,
+                    'pago',
                     '✅ Pago confirmado — ' . ($cot['folio'] ?? '#'.$cotId),
                     'El pago de la cotización ' . ($cot['folio'] ?? '#'.$cotId) . ' ha sido registrado correctamente. Método: ' . ucfirst(str_replace('_',' ',$metodo)) . '. Recuerda contactar al cliente para gestionar su renovación cuando corresponda.',
                     '/cliente/' . $clienteId,
                 ]);
-            } catch (\Throwable $ne) { /* No interrumpir el flujo */ }
+            } catch (\Throwable $ne) { error_log('[notif_pago] ' . $ne->getMessage()); }
             $db->commit();
             echo json_encode(['ok'=>true]); exit;
         } catch(\Throwable $e) {
@@ -850,7 +851,7 @@ $pageTitle=$nombreCompleto;
                                 <div style="font-size:20px;">💰</div>
                                 <div style="flex:1;">
                                     <div style="font-weight:600;"><?php echo $mLabel; ?></div>
-                                    <div style="font-size:11px;color:var(--text-muted);"><?php echo date('d/m/Y', strtotime($pago['fecha_pago'] ?? $pago['creado_en'] ?? 'now')); ?><?php if ($pago['notas']): ?> · <?php echo htmlspecialchars($pago['notas']); ?><?php endif; ?></div>
+                                    <div style="font-size:11px;color:var(--text-muted);"><?php echo date('d/m/Y', strtotime($pago['fecha_pago'] ?? $pago['creada_en'] ?? 'now')); ?><?php if ($pago['notas']): ?> · <?php echo htmlspecialchars($pago['notas']); ?><?php endif; ?></div>
                                 </div>
                                 <?php if ($pago['monto']>0): ?><div style="font-weight:700;color:var(--success-color,#22c55e);">$<?php echo number_format((float)$pago['monto'],2); ?></div><?php endif; ?>
                                 <?php if ($urlPago): ?><a href="<?php echo $urlPago; ?>" target="_blank" class="btn btn-sm btn-outline" title="Ver comprobante">📎</a><?php endif; ?>

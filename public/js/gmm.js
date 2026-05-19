@@ -66,6 +66,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
 
             if (data.ok) {
+                let extraMsg = data.advertencia
+                    ? `<p style="color:#b45309;background:#fef3c7;border-radius:8px;padding:10px 14px;margin:12px auto 0;max-width:420px;font-size:14px;">⚠️ ${data.advertencia}</p>`
+                    : '';
                 form.innerHTML = `
                     <div style="text-align:center;padding:32px 0;">
                         <div style="font-size:52px;margin-bottom:12px;">✅</div>
@@ -73,8 +76,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p style="color:#555;max-width:420px;margin:0 auto;">
                             Un asesor de Seguros Lux te contactará por WhatsApp en las próximas horas
                             con las opciones de GMM que mejor se adaptan a tu perfil.
-                        </p>
+                        </p>${extraMsg}
                     </div>`;
+            } else if (data.citas_activas) {
+                showMsg('error', '⚠️ ' + data.msg);
+                if (btn) { btn.disabled = false; btn.textContent = 'Cotizar ahora'; }
             } else {
                 showMsg('error', data.msg || 'Ocurrió un error. Intenta de nuevo.');
                 if (btn) { btn.disabled = false; btn.textContent = 'Cotizar ahora'; }

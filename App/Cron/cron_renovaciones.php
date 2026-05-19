@@ -73,9 +73,9 @@ foreach ($DIAS_OBJETIVO as $dias) {
         // Insertar notificación
         try {
             $db->prepare(
-                "INSERT INTO notificaciones (agente_id, titulo, cuerpo, urgente, color, url_accion, leido, creado_en)
-                 VALUES (?,?,?,?,?,?,0,NOW())"
-            )->execute([$pol['asesor_id'], $titulo, $cuerpo, $urgente ? 1 : 0, $color, $urlAccion]);
+                "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
+                 VALUES (?,?,?,?,?,?,?,0,NOW())"
+            )->execute([$pol['asesor_id'], 'renovacion', $titulo, $cuerpo, $urgente ? 1 : 0, $color, $urlAccion]);
         } catch (\Throwable $e) {
             echo "[ERR] Notificación asesor {$pol['asesor_id']}: {$e->getMessage()}\n";
             continue;

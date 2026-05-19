@@ -4,8 +4,6 @@ namespace App\Controllers;
 
 use App\Services\MailQueue;
 use Database\Connection;
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
 
 $__crmAutoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
 if (is_file($__crmAutoload)) {
@@ -13,20 +11,22 @@ if (is_file($__crmAutoload)) {
 }
 
 /**
- * Controlador unificado de solicitudes de cotización.
+ * Controlador unificado de solicitudes de cotización pública.
  * Maneja: vida, gmm, empresas, autos.
  *
- * MEJORA DE RENDIMIENTO:
- *   Los emails ya NO se envían síncronamente en el request HTTP.
- *   En su lugar se encolan en la tabla `mail_queue` (< 5 ms) y el
- *   cron App/Cron/CronMail.php los despacha cada minuto.
- *
- *   Ganancia: el endpoint pasa de ~3-8 s (con SMTP lento) a < 50 ms.
+ * FIXES aplicados:
+ *  1. Guarda el cliente en la tabla `clientes` (CRM) con agente asignado por menor carga.
+ *  2. Detecta si el correo ya existe y avisa si tiene citas activas (max 3).
+ *  3. Bloquea registro si el cliente ya tiene >= 3 citas activas simultáneas.
+ *  4. Emails completos para todos los ramos sin pérdida de datos.
+ *  5. Captura campos extendidos de autos: submarca, versión, CP, domicilio, fecha_nacimiento.
+ *  6. Captura campo `hospitales` y `urgencia` del formulario GMM.
  */
 class VidaSolicitudController
 {
     private const ASESOR_EMAIL   = 'contacto@seguroslux.mx';
     private const EMPRESA_NOMBRE = 'Seguros LUX';
+    private const MAX_CITAS      = 3;
 
     public static function handle(): void
     {
@@ -41,26 +41,38 @@ class VidaSolicitudController
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
         // ── Campos comunes ────────────────────────────────────────────────────
-        $nombre      = trim($input['nombre']         ?? '');
-        $correo      = trim($input['correo']         ?? '');
-        $telefono    = trim($input['telefono']       ?? '');
-        $fechaPref   = trim($input['fecha_preferida'] ?? date('Y-m-d', strtotime('+2 days')));
-        $comentarios = trim($input['comentarios']    ?? '');
+        $nombre      = trim($input['nombre']           ?? '');
+        $correo      = trim($input['correo']           ?? '');
+        $telefono    = trim($input['telefono']         ?? '');
+        $fechaPref   = trim($input['fecha_preferida']  ?? date('Y-m-d', strtotime('+2 days')));
+        $comentarios = trim($input['comentarios']      ?? '');
+        $nacimiento  = trim($input['fecha_nacimiento'] ?? '');
 
         $ramo = in_array($input['ramo'] ?? '', ['vida', 'gmm', 'empresas', 'autos'], true)
-            ? $input['ramo']
-            : 'vida';
+            ? $input['ramo'] : 'vida';
 
-        // ── Campos por ramo ───────────────────────────────────────────────────
-        $edadGmm   = trim($input['edad']          ?? '');
-        $depGmm    = trim($input['dependientes']   ?? '');
-        $empresa   = trim($input['empresa']        ?? '');
-        $empleados = trim($input['empleados']      ?? '');
-        $servicios = trim($input['servicios']      ?? '');
-        $marca     = trim($input['marca']          ?? '');
-        $modelo    = trim($input['modelo']         ?? '');
-        $anio      = trim($input['anio']           ?? '');
-        $tipoVeh   = trim($input['tipo_vehiculo']  ?? '');
+        // ── Campos GMM ────────────────────────────────────────────────────────
+        $edadGmm    = trim($input['edad']          ?? '');
+        $depGmm     = trim($input['dependientes']  ?? '');
+        $hospitales = trim($input['hospitales']    ?? '');
+        $urgencia   = trim($input['urgencia']      ?? '');
+
+        // ── Campos empresas ───────────────────────────────────────────────────
+        $empresa    = trim($input['empresa']       ?? '');
+        $empleados  = trim($input['empleados']     ?? '');
+        $servicios  = trim($input['servicios']     ?? '');
+
+        // ── Campos autos (extendidos) ─────────────────────────────────────────
+        $tipoVeh     = trim($input['tipo_vehiculo']  ?? '');
+        $marca       = trim($input['marca']          ?? '');
+        $submarca    = trim($input['submarca']       ?? '');
+        $modelo      = trim($input['modelo']         ?? '');
+        $version     = trim($input['version']        ?? '');
+        $anio        = trim($input['anio']           ?? '');
+        $domicilio   = trim($input['domicilio']      ?? '');
+        $cp          = trim($input['cp']             ?? '');
+        $numUnidades = trim($input['num_unidades']   ?? '');
+        $tipoFlota   = trim($input['tipo_flota']     ?? '');
 
         // ── Validación básica ─────────────────────────────────────────────────
         if (!$nombre || !$telefono) {
@@ -68,42 +80,88 @@ class VidaSolicitudController
             echo json_encode(['ok' => false, 'msg' => 'Nombre y teléfono son obligatorios.']);
             return;
         }
-
         if (in_array($ramo, ['vida', 'autos'], true) && !$correo) {
             http_response_code(400);
             echo json_encode(['ok' => false, 'msg' => 'El correo electrónico es obligatorio.']);
             return;
         }
-
         if ($correo && !filter_var($correo, FILTER_VALIDATE_EMAIL)) {
             http_response_code(400);
             echo json_encode(['ok' => false, 'msg' => 'Correo electrónico inválido.']);
             return;
         }
 
-        // ── Guardar en BD ─────────────────────────────────────────────────────
-        self::guardarEnDB(
-            $nombre, $correo, $telefono, $fechaPref,
-            $ramo, $edadGmm, $depGmm, $comentarios,
-            $empresa, $empleados, $servicios,
-            $marca, $modelo, $anio, $tipoVeh
+        // ── Verificar citas activas del cliente por correo ────────────────────
+        $advertencia = null;
+        if ($correo && filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+            try {
+                $db = Connection::getConnection();
+                $stmtCl = $db->prepare("SELECT id FROM clientes WHERE correo = ? LIMIT 1");
+                $stmtCl->execute([$correo]);
+                $clienteId = $stmtCl->fetchColumn();
+
+                if ($clienteId) {
+                    $stmtC = $db->prepare(
+                        "SELECT COUNT(*) FROM citas
+                         WHERE cliente_id = ?
+                           AND estado IN ('programada','pendiente')
+                           AND fecha >= CURDATE()"
+                    );
+                    $stmtC->execute([$clienteId]);
+                    $citasActivas = (int)$stmtC->fetchColumn();
+
+                    if ($citasActivas >= self::MAX_CITAS) {
+                        http_response_code(409);
+                        echo json_encode([
+                            'ok'            => false,
+                            'citas_activas' => $citasActivas,
+                            'msg'           => "Ya tienes {$citasActivas} citas activas (máximo " . self::MAX_CITAS . "). Por favor cancela alguna antes de agendar una nueva.",
+                        ]);
+                        return;
+                    }
+
+                    if ($citasActivas > 0) {
+                        $advertencia = "Tienes {$citasActivas} cita(s) activa(s). Tu solicitud fue registrada y un asesor te contactará pronto.";
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log('[VidaSolicitudController] Error verificando citas: ' . $e->getMessage());
+            }
+        }
+
+        // ── Guardar en CRM (tabla clientes) con agente por menor carga ─────────
+        $agenteAsignado = self::guardarEnCRM(
+            nombre: $nombre, correo: $correo, telefono: $telefono, nacimiento: $nacimiento,
+            ramo: $ramo, tipoVeh: $tipoVeh, marca: $marca, submarca: $submarca,
+            modelo: $modelo, version: $version, anio: $anio, domicilio: $domicilio, cp: $cp,
+            edadGmm: $edadGmm, depGmm: $depGmm, hospitales: $hospitales,
+            empresa: $empresa, empleados: $empleados, servicios: $servicios,
+            comentarios: $comentarios, numUnidades: $numUnidades, tipoFlota: $tipoFlota
         );
 
-        // ── Encolar correos (ASÍNCRONO — no bloquea la respuesta HTTP) ─────────
-        // Los emails se guardan en mail_queue y el cron los despacha cada minuto.
-        // Si la tabla no existe aún, logeamos y seguimos (no falla la solicitud).
+        // ── Guardar en vida_solicitudes (log histórico) ────────────────────────
+        self::guardarEnSolicitudes(
+            nombre: $nombre, correo: $correo, telefono: $telefono, fechaPref: $fechaPref,
+            ramo: $ramo, edadGmm: $edadGmm, depGmm: $depGmm, comentarios: $comentarios,
+            empresa: $empresa, empleados: $empleados, servicios: $servicios,
+            marca: $marca, modelo: $modelo, anio: $anio, tipoVeh: $tipoVeh,
+            hospitales: $hospitales, submarca: $submarca, version: $version,
+            cp: $cp, domicilio: $domicilio
+        );
+
+        // ── Encolar correos ───────────────────────────────────────────────────
         self::encolarCorreos(
-            $nombre,
-            $correo ?: self::ASESOR_EMAIL,
-            $telefono,
-            $fechaPref,
-            $ramo,
-            $edadGmm, $depGmm, $comentarios,
-            $empresa, $empleados, $servicios,
-            $marca, $modelo, $anio, $tipoVeh
+            nombre: $nombre, correo: $correo ?: self::ASESOR_EMAIL,
+            telefono: $telefono, fechaPref: $fechaPref, ramo: $ramo,
+            edadGmm: $edadGmm, depGmm: $depGmm, comentarios: $comentarios,
+            empresa: $empresa, empleados: $empleados, servicios: $servicios,
+            marca: $marca, submarca: $submarca, modelo: $modelo, version: $version,
+            anio: $anio, tipoVeh: $tipoVeh, domicilio: $domicilio, cp: $cp,
+            hospitales: $hospitales, urgencia: $urgencia,
+            numUnidades: $numUnidades, tipoFlota: $tipoFlota, nacimiento: $nacimiento
         );
 
-        // ── Notificación WhatsApp (cURL con timeout corto — aceptable) ─────────
+        // ── Notificación WhatsApp ─────────────────────────────────────────────
         try {
             $config  = self::getConfig();
             $waToken = $config['wa_token'] ?? '';
@@ -111,15 +169,19 @@ class VidaSolicitudController
 
             if ($waToken && $waPid) {
                 $ramoLabel = strtoupper($ramo);
+                $vehiculo  = trim("{$marca} {$submarca} {$modelo} {$version} {$anio}");
                 $msg = "🔔 *Nueva solicitud — {$ramoLabel}*\n"
                      . "👤 {$nombre}\n"
-                     . ($correo    ? "📧 {$correo}\n"              : '')
+                     . ($correo     ? "📧 {$correo}\n"              : '')
                      . "📞 {$telefono}\n"
-                     . ($marca     ? "🚗 {$marca} {$modelo} {$anio}\n" : '')
-                     . ($empresa   ? "🏢 {$empresa}\n"              : '')
-                     . ($empleados ? "👥 Empleados: {$empleados}\n"  : '')
-                     . ($edadGmm   ? "🎂 Edad: {$edadGmm} años\n"   : '')
+                     . ($vehiculo   ? "🚗 {$vehiculo}\n"            : '')
+                     . ($empresa    ? "🏢 {$empresa}\n"             : '')
+                     . ($empleados  ? "👥 Empleados: {$empleados}\n" : '')
+                     . ($edadGmm    ? "🎂 Edad: {$edadGmm} años\n"  : '')
+                     . ($hospitales ? "🏥 Hospitales: {$hospitales}\n" : '')
+                     . ($cp         ? "📍 CP: {$cp}\n"              : '')
                      . ($comentarios ? "💬 {$comentarios}\n"         : '')
+                     . ($agenteAsignado ? "👔 Asesor ID asignado: {$agenteAsignado}\n" : '')
                      . "📅 Contactar antes: " . self::formatFecha($fechaPref);
 
                 $asesorPhone = $config['asesor_whatsapp'] ?? '';
@@ -131,118 +193,108 @@ class VidaSolicitudController
             error_log('WA notify error: ' . $e->getMessage());
         }
 
-        echo json_encode(['ok' => true, 'msg' => 'Solicitud recibida correctamente.']);
+        $response = ['ok' => true, 'msg' => 'Solicitud recibida correctamente.'];
+        if ($advertencia) {
+            $response['advertencia'] = $advertencia;
+        }
+        echo json_encode($response);
     }
 
-    // ── Cola de correos (ASÍNCRONA) ───────────────────────────────────────────
+    // ── Guardar en tabla clientes (CRM) con agente por menor carga ────────────
 
-    /**
-     * Encola los emails en mail_queue — operación rápida (INSERT en BD, < 5 ms).
-     * El despacho real ocurre en App/Cron/CronMail.php (cada minuto).
-     */
-    private static function encolarCorreos(
-        string $nombre, string $correo, string $telefono, string $fechaPref, string $ramo,
-        string $edadGmm, string $depGmm, string $comentarios,
-        string $empresa = '', string $empleados = '', string $servicios = '',
-        string $marca = '', string $modelo = '', string $anio = '', string $tipoVeh = ''
-    ): void {
+    private static function guardarEnCRM(
+        string $nombre, string $correo, string $telefono, string $nacimiento,
+        string $ramo, string $tipoVeh, string $marca, string $submarca,
+        string $modelo, string $version, string $anio, string $domicilio, string $cp,
+        string $edadGmm, string $depGmm, string $hospitales,
+        string $empresa, string $empleados, string $servicios,
+        string $comentarios, string $numUnidades, string $tipoFlota
+    ): int {
         try {
-            $fechaFmt = self::formatFecha($fechaPref);
+            $db = Connection::getConnection();
 
-            $ramoLabel = match ($ramo) {
-                'gmm'      => 'Gastos Médicos Mayores',
-                'empresas' => 'Seguros Empresariales',
-                'autos'    => 'Seguro Vehicular',
-                default    => 'Seguro de Vida',
-            };
-            $ramoIcon = match ($ramo) {
-                'gmm'      => '🏥',
-                'empresas' => '🏢',
-                'autos'    => '🚗',
-                default    => '❤️',
-            };
-            $gradient = match ($ramo) {
-                'gmm'      => '#0ea5e9,#0284c7',
-                'empresas' => '#7c3aed,#6d28d9',
-                'autos'    => '#10b981,#059669',
-                default    => '#c9a227,#dbb84d',
-            };
+            // No duplicar si ya existe el correo
+            if ($correo) {
+                $st = $db->prepare("SELECT id, agente_id FROM clientes WHERE correo = ? LIMIT 1");
+                $st->execute([$correo]);
+                $existente = $st->fetch(\PDO::FETCH_ASSOC);
+                if ($existente) {
+                    return (int)($existente['agente_id'] ?? 0);
+                }
+            }
 
-            // ── Filas extra por ramo ──────────────────────────────────────────
-            $extraRows = '';
+            // Agente con menor número de clientes asignados
+            $stA = $db->query(
+                "SELECT a.id
+                 FROM agentes a
+                 LEFT JOIN clientes c ON c.agente_id = a.id
+                 WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
+                 GROUP BY a.id
+                 ORDER BY COUNT(c.id) ASC
+                 LIMIT 1"
+            );
+            $agRow    = $stA->fetch(\PDO::FETCH_ASSOC);
+            $agenteId = $agRow ? (int)$agRow['id'] : 0;
+
+            if (!$agenteId) {
+                error_log('[VidaSolicitudController] No hay agentes activos para asignar.');
+                return 0;
+            }
+
+            // Descomponer nombre completo (los formularios públicos usan un solo campo)
+            $partes = explode(' ', trim($nombre), 3);
+            $primerNombre    = $partes[0] ?? $nombre;
+            $apellidoPaterno = $partes[1] ?? '';
+            $apellidoMaterno = $partes[2] ?? '';
+
+            $datos = [
+                'nombre'           => $primerNombre,
+                'apellido_paterno' => $apellidoPaterno,
+                'apellido_materno' => $apellidoMaterno,
+                'correo'           => $correo ?: null,
+                'telefono'         => $telefono,
+                'fecha_nacimiento' => $nacimiento ?: null,
+                'codigo_postal'    => $cp ?: null,
+                'ramo'             => $ramo,
+                'agente_id'        => $agenteId,
+                'estado_cliente'   => 'nuevo',
+                'asegurado'        => 'no',
+            ];
 
             if ($ramo === 'autos') {
-                if ($tipoVeh)       $extraRows .= self::row('🚗 Tipo',    ucfirst($tipoVeh));
-                if ($marca || $modelo) $extraRows .= self::row('🏷️ Vehículo', htmlspecialchars("{$marca} {$modelo}"));
-                if ($anio)          $extraRows .= self::row('📅 Año',     htmlspecialchars($anio));
+                $modeloCompleto      = trim("{$submarca} {$modelo} {$version}");
+                $datos['marca']         = $marca          ?: null;
+                $datos['modelo']        = $modeloCompleto ?: null;
+                $datos['anio_vehiculo'] = $anio           ? (int)$anio : null;
+                $datos['tipo_vehiculo'] = $tipoVeh        ?: null;
+                $datos['calle']         = $domicilio      ?: null;
             }
 
-            if ($ramo === 'gmm') {
-                if ($edadGmm) $extraRows .= self::row('🎂 Edad',        htmlspecialchars($edadGmm) . ' años');
-                if ($depGmm)  $extraRows .= self::row('👨‍👩‍👧 Dependientes', htmlspecialchars($depGmm));
-            }
+            $cols   = implode(', ', array_keys($datos));
+            $places = implode(', ', array_fill(0, count($datos), '?'));
+            $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
 
-            if ($ramo === 'vida') {
-                if ($depGmm) $extraRows .= self::row('👨‍👩‍👧 Dependientes', htmlspecialchars($depGmm));
-            }
-
-            if ($ramo === 'empresas') {
-                if ($empresa)   $extraRows .= self::row('🏢 Empresa',   htmlspecialchars($empresa));
-                if ($empleados) $extraRows .= self::row('👥 Empleados', htmlspecialchars($empleados));
-                if ($servicios) $extraRows .= self::row('🧩 Servicios', htmlspecialchars($servicios));
-            }
-
-            if ($comentarios) $extraRows .= self::row('💬 Comentarios', htmlspecialchars($comentarios));
-
-            // Determinar si el correo es válido y pertenece al cliente
-            $clienteCorreo = (
-                filter_var($correo, FILTER_VALIDATE_EMAIL)
-                && $correo !== self::ASESOR_EMAIL
-            ) ? $correo : null;
-
-            $correoDisplay = $clienteCorreo ?? '(no proporcionado)';
-
-            // ── Email al asesor ───────────────────────────────────────────────
-            MailQueue::push(
-                to:      self::ASESOR_EMAIL,
-                toName:  self::EMPRESA_NOMBRE,
-                subject: '[' . self::EMPRESA_NOMBRE . "] Nueva solicitud de {$ramoLabel} — {$nombre}",
-                body:    self::buildEmailAsesor(
-                    $ramoIcon, $ramoLabel, $gradient,
-                    $nombre, $correoDisplay, $telefono,
-                    $fechaFmt, $extraRows
-                ),
-                replyTo: $clienteCorreo,
-            );
-
-            // ── Email al cliente ──────────────────────────────────────────────
-            if ($clienteCorreo) {
-                MailQueue::push(
-                    to:      $clienteCorreo,
-                    toName:  $nombre,
-                    subject: '✅ Tu solicitud fue recibida — ' . self::EMPRESA_NOMBRE,
-                    body:    self::buildEmailCliente($ramoIcon, $ramoLabel, $gradient, $nombre, $fechaFmt),
-                );
-            }
+            return $agenteId;
 
         } catch (\Throwable $e) {
-            // El error de cola no debe fallar la solicitud. Logeamos y continuamos.
-            error_log('[VidaSolicitudController] Error al encolar correos: ' . $e->getMessage());
+            error_log('[VidaSolicitudController] Error guardando en CRM: ' . $e->getMessage());
+            return 0;
         }
     }
 
-    // ── Base de datos ─────────────────────────────────────────────────────────
+    // ── Guardar en vida_solicitudes (log histórico) ───────────────────────────
 
-    private static function guardarEnDB(
+    private static function guardarEnSolicitudes(
         string $nombre, string $correo, string $telefono, string $fechaPref,
         string $ramo, string $edadGmm, string $depGmm, string $comentarios,
         string $empresa, string $empleados, string $servicios,
-        string $marca = '', string $modelo = '', string $anio = '', string $tipoVeh = ''
+        string $marca, string $modelo, string $anio, string $tipoVeh,
+        string $hospitales = '', string $submarca = '', string $version = '',
+        string $cp = '', string $domicilio = ''
     ): void {
         try {
             $db = Connection::getConnection();
 
-            // Crear tabla si no existe (con campos de autos)
             $db->exec("
                 CREATE TABLE IF NOT EXISTS vida_solicitudes (
                     id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -255,53 +307,136 @@ class VidaSolicitudController
                     dependientes    TINYINT       DEFAULT 0,
                     comentarios     TEXT,
                     marca           VARCHAR(100)  DEFAULT NULL,
+                    submarca        VARCHAR(100)  DEFAULT NULL,
                     modelo          VARCHAR(100)  DEFAULT NULL,
+                    version         VARCHAR(100)  DEFAULT NULL,
                     anio            VARCHAR(10)   DEFAULT NULL,
                     tipo_vehiculo   VARCHAR(50)   DEFAULT NULL,
+                    domicilio       VARCHAR(255)  DEFAULT NULL,
+                    cp              VARCHAR(10)   DEFAULT NULL,
+                    hospitales      TEXT          DEFAULT NULL,
                     estado          ENUM('pendiente','contactado','cerrado') DEFAULT 'pendiente',
                     created_at      TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             ");
 
-            // Agregar columnas de autos si no existen (para BDs antiguas)
-            foreach (['marca VARCHAR(100)', 'modelo VARCHAR(100)', 'anio VARCHAR(10)', 'tipo_vehiculo VARCHAR(50)'] as $col) {
-                try {
-                    $db->exec("ALTER TABLE vida_solicitudes ADD COLUMN IF NOT EXISTS {$col} DEFAULT NULL");
-                } catch (\Throwable) { /* columna ya existe */ }
+            foreach (['submarca VARCHAR(100)', 'version VARCHAR(100)', 'domicilio VARCHAR(255)', 'cp VARCHAR(10)', 'hospitales TEXT'] as $col) {
+                try { $db->exec("ALTER TABLE vida_solicitudes ADD COLUMN IF NOT EXISTS {$col} DEFAULT NULL"); }
+                catch (\Throwable) {}
             }
 
             $db->prepare(
                 "INSERT INTO vida_solicitudes
                     (nombre, correo, telefono, fecha_preferida, ramo, edad, dependientes,
-                     comentarios, marca, modelo, anio, tipo_vehiculo)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                     comentarios, marca, submarca, modelo, version, anio, tipo_vehiculo,
+                     domicilio, cp, hospitales)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([
-                $nombre,
-                $correo ?: null,
-                $telefono,
-                $fechaPref,
-                $ramo,
-                $edadGmm ?: null,
-                $depGmm  ?: 0,
-                $comentarios ?: null,
-                $marca   ?: null,
-                $modelo  ?: null,
-                $anio    ?: null,
-                $tipoVeh ?: null,
+                $nombre, $correo ?: null, $telefono, $fechaPref, $ramo,
+                $edadGmm ?: null, $depGmm ?: 0, $comentarios ?: null,
+                $marca ?: null, $submarca ?: null, $modelo ?: null, $version ?: null,
+                $anio ?: null, $tipoVeh ?: null, $domicilio ?: null, $cp ?: null,
+                $hospitales ?: null,
             ]);
         } catch (\Throwable $e) {
-            error_log('VidaSolicitudController DB error: ' . $e->getMessage());
+            error_log('[VidaSolicitudController] DB error vida_solicitudes: ' . $e->getMessage());
         }
     }
 
-    // ── Helpers de HTML ───────────────────────────────────────────────────────
+    // ── Cola de correos ───────────────────────────────────────────────────────
+
+    private static function encolarCorreos(
+        string $nombre, string $correo, string $telefono, string $fechaPref, string $ramo,
+        string $edadGmm, string $depGmm, string $comentarios,
+        string $empresa = '', string $empleados = '', string $servicios = '',
+        string $marca = '', string $submarca = '', string $modelo = '',
+        string $version = '', string $anio = '', string $tipoVeh = '',
+        string $domicilio = '', string $cp = '', string $hospitales = '',
+        string $urgencia = '', string $numUnidades = '', string $tipoFlota = '',
+        string $nacimiento = ''
+    ): void {
+        try {
+            $fechaFmt = self::formatFecha($fechaPref);
+
+            $ramoLabel = match ($ramo) {
+                'gmm'      => 'Gastos Médicos Mayores',
+                'empresas' => 'Seguros Empresariales',
+                'autos'    => 'Seguro Vehicular',
+                default    => 'Seguro de Vida',
+            };
+            $ramoIcon = match ($ramo) { 'gmm' => '🏥', 'empresas' => '🏢', 'autos' => '🚗', default => '❤️' };
+            $gradient = match ($ramo) { 'gmm' => '#0ea5e9,#0284c7', 'empresas' => '#7c3aed,#6d28d9', 'autos' => '#10b981,#059669', default => '#c9a227,#dbb84d' };
+
+            $extraRows = '';
+
+            if ($ramo === 'autos') {
+                if ($tipoVeh)    $extraRows .= self::row('🚗 Tipo de vehículo', ucfirst($tipoVeh));
+                if ($marca)      $extraRows .= self::row('🏷️ Marca',            htmlspecialchars($marca));
+                if ($submarca)   $extraRows .= self::row('🏷️ Submarca',         htmlspecialchars($submarca));
+                if ($modelo)     $extraRows .= self::row('🔖 Modelo',           htmlspecialchars($modelo));
+                if ($version)    $extraRows .= self::row('📋 Versión',          htmlspecialchars($version));
+                if ($anio)       $extraRows .= self::row('📅 Año',             htmlspecialchars($anio));
+                if ($domicilio)  $extraRows .= self::row('🏠 Domicilio',        htmlspecialchars($domicilio));
+                if ($cp)         $extraRows .= self::row('📍 Código Postal',    htmlspecialchars($cp));
+                if ($numUnidades) $extraRows .= self::row('🚛 No. Unidades',    htmlspecialchars($numUnidades));
+                if ($tipoFlota)  $extraRows .= self::row('🚛 Tipo de flota',    htmlspecialchars($tipoFlota));
+                if ($nacimiento) $extraRows .= self::row('🎂 Fecha de nacimiento', htmlspecialchars($nacimiento));
+            }
+
+            if ($ramo === 'gmm') {
+                if ($edadGmm)    $extraRows .= self::row('🎂 Edad',           htmlspecialchars($edadGmm) . ' años');
+                if ($nacimiento) $extraRows .= self::row('📅 Nacimiento',     htmlspecialchars($nacimiento));
+                if ($depGmm)     $extraRows .= self::row('👨‍👩‍👧 Dependientes', htmlspecialchars($depGmm));
+                if ($hospitales) $extraRows .= self::row('🏥 Hospitales',     htmlspecialchars($hospitales));
+                if ($urgencia)   $extraRows .= self::row('⚡ Urgencia',       $urgencia === 'urgente' ? '🔴 Urgente' : '🟢 Sin prisa');
+            }
+
+            if ($ramo === 'vida') {
+                if ($nacimiento) $extraRows .= self::row('📅 Nacimiento',     htmlspecialchars($nacimiento));
+                if ($depGmm)     $extraRows .= self::row('👨‍👩‍👧 Dependientes', htmlspecialchars($depGmm));
+            }
+
+            if ($ramo === 'empresas') {
+                if ($empresa)   $extraRows .= self::row('🏢 Empresa',   htmlspecialchars($empresa));
+                if ($empleados) $extraRows .= self::row('👥 Empleados', htmlspecialchars($empleados));
+                if ($servicios) $extraRows .= self::row('🧩 Servicios', htmlspecialchars($servicios));
+            }
+
+            if ($comentarios) $extraRows .= self::row('💬 Comentarios', htmlspecialchars($comentarios));
+
+            $clienteCorreo = (filter_var($correo, FILTER_VALIDATE_EMAIL) && $correo !== self::ASESOR_EMAIL)
+                ? $correo : null;
+
+            $correoDisplay = $clienteCorreo ?? '(no proporcionado)';
+
+            MailQueue::push(
+                to:      self::ASESOR_EMAIL,
+                toName:  self::EMPRESA_NOMBRE,
+                subject: '[' . self::EMPRESA_NOMBRE . "] Nueva solicitud de {$ramoLabel} — {$nombre}",
+                body:    self::buildEmailAsesor($ramoIcon, $ramoLabel, $gradient, $nombre, $correoDisplay, $telefono, $fechaFmt, $extraRows),
+                replyTo: $clienteCorreo,
+            );
+
+            if ($clienteCorreo) {
+                MailQueue::push(
+                    to:      $clienteCorreo,
+                    toName:  $nombre,
+                    subject: '✅ Tu solicitud fue recibida — ' . self::EMPRESA_NOMBRE,
+                    body:    self::buildEmailCliente($ramoIcon, $ramoLabel, $gradient, $nombre, $fechaFmt),
+                );
+            }
+
+        } catch (\Throwable $e) {
+            error_log('[VidaSolicitudController] Error al encolar correos: ' . $e->getMessage());
+        }
+    }
+
+    // ── Helpers HTML ──────────────────────────────────────────────────────────
 
     private static function row(string $label, string $value): string
     {
         return "<tr>
-            <td style='padding:10px 0;border-bottom:1px solid #eee;white-space:nowrap;padding-right:16px;'>
-                <strong>{$label}:</strong>
-            </td>
+            <td style='padding:10px 0;border-bottom:1px solid #eee;white-space:nowrap;padding-right:16px;'><strong>{$label}:</strong></td>
             <td style='padding:10px 0;border-bottom:1px solid #eee;'>{$value}</td>
         </tr>";
     }
@@ -329,8 +464,7 @@ class VidaSolicitudController
     }
 
     private static function buildEmailCliente(
-        string $icon, string $label, string $gradient,
-        string $nombre, string $fecha
+        string $icon, string $label, string $gradient, string $nombre, string $fecha
     ): string {
         return "
         <html><body style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;'>
@@ -347,12 +481,10 @@ class VidaSolicitudController
         </body></html>";
     }
 
-    // ── SMTP (mantenido para uso de MailQueue::buildMailer interno) ───────────
-
     private static function formatFecha(string $fecha): string
     {
-        $meses = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-                  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        $meses = ['','enero','febrero','marzo','abril','mayo','junio',
+                  'julio','agosto','septiembre','octubre','noviembre','diciembre'];
         [$y, $m, $d] = array_pad(explode('-', $fecha), 3, '1');
         return (int)$d . ' de ' . ($meses[(int)$m] ?? '') . ' de ' . $y;
     }
@@ -360,32 +492,20 @@ class VidaSolicitudController
     private static function getConfig(): array
     {
         try {
-            $db   = Connection::getConnection();
-            $rows = $db->query("SELECT clave, valor FROM configuracion")->fetchAll(\PDO::FETCH_KEY_PAIR);
+            $rows = Connection::getConnection()->query("SELECT clave, valor FROM configuracion")->fetchAll(\PDO::FETCH_KEY_PAIR);
             return $rows ?: [];
-        } catch (\Throwable) {
-            return [];
-        }
+        } catch (\Throwable) { return []; }
     }
 
     private static function waSendText(string $to, string $msg, string $pid, string $token): void
     {
-        $to      = preg_replace('/[^0-9]/', '', $to);
-        $payload = [
-            'messaging_product' => 'whatsapp',
-            'to'   => $to,
-            'type' => 'text',
-            'text' => ['body' => $msg],
-        ];
+        $to = preg_replace('/[^0-9]/', '', $to);
         $ch = curl_init("https://graph.facebook.com/v21.0/{$pid}/messages");
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
-            CURLOPT_HTTPHEADER     => [
-                "Authorization: Bearer {$token}",
-                'Content-Type: application/json',
-            ],
-            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$token}", 'Content-Type: application/json'],
+            CURLOPT_POSTFIELDS     => json_encode(['messaging_product' => 'whatsapp', 'to' => $to, 'type' => 'text', 'text' => ['body' => $msg]]),
             CURLOPT_TIMEOUT        => 8,
         ]);
         curl_exec($ch);

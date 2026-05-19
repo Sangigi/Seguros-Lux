@@ -194,7 +194,7 @@ switch ($accion) {
             $comp['url_local'] = null;
         }
 
-        $comp['creado_en'] = date('d/m/Y H:i', strtotime($comp['creado_en']));
+        $comp['creada_en'] = date('d/m/Y H:i', strtotime($comp['creada_en']));
         echo json_encode(['ok'=>true,'comprobante'=>$comp]);
         exit;
     }
@@ -219,11 +219,19 @@ function _emi_notificar(\PDO $db, int $asesorId, string $titulo, string $cuerpo,
 {
     try {
         $db->prepare(
-            "INSERT INTO notificaciones (agente_id, titulo, cuerpo, urgente, color, url_accion, leido, creado_en)
-             VALUES (?,?,?,?,?,?,0,NOW())"
-        )->execute([$asesorId, $titulo, $cuerpo, $urgente ? 1 : 0, $color ?: null, $url ?: null]);
+            "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
+             VALUES (?,?,?,?,?,?,?,0,NOW())"
+        )->execute([
+            $asesorId,
+            'emision',
+            $titulo,
+            $cuerpo ?: $titulo,   // mensaje es NOT NULL; si vacío usar título
+            $urgente ? 1 : 0,
+            $color ?: 'blue',
+            $url ?: null,
+        ]);
     } catch (\Throwable $e) {
-        // Silenciar errores de notificación para no interrumpir el flujo principal
+        error_log('[_emi_notificar] ' . $e->getMessage());
     }
 }
 
