@@ -1199,86 +1199,97 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 </div>
 <?php endif; ?>
 
-<?php if ($tab === 'polizas'): ?>
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-    <h2 style="font-size:17px;font-weight:600;margin:0;">📋 Historial de Pólizas</h2>
-    <select id="polFiltroAsesor" class="form-select" style="width:auto;font-size:13px;">
-        <option value="">Todos los asesores</option>
-        <?php foreach ($agLista as $ag): ?>
-        <option value="<?= $ag['id'] ?>"><?= htmlspecialchars($ag['nombre'].' '.$ag['apellido']) ?></option>
-        <?php endforeach; ?>
-    </select>
-    <select id="polFiltroEstado" class="form-select" style="width:auto;font-size:13px;">
-        <option value="">Todos los estados</option>
-        <option value="pagada">✅ Pagadas</option>
-        <option value="pendiente">⏳ Pendientes de pago</option>
-        <option value="por_vencer">⚠️ Por vencer (≤30 días)</option>
-        <option value="vencida">❌ Vencidas</option>
-    </select>
-    <button class="btn btn-outline btn-sm" id="btnCargarPolizas">🔄 Cargar / Actualizar</button>
+<?php elseif ($tab === 'polizas'): ?>
+<?php
+    // Consultamos las cotizaciones cuyo estado ya es 'emitida' (es decir, ya son pólizas)
+    $stmtPol = $db->query("
+        SELECT c.*, 
+               CONCAT(cl.nombre, ' ', cl.apellido_paterno) AS cliente_nombre,
+               CONCAT(a.nombre, ' ', a.apellido) AS asesor_nombre
+        FROM cotizaciones c
+        JOIN clientes cl ON c.cliente_id = cl.id
+        JOIN agentes a ON c.agente_id = a.id
+        WHERE c.estado = 'emitida'
+        ORDER BY c.actualizado_en DESC
+    ");
+    $polizas = $stmtPol->fetchAll(\PDO::FETCH_ASSOC);
+
+    // Calculamos los KPIs basándonos en la información real
+    $totalPol = count($polizas);
+    $pagadasPol = 0;
+    $pendientesPol = 0;
+    foreach ($polizas as $p) {
+        if (($p['estado_pago'] ?? '') === 'confirmado') {
+            $pagadasPol++;
+        } else {
+            $pendientesPol++;
+        }
+    }
+?>
+
+<div class="tab-header" style="margin-bottom: 20px;">
+    <h2>📋 Control de Pólizas Emitidas</h2>
+    <p style="color: var(--text-muted); font-size: 14px;">Listado oficial de contratos cargados y emitidos en el sistema.</p>
 </div>
-<div id="polKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;"></div>
-<div class="card">
-    <div class="card-body" style="padding:0;">
-        <div id="polTablaWrap" style="overflow-x:auto;">
-            <p style="padding:20px;color:var(--text-muted);font-size:13px;">Haz clic en "Cargar / Actualizar" para ver las pólizas.</p>
-        </div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+    <div class="stat-card" style="padding: 12px 16px;">
+        <div class="stat-card-value"><?= $totalPol ?></div>
+        <div class="stat-card-label">Total Pólizas</div>
+    </div>
+    <div class="stat-card success" style="padding: 12px 16px;">
+        <div class="stat-card-value"><?= $pagadasPol ?></div>
+        <div class="stat-card-label">✅ Pagadas / Confirmadas</div>
+    </div>
+    <div class="stat-card warning" style="padding: 12px 16px;">
+        <div class="stat-card-value"><?= $pendientesPol ?></div>
+        <div class="stat-card-label">⏳ Pendientes de Pago</div>
     </div>
 </div>
-<script nonce="<?= $cspNonce ?>">
-(function(){
-    function cargarPolizas(){
-        var fd = new FormData();
-        fd.append('accion','get_polizas_resumen');
-        var as = document.getElementById('polFiltroAsesor');
-        if(as && as.value) fd.append('asesor_id', as.value);
-        fetch('/admin', {method:'POST', body:fd})
-            .then(r=>r.text())
-            .then(text=>{
-                try {
-                    var d = JSON.parse(text);
-                    if(!d.ok){document.getElementById('polTablaWrap').innerHTML='<p style="padding:20px;color:red;">'+d.msg+'</p>';return;}
-                    // KPIs
-                    var kd=[['Total',d.total,''],['✅ Pagadas',d.pagadas,'success'],['⏳ Pendientes',d.pendientes,'warning'],['⚠️ Por vencer',d.por_vencer,'danger']];
-                    document.getElementById('polKpis').innerHTML=kd.map(([l,v,c])=>`<div class="stat-card ${c}" style="padding:12px 16px;"><div class="stat-card-value">${v}</div><div class="stat-card-label">${l}</div></div>`).join('');
-                    // Filtro
-                    var filtE = document.getElementById('polFiltroEstado').value;
-                    var polizas = d.polizas;
-                    if(filtE==='pagada') polizas = polizas.filter(p=>p.metodo_pago);
-                    else if(filtE==='pendiente') polizas = polizas.filter(p=>!p.metodo_pago && p.estado!=='vencida');
-                    else if(filtE==='por_vencer') polizas = polizas.filter(p=>p.dias_restantes!==null && parseInt(p.dias_restantes)>=0 && parseInt(p.dias_restantes)<=30);
-                    else if(filtE==='vencida') polizas = polizas.filter(p=>p.estado==='vencida');
-                    if(!polizas.length){document.getElementById('polTablaWrap').innerHTML='<p style="padding:20px;color:var(--text-muted);">Sin pólizas para el filtro seleccionado.</p>';return;}
-                    var estadoBadge={vigente:'<span class="badge badge-success">Vigente</span>',por_vencer:'<span class="badge badge-warning">Por vencer</span>',vencida:'<span class="badge badge-danger">Vencida</span>',cancelada:'<span class="badge badge-neutral">Cancelada</span>'};
-                    var rows = polizas.map(p=>{
-                        var dias = parseInt(p.dias_restantes);
-                        var diasTxt = isNaN(dias) ? '—' : (dias<0 ? `<span style="color:var(--danger-color);">Vencida hace ${Math.abs(dias)}d</span>` : `<span style="color:${dias<=5?'var(--danger-color)':dias<=15?'var(--warning-color)':'inherit'}">${dias} días</span>`);
-                        var pagoBadge = p.metodo_pago ? `<span class="badge badge-success">✅ Pagada</span>` : `<span class="badge badge-warning">⏳ Pendiente</span>`;
-                        return `<tr>
-                            <td><a href="/cliente/${p.cliente_id_ref}" style="font-weight:600;color:var(--accent-color);">${p.cliente_nombre??'—'}</a><br><span style="font-size:11px;color:var(--text-muted);">${p.asesor_nombre??''}</span></td>
-                            <td>${p.compania??'—'}</td>
-                            <td style="font-size:12px;">${p.numero_poliza??'—'}</td>
-                            <td>${estadoBadge[p.estado]??p.estado}</td>
-                            <td>${pagoBadge}${p.metodo_pago?`<br><span style="font-size:11px;color:var(--text-muted);">${p.metodo_pago}</span>`:''}</td>
-                            <td>${p.fecha_fin?new Date(p.fecha_fin).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}</td>
-                            <td>${diasTxt}</td>
-                        </tr>`;
-                    }).join('');
-                    document.getElementById('polTablaWrap').innerHTML=`<table class="data-table"><thead><tr><th>Cliente / Asesor</th><th>Compañía</th><th>No. Póliza</th><th>Estado</th><th>Pago</th><th>Vence</th><th>Días restantes</th></tr></thead><tbody>${rows}</tbody></table>`;
-                } catch(e) {
-                    document.getElementById('polTablaWrap').innerHTML='<div style="padding:20px;color:red;"><b>Error oculto detectado:</b><br><pre style="background:#fee2e2;padding:10px;border-radius:6px;overflow-x:auto;">' + text + '</pre></div>';
-                }
-            })
-            .catch(err => {
-                document.getElementById('polTablaWrap').innerHTML='<p style="padding:20px;color:red;">Error de conexión crítico: ' + err.message + '</p>';
-            });
-    }
-    document.getElementById('btnCargarPolizas').addEventListener('click', cargarPolizas);
-    document.getElementById('polFiltroEstado').addEventListener('change', cargarPolizas);
-    document.getElementById('polFiltroAsesor').addEventListener('change', cargarPolizas);
-    cargarPolizas();
-})();
-</script>
+
+<div class="table-responsive">
+    <table class="data-table adt">
+        <thead>
+            <tr>
+                <th>Folio</th>
+                <th>Cliente</th>
+                <th>Asesor</th>
+                <th>Compañía / Ramo</th>
+                <th>Estado Pago</th>
+                <th>Método</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($polizas)): ?>
+                <tr>
+                    <td colspan="6" style="padding: 30px; text-align: center; color: var(--text-muted);">
+                        No hay pólizas emitidas registradas en este momento.
+                    </td>
+                </tr>
+            <?php else: ?>
+                <?php foreach ($polizas as $p): ?>
+                    <tr>
+                        <td style="font-weight: 600; color: var(--accent-color);"><?= htmlspecialchars($p['folio']) ?></td>
+                        <td><?= htmlspecialchars($p['cliente_nombre'] ?? '—') ?></td>
+                        <td><?= htmlspecialchars($p['asesor_nombre'] ?? '—') ?></td>
+                        <td>
+                            <strong><?= htmlspecialchars($p['compania'] ?? '—') ?></strong>
+                            <br><span style="font-size: 11px; color: var(--text-muted);"><?= htmlspecialchars($p['ramo'] ?? '—') ?></span>
+                        </td>
+                        <td>
+                            <?php if (($p['estado_pago'] ?? '') === 'confirmado'): ?>
+                                <span class="badge badge-success">✅ Confirmado</span>
+                            <?php else: ?>
+                                <span class="badge badge-warning">⏳ Pendiente</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?= htmlspecialchars($p['metodo_pago'] ?: '—') ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+</div>
 <?php endif; ?>
 
 <!-- Modal: Gestionar Renovación -->
