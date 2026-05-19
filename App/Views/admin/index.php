@@ -464,11 +464,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                            c.id AS cliente_id_ref,
                            CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre,
                            DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
-                           cp.metodo_pago, cp.fecha_pago
+                           cp.metodo_pago, cp.creada_en AS fecha_pago
                     FROM polizas p
                     JOIN clientes c ON c.id = p.cliente_id
                     JOIN agentes  a ON a.id = p.agente_id
-                    LEFT JOIN cotizacion_pagos cp ON cp.cotizacion_id = p.cotizacion_id
+                    LEFT JOIN cotizacion_comprobantes_pago cp ON cp.cotizacion_id = p.cotizacion_id
                     WHERE p.eliminado_en IS NULL";
             $params = [];
             if ($filtroAsesor) { $sql .= ' AND p.agente_id = ?'; $params[] = $filtroAsesor; }
