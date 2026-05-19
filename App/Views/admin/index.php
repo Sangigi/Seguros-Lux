@@ -471,7 +471,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                     JOIN clientes c ON c.id = p.cliente_id
                     JOIN agentes  a ON a.id = p.agente_id
                     LEFT JOIN cotizacion_pagos cp ON cp.cotizacion_id = p.cotizacion_id
-                    WHERE p.eliminado_en IS NULL";
+                    WHERE 1=1";
             $params = [];
             if ($filtroAsesor) { $sql .= ' AND p.agente_id = ?'; $params[] = $filtroAsesor; }
             $sql .= ' ORDER BY p.fecha_fin ASC LIMIT 500';
@@ -576,7 +576,6 @@ $renovacionesPendientes = $db->query(
      JOIN agentes  a  ON a.id  = h.agente_id
      LEFT JOIN polizas p ON p.cliente_id = h.cliente_id
                         AND p.estado IN ('por_vencer','vencida')
-                        AND p.eliminado_en IS NULL
      WHERE h.titulo = '🔄 Solicitud de renovación'
      ORDER BY h.fecha DESC
      LIMIT 100"
