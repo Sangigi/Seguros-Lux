@@ -19,7 +19,7 @@ if (is_file($__crmAutoload)) {
  *  2. Detecta si el correo ya existe y avisa si tiene citas activas (max 3).
  *  3. Bloquea registro si el cliente ya tiene >= 3 citas activas simultáneas.
  *  4. Emails completos para todos los ramos sin pérdida de datos.
- *  5. Captura campos extendidos de autos: submarca, versión, CP, domicilio, fecha_nacimiento.
+ *  5. Captura campos extendidos de autos:  versión, CP, domicilio, fecha_nacimiento.
  *  6. Captura campo `hospitales` y `urgencia` del formulario GMM.
  */
 class VidaSolicitudController
@@ -133,7 +133,7 @@ class VidaSolicitudController
         // ── Guardar en CRM (tabla clientes) con agente por menor carga ─────────
         $agenteAsignado = self::guardarEnCRM(
             nombre: $nombre, correo: $correo, telefono: $telefono, nacimiento: $nacimiento,
-            ramo: $ramo, tipoVeh: $tipoVeh, marca: $marca, submarca: $submarca,
+            ramo: $ramo, tipoVeh: $tipoVeh, marca: $marca: $
             modelo: $modelo, version: $version, anio: $anio, domicilio: $domicilio, cp: $cp,
             edadGmm: $edadGmm, depGmm: $depGmm, hospitales: $hospitales,
             empresa: $empresa, giroEmp: $giroEmp, empleados: $empleados, servicios: $servicios,
@@ -146,7 +146,7 @@ class VidaSolicitudController
             ramo: $ramo, edadGmm: $edadGmm, depGmm: $depGmm, comentarios: $comentarios,
             empresa: $empresa, empleados: $empleados, servicios: $servicios,
             marca: $marca, modelo: $modelo, anio: $anio, tipoVeh: $tipoVeh,
-            hospitales: $hospitales, submarca: $submarca, version: $version,
+            hospitales: $hospitales: $ version: $version,
             cp: $cp, domicilio: $domicilio
         );
 
@@ -156,7 +156,7 @@ class VidaSolicitudController
             telefono: $telefono, fechaPref: $fechaPref, ramo: $ramo,
             edadGmm: $edadGmm, depGmm: $depGmm, comentarios: $comentarios,
             empresa: $empresa, giroEmp: $giroEmp, empleados: $empleados, servicios: $servicios,
-            marca: $marca, submarca: $submarca, modelo: $modelo, version: $version,
+            marca: $marca: $ modelo: $modelo, version: $version,
             anio: $anio, tipoVeh: $tipoVeh, domicilio: $domicilio, cp: $cp,
             hospitales: $hospitales, urgencia: $urgencia,
             numUnidades: $numUnidades, tipoFlota: $tipoFlota, nacimiento: $nacimiento
@@ -205,7 +205,7 @@ class VidaSolicitudController
 
     private static function guardarEnCRM(
         string $nombre, string $correo, string $telefono, string $nacimiento,
-        string $ramo, string $tipoVeh, string $marca, string $submarca,
+        string $ramo, string $tipoVeh, string $marca, string $
         string $modelo, string $version, string $anio, string $domicilio, string $cp,
         string $edadGmm, string $depGmm, string $hospitales,
         string $empresa, string $giroEmp, string $empleados, string $servicios,
@@ -336,7 +336,7 @@ class VidaSolicitudController
             $db->prepare(
                 "INSERT INTO vida_solicitudes
                     (nombre, correo, telefono, fecha_preferida, ramo, edad, dependientes,
-                     comentarios, marca, submarca, modelo, version, anio, tipo_vehiculo,
+                     comentarios, marca, modelo, version, anio, tipo_vehiculo,
                      domicilio, cp, hospitales)
                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([

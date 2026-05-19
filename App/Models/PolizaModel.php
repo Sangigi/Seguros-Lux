@@ -31,6 +31,8 @@ class PolizaModel extends BaseModel
     public function crear(array $data): int
     {
         $data['frecuencia_renovacion'] = $data['frecuencia_renovacion'] ?? 'anual';
+        // Estado inicial: vigente (el coordinador confirma el pago por separado)
+        if (!isset($data['estado'])) $data['estado'] = 'vigente';
         return $this->insert($data);
     }
 
@@ -76,7 +78,6 @@ class PolizaModel extends BaseModel
         $st = $this->db()->prepare(
             'SELECT p.*,
                     DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
-                    -- Pago confirmado: cotizacion ligada está pagada O tiene comprobante
                     CASE
                         WHEN cot.estado = \'pagado\'          THEN 1
                         WHEN cot.estado_pago = \'confirmado\' THEN 1

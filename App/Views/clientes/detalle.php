@@ -44,6 +44,14 @@ if (!function_exists('idriveUpload')) {
 // ── AJAX ──────────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     header('Content-Type: application/json');
+    set_exception_handler(function(Throwable $e) {
+        if (!headers_sent()) header('Content-Type: application/json');
+        echo json_encode(['ok'=>false, 'msg'=>'Error PHP: ' . $e->getMessage() . ' en ' . basename($e->getFile()) . ':' . $e->getLine()]);
+        exit;
+    });
+    set_error_handler(function(int $errno, string $errstr, string $errfile, int $errline): bool {
+        throw new ErrorException($errstr, $errno, $errno, $errfile, $errline);
+    });
 
     if ($_POST['accion'] === 'nota') {
         $texto = trim($_POST['texto'] ?? '');
@@ -457,6 +465,41 @@ try {
     }
 } catch(\Throwable $e){}
 
+// ── Vehículo: mapear desde campos del cliente (los datos están en la tabla clientes)
+$vehiculo = [];
+if (!empty($cliente['marca']) || !empty($cliente['modelo'])) {
+    $vehiculo = [
+        'id'                  => null,  // sin tabla vehiculos separada
+        'marca'               => $cliente['marca']               ?? '',
+        'submarca'            => $cliente['submarca']            ?? '',
+        'version'             => $cliente['version']             ?? '',
+        'modelo'              => $cliente['modelo']              ?? '',
+        'color'               => '',
+        'placas'              => '',
+        'vin'                 => '',
+        'tipo'                => $cliente['tipo_vehiculo']       ?? '',
+        'anio_vehiculo'       => $cliente['anio_vehiculo']       ?? '',
+        'tiene_adaptaciones'  => $cliente['tiene_adaptaciones']  ?? 0,
+        'detalle_adaptaciones'=> $cliente['detalle_adaptaciones'] ?? '',
+        'info_adicional'      => '',
+    ];
+}
+
+// ── Checklist de emisión (por cotización) ──────────────────────────────────────
+$checklistPorCot = [];
+try {
+    $db2 = \Database\Connection::getConnection();
+    foreach ($cotizaciones as $_cot) {
+        $stCk = $db2->prepare(
+            'SELECT doc_tipo, estado, nota, revisado_en
+             FROM emision_checklist WHERE cotizacion_id=? ORDER BY id ASC'
+        );
+        $stCk->execute([(int)$_cot['id']]);
+        $rows = $stCk->fetchAll(\PDO::FETCH_ASSOC);
+        if ($rows) $checklistPorCot[(int)$_cot['id']] = $rows;
+    }
+} catch (\Throwable $e) {}
+
 if (empty($historial)) {
     $historial=[['tipo'=>'registro','titulo'=>'Cliente registrado','descripcion'=>'Registro inicial.',
                  'fecha'=>$cliente['fecha_registro'],'agente_nombre'=>'Sistema']];
@@ -844,6 +887,75 @@ $pageTitle=$nombreCompleto;
                         <?php endif; ?>
                     </div>
                 </div>
+
+                <!-- ═══ CHECKLIST DE EMISIÓN ═══ -->
+                <?php foreach ($cotizaciones as $_cot):
+                    $_ckItems = $checklistPorCot[(int)$_cot['id']] ?? [];
+                    if (empty($_ckItems)) continue;
+                    $_ckTotal  = count($_ckItems);
+                    $_ckOk     = count(array_filter($_ckItems, fn($i) => $i['estado'] === 'ok'));
+                    $_ckPct    = $_ckTotal > 0 ? round($_ckOk/$_ckTotal*100) : 0;
+                ?>
+                <div class="card mb-24">
+                    <div class="card-header">
+                        <h3 class="card-title">✅ Checklist Emisión
+                            <span class="badge <?php echo $_ckOk===$_ckTotal?'badge-success':'badge-warning'; ?>" style="margin-left:8px;">
+                                <?php echo $_ckOk; ?>/<?php echo $_ckTotal; ?>
+                            </span>
+                        </h3>
+                        <span style="font-size:12px;color:var(--text-muted);"><?php echo htmlspecialchars($_cot['folio']??'#'.$_cot['id']); ?></span>
+                    </div>
+                    <div class="card-body" style="padding:12px 16px;">
+                        <!-- Barra de progreso -->
+                        <div style="background:var(--border-color);border-radius:99px;height:6px;margin-bottom:14px;">
+                            <div style="width:<?php echo $_ckPct; ?>%;height:6px;border-radius:99px;background:<?php echo $_ckPct===100?'var(--success-color,#22c55e)':'var(--warning-color,#f59e0b)'; ?>;transition:width .3s;"></div>
+                        </div>
+                        <?php foreach ($_ckItems as $_item):
+                            $_ico = match($_item['estado']) {
+                                'ok'        => '✅',
+                                'rechazado' => '❌',
+                                default     => '⏳',
+                            };
+                            $_badgeCls = match($_item['estado']) {
+                                'ok'        => 'badge-success',
+                                'rechazado' => 'badge-danger',
+                                default     => 'badge-warning',
+                            };
+                            $_label = match($_item['doc_tipo']) {
+                                'poliza'               => 'Póliza',
+                                'ine'                  => 'INE',
+                                'comprobante_dom'      => 'Comp. domicilio',
+                                'tarjeta_circulacion'  => 'Tarjeta circulación',
+                                'factura_auto'         => 'Factura auto',
+                                'constancia_fiscal'    => 'Constancia fiscal',
+                                'comprobante_pago'     => 'Comp. de pago',
+                                'foto_coche_1'         => 'Foto vehículo 1',
+                                'foto_coche_2'         => 'Foto vehículo 2',
+                                'foto_coche_3'         => 'Foto vehículo 3',
+                                default                => ucfirst(str_replace('_',' ',$_item['doc_tipo'])),
+                            };
+                        ?>
+                        <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border-color);">
+                            <span style="font-size:16px;"><?php echo $_ico; ?></span>
+                            <span style="flex:1;font-size:13px;"><?php echo htmlspecialchars($_label); ?></span>
+                            <span class="badge <?php echo $_badgeCls; ?>" style="font-size:10px;"><?php echo ucfirst($_item['estado']); ?></span>
+                            <?php if (!empty($_item['nota'])): ?>
+                            <span style="font-size:11px;color:var(--text-muted);" title="<?php echo htmlspecialchars($_item['nota']); ?>">💬</span>
+                            <?php endif; ?>
+                        </div>
+                        <?php endforeach; ?>
+                        <?php if ($_ckOk < $_ckTotal): ?>
+                        <p style="margin-top:10px;font-size:12px;color:var(--text-muted);">
+                            Documentos pendientes de revisión por el coordinador.
+                        </p>
+                        <?php else: ?>
+                        <p style="margin-top:10px;font-size:12px;color:var(--success-color,#22c55e);font-weight:600;">
+                            ✅ Todos los documentos aprobados.
+                        </p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
 
                 <!-- ═══ PÓLIZAS ═══ -->
                 <div class="card mb-24">

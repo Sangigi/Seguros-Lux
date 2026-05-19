@@ -925,7 +925,7 @@
 <script src="../js/landing.js" defer></script>
 <script src="../js/gmm.js" defer></script>
 
-<script nonce="<?= $cspNonce ?>">
+<script nonce="<?= $cspNonce ?? '' ?>">
   document.addEventListener('DOMContentLoaded', () => {
   const radios = document.querySelectorAll('input[name="urgencia"]');
   const botones = document.querySelectorAll('.urgencia-btn');
