@@ -15,7 +15,9 @@
 use Database\Connection;
 
 $db = Connection::getConnection();
-
+// Forzar visualización de errores temporalmente
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 // ── Paginación y filtros ──────────────────────────────────────────────────────
 $emiPage    = max(1, (int)($_GET['emi_pag'] ?? 1));
 $emiPP      = 15;
@@ -96,7 +98,7 @@ $stCots = $db->prepare(
             -- Comprobante de pago del coordinador
             (SELECT id FROM cotizacion_comprobantes_pago cp
              WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
-             ORDER BY cp.creada_en DESC LIMIT 1) AS comprobante_id
+             ORDER BY cp.creado_en DESC LIMIT 1) AS comprobante_id
      FROM cotizaciones c
      JOIN clientes cl ON cl.id = c.cliente_id
      JOIN agentes  a  ON a.id  = c.agente_id

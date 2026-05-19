@@ -464,18 +464,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                            c.id AS cliente_id_ref,
                            CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre,
                            DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
-                           cp.metodo_pago, cp.creada_en AS fecha_pago
+                           cp.metodo_pago, cp.fecha_pago
                     FROM polizas p
                     JOIN clientes c ON c.id = p.cliente_id
                     JOIN agentes  a ON a.id = p.agente_id
-                    LEFT JOIN cotizacion_comprobantes_pago cp ON cp.cotizacion_id = p.cotizacion_id
+                    LEFT JOIN cotizacion_pagos cp ON cp.cotizacion_id = p.cotizacion_id
                     WHERE p.eliminado_en IS NULL";
             $params = [];
             if ($filtroAsesor) { $sql .= ' AND p.agente_id = ?'; $params[] = $filtroAsesor; }
             $sql .= ' ORDER BY p.fecha_fin ASC LIMIT 500';
-            $st = $db->prepare($sql);
-            $st->execute($params);
-            $polizas = $st->fetchAll(\PDO::FETCH_ASSOC);
+            try {
+                $st = $db->prepare($sql);
+                $st->execute($params);
+                $polizas = $st->fetchAll(\PDO::FETCH_ASSOC);
+            } catch (\PDOException $e) {
+                // Esto enviará el error exacto de SQL a tu pantalla
+                echo json_encode(['ok'=>false, 'msg'=>'Error SQL: ' . $e->getMessage()]); 
+                exit;
+            }
             // Clasificar
             $pagadas   = array_filter($polizas, fn($p) => $p['metodo_pago'] !== null);
             $pendientes= array_filter($polizas, fn($p) => $p['metodo_pago'] === null && ($p['estado'] ?? '') !== 'vencida');
