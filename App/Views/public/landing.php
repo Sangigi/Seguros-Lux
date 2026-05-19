@@ -316,6 +316,8 @@
           <li><a href="/seguros/autos">Seguro Vehicular</a></li>
           <li><a href="seguros/vida">Seguro de Vida</a></li>
           <li><a href="seguros/gmm">Gastos Médicos Mayores</a></li>
+          <li><a href="seguros/empresas">Seguros Empresariales</a></li>
+        </ul>
         </ul>
       </li>
       <li class="has-submenu">
@@ -830,6 +832,7 @@
           <li><a href="seguros/autos">Seguro Vehicular</a></li>
           <li><a href="seguros/vida">Seguro de Vida</a></li>
           <li><a href="seguros/gmm">Gastos Médicos</a></li>
+          <li><a href="seguros/empresas">Seguros Empresariales</a></li>
           <li><a href="/formulario">Cotiza en línea</a></li>
         </ul>
       </div>

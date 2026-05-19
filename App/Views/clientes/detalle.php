@@ -57,17 +57,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $tipo=$_POST['tipo']??'llamada'; $fecha=$_POST['fecha']??''; $hora=$_POST['hora']??'';
         $com=$_POST['comentarios']??''; $enlace=$_POST['enlace_meet']??'';
         if (!$fecha||!$hora) { echo json_encode(['ok'=>false,'msg'=>'Indica fecha y hora.']); exit; }
-        // Límite: máx 20 citas por cliente (anti-spam)
+        // Límite: máx 3 citas activas por cliente
         $dbCitaChk = \Database\Connection::getConnection();
-        $stCitaCount = $dbCitaChk->prepare('SELECT COUNT(*) FROM citas WHERE cliente_id = ?');
+        $stCitaCount = $dbCitaChk->prepare(
+            "SELECT COUNT(*) FROM citas WHERE cliente_id = ?
+             AND estado IN ('programada','pendiente') AND fecha >= CURDATE()"
+        );
         $stCitaCount->execute([$clienteId]);
-        if ((int)$stCitaCount->fetchColumn() >= 20) {
-            echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene 20 citas registradas (límite máximo).']); exit;
+        if ((int)$stCitaCount->fetchColumn() >= 3) {
+            echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene 3 citas activas (máximo permitido).']); exit;
         }
         if ($tipo==='videollamada'&&$enlace) $com=($com?$com."\n":'').'🎥 Enlace: '.$enlace;
-        $citaModel->crear($clienteId,$agenteId,$tipo,$fecha,$hora,$com,SessionManager::getRamo());
+        $ramoCliente = $cliente['ramo'] ?? SessionManager::getRamo() ?? 'autos';
+        $citaModel->crear($clienteId,$agenteId,$tipo,$fecha,$hora,$com,$ramoCliente);
         $historialModel->registrar($clienteId,$agenteId,'cita','Cita programada — '.ucfirst($tipo),"$fecha a las $hora");
-        echo json_encode(['ok'=>true]); exit;
+        // Recargar citas para el badge en la respuesta
+        $citasActuales = $citaModel->getByClienteId($clienteId);
+        $activas = count(array_filter($citasActuales, fn($c) => in_array($c['estado'],['programada','pendiente']) && strtotime($c['fecha']) >= strtotime('today')));
+        echo json_encode(['ok'=>true,'citas_activas'=>$activas]); exit;
     }
 
     if ($_POST['accion'] === 'solicitar_renovacion') {
@@ -255,16 +262,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             // Notificación importante al asesor confirmando el pago registrado
             try {
                 $db->prepare(
-                    "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
-                     VALUES (?,?,?,?,1,'green',?,0,NOW())"
+                    "INSERT INTO notificaciones (agente_id, titulo, cuerpo, urgente, color, url_accion, leido, creado_en)
+                     VALUES (?,?,?,1,'green',?,0,NOW())"
                 )->execute([
                     $agenteId,
-                    'pago',
                     '✅ Pago confirmado — ' . ($cot['folio'] ?? '#'.$cotId),
                     'El pago de la cotización ' . ($cot['folio'] ?? '#'.$cotId) . ' ha sido registrado correctamente. Método: ' . ucfirst(str_replace('_',' ',$metodo)) . '. Recuerda contactar al cliente para gestionar su renovación cuando corresponda.',
                     '/cliente/' . $clienteId,
                 ]);
-            } catch (\Throwable $ne) { error_log('[notif_pago] ' . $ne->getMessage()); }
+            } catch (\Throwable $ne) { /* No interrumpir el flujo */ }
             $db->commit();
             echo json_encode(['ok'=>true]); exit;
         } catch(\Throwable $e) {
@@ -334,6 +340,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         }
     }
 
+    if ($_POST['accion'] === 'cambiar_estado_cita') {
+        $citaId      = (int)($_POST['cita_id']  ?? 0);
+        $nuevoEstado = trim($_POST['estado']     ?? '');
+        $validos = ['programada','completada','cancelada'];
+        if (!$citaId || !in_array($nuevoEstado, $validos, true)) {
+            echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit;
+        }
+        // Admins pueden cambiar cualquier cita; asesores solo las propias
+        if (SessionManager::isAdmin()) {
+            $db = \Database\Connection::getConnection();
+            $st = $db->prepare('UPDATE citas SET estado = ? WHERE id = ?');
+            $st->execute([$nuevoEstado, $citaId]);
+            $ok = $st->rowCount() > 0;
+        } else {
+            $ok = $citaModel->updateEstado($citaId, $agenteId, $nuevoEstado);
+        }
+        if ($ok) {
+            $historialModel->registrar($clienteId, $agenteId, 'cita',
+                "Cita #{$citaId} marcada como '{$nuevoEstado}'", '');
+        }
+        echo json_encode(['ok'=>$ok,'msg'=>$ok?'OK':'No tienes permiso para cambiar esta cita.']); exit;
+    }
+
     echo json_encode(['ok'=>false,'msg'=>'Acción desconocida.']); exit;
 }
 
@@ -347,6 +376,20 @@ $cliente['recien_comprado'] =($cliente['recien_comprado']==='si');
 $historial    =$historialModel->getByClienteIdConAgente($clienteId);
 $notas        =$clienteModel->getNotas($clienteId);
 $cotizaciones =$cotizacionModel->getByClienteId($clienteId);
+$citas        =$citaModel->getByClienteId($clienteId);
+
+// Solicitudes enviadas desde formularios web (vida_solicitudes)
+$solicitudesWeb = [];
+try {
+    $dbSol = \Database\Connection::getConnection();
+    $stSol = $dbSol->prepare(
+        "SELECT * FROM vida_solicitudes
+         WHERE correo = ? OR (correo IS NULL AND telefono = ?)
+         ORDER BY created_at DESC LIMIT 20"
+    );
+    $stSol->execute([$cliente['correo'] ?? '', $cliente['telefono'] ?? '']);
+    $solicitudesWeb = $stSol->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+} catch (\Throwable) {}
 $polizas      =$polizaModel ? $polizaModel->listarPorCliente($clienteId,$agenteId) : [];
 // Auto-actualizar estado de pólizas según fecha_fin
 if ($polizaModel && !empty($polizas)) {
@@ -381,23 +424,6 @@ try {
         if ($p) $pagosPorCot[(int)$cot['id']]=$p;
     }
 } catch(\Throwable $e){}
-
-// Documentos de póliza subidos por el coordinador en el flujo de emisión
-$docPolizaPorCot = [];
-try {
-    $db = \Database\Connection::getConnection();
-    foreach ($cotizaciones as $cot) {
-        $st = $db->prepare(
-            "SELECT ca.*, ca.nombre_original, ca.nombre_archivo, ca.ruta
-             FROM cotizacion_archivos ca
-             WHERE ca.cotizacion_id = ? AND ca.tipo_documento = 'poliza' AND ca.eliminado_en IS NULL
-             ORDER BY ca.subido_en DESC LIMIT 5"
-        );
-        $st->execute([(int)$cot['id']]);
-        $docs = $st->fetchAll(\PDO::FETCH_ASSOC);
-        if ($docs) $docPolizaPorCot[(int)$cot['id']] = $docs;
-    }
-} catch(\Throwable $e) {}
 
 // Datos extra del vehículo desde mini-form (en comentarios de cita)
 // Busca en DB directamente para no depender de CitaModel::getByClienteId
@@ -738,6 +764,87 @@ $pageTitle=$nombreCompleto;
                     </div>
                 </div>
 
+                <!-- ═══ CITAS ═══ -->
+                <div class="card mb-24">
+                    <div class="card-header">
+                        <h3 class="card-title">📅 Citas
+                            <?php
+                            $citasActivas = array_filter($citas, fn($c) => in_array($c['estado'], ['programada','pendiente'], true) && strtotime($c['fecha']) >= strtotime('today'));
+                            $totalActivas = count($citasActivas);
+                            ?>
+                            <span class="badge badge-neutral"><?php echo count($citas); ?></span>
+                            <?php if ($totalActivas > 0): ?>
+                            <span class="badge badge-success" title="Citas activas">✅ <?php echo $totalActivas; ?> activa<?php echo $totalActivas>1?'s':''; ?></span>
+                            <?php endif; ?>
+                            <?php if ($totalActivas >= 3): ?>
+                            <span class="badge badge-warning" title="Límite alcanzado">⚠️ Límite máx.</span>
+                            <?php endif; ?>
+                        </h3>
+                        <button class="btn btn-sm btn-primary" data-action="det-open" data-modal="modalCita"
+                            <?php echo $totalActivas >= 3 ? 'disabled title="Máximo 3 citas activas"' : ''; ?>>
+                            + Programar
+                        </button>
+                    </div>
+                    <div class="card-body" style="padding:0 20px;">
+                        <?php if (empty($citas)): ?>
+                        <div style="text-align:center;padding:24px 0;color:var(--text-muted);">
+                            <div style="font-size:32px;margin-bottom:8px;">📅</div>
+                            <p style="font-size:13px;margin-bottom:10px;">Sin citas registradas.</p>
+                            <button class="btn btn-primary btn-sm" data-action="det-open" data-modal="modalCita">Programar primera cita</button>
+                        </div>
+                        <?php else: ?>
+                        <?php
+                        // Sort: active first, then by date desc
+                        usort($citas, function($a, $b) {
+                            $aActiva = in_array($a['estado'], ['programada','pendiente']);
+                            $bActiva = in_array($b['estado'], ['programada','pendiente']);
+                            if ($aActiva !== $bActiva) return $bActiva - $aActiva;
+                            return strcmp($b['fecha'].$b['hora'], $a['fecha'].$a['hora']);
+                        });
+                        $estadosCita = [
+                            'programada' => ['label'=>'Programada','color'=>'#0284c7','bg'=>'#eff6ff','emoji'=>'📅'],
+                            'pendiente'  => ['label'=>'Pendiente', 'color'=>'#b45309','bg'=>'#fef3c7','emoji'=>'⏳'],
+                            'completada' => ['label'=>'Completada','color'=>'#16a34a','bg'=>'#f0fdf4','emoji'=>'✅'],
+                            'cancelada'  => ['label'=>'Cancelada', 'color'=>'#dc2626','bg'=>'#fef2f2','emoji'=>'❌'],
+                            'vencida'    => ['label'=>'Vencida',   'color'=>'#6b7280','bg'=>'#f9fafb','emoji'=>'⌛'],
+                        ];
+                        $tiposCita = ['llamada'=>'📞 Llamada','videollamada'=>'💻 Videollamada','presencial'=>'🤝 Presencial'];
+                        foreach ($citas as $cita):
+                            $ei = $estadosCita[$cita['estado']] ?? ['label'=>$cita['estado'],'color'=>'#6b7280','bg'=>'#f9fafb','emoji'=>'•'];
+                            $esActiva = in_array($cita['estado'], ['programada','pendiente']);
+                            $fechaStr = date('d/m/Y', strtotime($cita['fecha']));
+                            $horaStr  = date('H:i', strtotime($cita['hora']));
+                        ?>
+                        <div style="padding:14px 0;border-bottom:1px solid var(--border-color,#e5e7eb);">
+                            <div style="display:flex;align-items:flex-start;gap:10px;">
+                                <div style="width:36px;height:36px;border-radius:8px;background:<?php echo $ei['bg']; ?>;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;"><?php echo $ei['emoji']; ?></div>
+                                <div style="flex:1;min-width:0;">
+                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+                                        <span style="font-weight:700;font-size:13px;"><?php echo $fechaStr; ?> · <?php echo $horaStr; ?></span>
+                                        <span style="font-size:11px;padding:2px 8px;border-radius:99px;background:<?php echo $ei['bg']; ?>;color:<?php echo $ei['color']; ?>;font-weight:600;"><?php echo $ei['label']; ?></span>
+                                        <span style="font-size:12px;color:var(--text-muted);"><?php echo $tiposCita[$cita['tipo']] ?? ucfirst($cita['tipo']); ?></span>
+                                        <?php if (!empty($cita['ramo'])): ?><span style="font-size:11px;background:var(--bg-secondary);padding:2px 7px;border-radius:4px;color:var(--text-secondary);"><?php echo strtoupper($cita['ramo']); ?></span><?php endif; ?>
+                                    </div>
+                                    <?php if (!empty($cita['comentarios'])): ?>
+                                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;white-space:pre-line;"><?php echo htmlspecialchars(mb_substr($cita['comentarios'], 0, 120)); ?><?php echo mb_strlen($cita['comentarios'])>120?'…':''; ?></div>
+                                    <?php endif; ?>
+                                    <div style="font-size:11px;color:var(--text-muted);">Asesor: <?php echo htmlspecialchars($cita['agente_nombre'] ?? '—'); ?> · ID #<?php echo $cita['id']; ?></div>
+                                </div>
+                                <?php if ($esActiva): ?>
+                                <div style="display:flex;gap:4px;flex-shrink:0;">
+                                    <button class="btn btn-sm" style="font-size:11px;padding:3px 9px;background:#f0fdf4;color:#16a34a;border:1px solid #16a34a;"
+                                        data-action="det-citaEstado" data-cita-id="<?php echo $cita['id']; ?>" data-estado="completada" title="Marcar completada">✓</button>
+                                    <button class="btn btn-sm" style="font-size:11px;padding:3px 9px;background:#fef2f2;color:#dc2626;border:1px solid #dc2626;"
+                                        data-action="det-citaEstado" data-cita-id="<?php echo $cita['id']; ?>" data-estado="cancelada" title="Cancelar cita">✕</button>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
                 <!-- ═══ PÓLIZAS ═══ -->
                 <div class="card mb-24">
                     <div class="card-header">
@@ -752,48 +859,13 @@ $pageTitle=$nombreCompleto;
                             Resumen informativo: la administración registra aquí las pólizas emitidas. Como asesor no puedes subirlas ni descargar el PDF; ante dudas, contacta al coordinador.
                         </p>
                         <?php endif; ?>
-                        <?php
-                        // Recopilar documentos de póliza del coordinador para todas las cotizaciones del cliente
-                        $allDocPoliza = [];
-                        foreach ($cotizaciones as $_cot) {
-                            if (!empty($docPolizaPorCot[(int)$_cot['id']])) {
-                                foreach ($docPolizaPorCot[(int)$_cot['id']] as $_doc) {
-                                    $_doc['_folio']   = $_cot['folio'] ?? '#'.$_cot['id'];
-                                    $_doc['_compania'] = $_cot['compania'] ?? '';
-                                    $allDocPoliza[] = $_doc;
-                                }
-                            }
-                        }
-                        ?>
-                        <?php if (empty($polizas) && empty($allDocPoliza)): ?>
+                        <?php if (empty($polizas)): ?>
                         <div style="text-align:center;padding:28px 0;color:var(--text-muted);">
                             <div style="font-size:36px;margin-bottom:8px;">📄</div>
                             <p style="font-size:13px;margin-bottom:10px;">Sin pólizas registradas.</p>
                             <?php if ($puedeGestionarPolizas): ?>
                             <button class="btn btn-primary btn-sm" data-action="det-open" data-modal="modalSubirPoliza">Subir primera póliza</button>
                             <?php endif; ?>
-                        </div>
-                        <?php elseif (empty($polizas) && !empty($allDocPoliza)): ?>
-                        <!-- El coordinador subió documentos de póliza pero no hay póliza en la tabla polizas -->
-                        <div style="margin-bottom:12px;">
-                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">📋 Documentos de póliza registrados por el coordinador:</p>
-                            <?php foreach ($allDocPoliza as $_dp):
-                                $_rutaF = dirname(__DIR__,3).'/uploads/cotizaciones/'.(int)($_dp['cotizacion_id'] ?? 0).'/'.$_dp['nombre_archivo'];
-                                $_urlD  = file_exists($_rutaF) ? '/archivo?file=cotizaciones/'.(int)$_dp['cotizacion_id'].'/'.$_dp['nombre_archivo'] : null;
-                                $_extD  = strtolower(pathinfo($_dp['nombre_original'] ?? '', PATHINFO_EXTENSION));
-                                $_iconD = $_extD === 'pdf' ? '📄' : '🖼️';
-                            ?>
-                            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;">
-                                <span style="font-size:22px;"><?php echo $_iconD; ?></span>
-                                <div style="flex:1;min-width:0;">
-                                    <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($_dp['nombre_original'] ?? $_dp['nombre_archivo']); ?></div>
-                                    <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($_dp['_folio']); ?> · <?php echo htmlspecialchars($_dp['_compania']); ?></div>
-                                </div>
-                                <?php if ($_urlD): ?>
-                                <a href="<?php echo $_urlD; ?>" target="_blank" class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;">Ver</a>
-                                <?php endif; ?>
-                            </div>
-                            <?php endforeach; ?>
                         </div>
                         <?php else: ?>
                         <?php foreach ($polizas as $pol):
@@ -903,7 +975,7 @@ $pageTitle=$nombreCompleto;
                                 <div style="font-size:20px;">💰</div>
                                 <div style="flex:1;">
                                     <div style="font-weight:600;"><?php echo $mLabel; ?></div>
-                                    <div style="font-size:11px;color:var(--text-muted);"><?php echo date('d/m/Y', strtotime($pago['fecha_pago'] ?? $pago['creada_en'] ?? 'now')); ?><?php if ($pago['notas']): ?> · <?php echo htmlspecialchars($pago['notas']); ?><?php endif; ?></div>
+                                    <div style="font-size:11px;color:var(--text-muted);"><?php echo date('d/m/Y', strtotime($pago['fecha_pago'] ?? $pago['creado_en'] ?? 'now')); ?><?php if ($pago['notas']): ?> · <?php echo htmlspecialchars($pago['notas']); ?><?php endif; ?></div>
                                 </div>
                                 <?php if ($pago['monto']>0): ?><div style="font-weight:700;color:var(--success-color,#22c55e);">$<?php echo number_format((float)$pago['monto'],2); ?></div><?php endif; ?>
                                 <?php if ($urlPago): ?><a href="<?php echo $urlPago; ?>" target="_blank" class="btn btn-sm btn-outline" title="Ver comprobante">📎</a><?php endif; ?>
@@ -1068,6 +1140,73 @@ $BADGE_PAGO_CL = [
                 </div>
             </div>
         </div>
+
+                <!-- ═══ SOLICITUDES WEB ═══ -->
+                <?php if (!empty($solicitudesWeb)): ?>
+                <div class="card mb-24" style="grid-column:1/-1;">
+                    <div class="card-header">
+                        <h3 class="card-title">🌐 Solicitudes desde formularios web
+                            <span class="badge badge-neutral"><?php echo count($solicitudesWeb); ?></span>
+                        </h3>
+                    </div>
+                    <div class="card-body" style="padding:0;">
+                        <div style="overflow-x:auto;">
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                            <thead>
+                                <tr style="background:var(--bg-secondary);border-bottom:2px solid var(--border-color);">
+                                    <th style="padding:10px 14px;text-align:left;font-weight:700;white-space:nowrap;">Fecha</th>
+                                    <th style="padding:10px 14px;text-align:left;font-weight:700;">Ramo</th>
+                                    <th style="padding:10px 14px;text-align:left;font-weight:700;">Datos enviados</th>
+                                    <th style="padding:10px 14px;text-align:left;font-weight:700;">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            <?php
+                            $ramoIcons = ['vida'=>'❤️','gmm'=>'🏥','autos'=>'🚗','empresas'=>'🏢'];
+                            $estadoColores = [
+                                'pendiente'  => ['#b45309','#fef3c7'],
+                                'contactado' => ['#1d4ed8','#eff6ff'],
+                                'cerrado'    => ['#16a34a','#f0fdf4'],
+                            ];
+                            foreach ($solicitudesWeb as $sol):
+                                $icon   = $ramoIcons[$sol['ramo']] ?? '📄';
+                                $esc    = $estadoColores[$sol['estado']] ?? ['#6b7280','#f9fafb'];
+                                $detalle = array_filter([
+                                    $sol['marca']    ? "🚗 {$sol['marca']}" .($sol['submarca']?" {$sol['submarca']}":"").($sol['modelo']?" {$sol['modelo']}":"").($sol['anio']?" ({$sol['anio']})":"") : '',
+                                    $sol['version']  ? "📋 {$sol['version']}" : '',
+                                    $sol['domicilio'] ? "🏠 {$sol['domicilio']}" : '',
+                                    $sol['cp']       ? "📍 CP {$sol['cp']}"    : '',
+                                    $sol['edad']     ? "🎂 {$sol['edad']} años" : '',
+                                    $sol['dependientes'] ? "👨‍👩‍👧 {$sol['dependientes']} dep." : '',
+                                    $sol['hospitales']   ? "🏥 {$sol['hospitales']}" : '',
+                                    $sol['comentarios']  ? "💬 ".mb_substr($sol['comentarios'],0,80) : '',
+                                ]);
+                            ?>
+                            <tr style="border-bottom:1px solid var(--border-color);">
+                                <td style="padding:10px 14px;white-space:nowrap;color:var(--text-secondary);">
+                                    <?php echo date('d/m/Y H:i', strtotime($sol['created_at'])); ?>
+                                </td>
+                                <td style="padding:10px 14px;white-space:nowrap;">
+                                    <?php echo $icon; ?> <strong><?php echo strtoupper(htmlspecialchars($sol['ramo'])); ?></strong>
+                                </td>
+                                <td style="padding:10px 14px;font-size:12px;color:var(--text-secondary);line-height:1.7;">
+                                    <?php echo implode(' &nbsp;·&nbsp; ', array_map('htmlspecialchars', $detalle)); ?>
+                                    <?php if (empty($detalle)): ?><em style="color:var(--text-muted);">Solo datos de contacto</em><?php endif; ?>
+                                </td>
+                                <td style="padding:10px 14px;">
+                                    <span style="font-size:11px;padding:3px 9px;border-radius:99px;background:<?php echo $esc[1]; ?>;color:<?php echo $esc[0]; ?>;font-weight:600;">
+                                        <?php echo ucfirst($sol['estado']); ?>
+                                    </span>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+
     </main>
 </div>
 
@@ -1732,7 +1871,23 @@ document.addEventListener('click', function(e) {
             try { abrirModalPago && abrirModalPago(JSON.parse(el.dataset.cot)); }
             catch(err) { console.error('abrirModalPago', err); }
             break;
-        case 'det-eliminarArchivo':
+        case 'det-citaEstado': {
+            const citaId = el.dataset.citaId;
+            const nuevoE = el.dataset.estado;
+            const label  = nuevoE === 'completada' ? 'completar' : 'cancelar';
+            if (!confirm(`¿Deseas ${label} esta cita?`)) return;
+            const fd = new FormData();
+            fd.append('accion', 'cambiar_estado_cita');
+            fd.append('cita_id', citaId);
+            fd.append('estado', nuevoE);
+            fetch(`/cliente/${clienteId}`, {method:'POST', body:fd})
+                .then(r=>r.json())
+                .then(d=>{
+                    if (d.ok) { showToast('Cita actualizada','success'); setTimeout(()=>location.reload(),900); }
+                    else showToast(d.msg||'Error','error');
+                }).catch(()=>showToast('Error de conexión','error'));
+            break;
+        }
             if (typeof eliminarArchivoCot === 'function') eliminarArchivoCot(parseInt(el.dataset.id), el);
             break;
         case 'toast-close':

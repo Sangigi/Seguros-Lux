@@ -351,6 +351,7 @@ $nonce = SessionManager::nonce();
                 <div class="section-divider" style="margin-top:24px;"></div>
                 <div class="field-group"><label class="form-label-custom">Representante <span class="required">*</span></label><input type="text" class="form-input" id="emp-nombre" placeholder="Carlos Ramírez"><div class="error-msg" id="error-emp-nombre">Campo obligatorio.</div></div>
                 <div class="field-group"><label class="form-label-custom">Empresa <span class="required">*</span></label><input type="text" class="form-input" id="emp-empresa" placeholder="Nombre de tu empresa"><div class="error-msg" id="error-emp-empresa">Campo obligatorio.</div></div>
+                <div class="field-group"><label class="form-label-custom">Giro / Industria</label><input type="text" class="form-input" id="emp-giro" placeholder="Ej. Transporte, Manufactura, Retail…"></div>
                 <div class="row-fields">
                     <div class="field-group"><label class="form-label-custom">Correo corporativo <span class="required">*</span></label><input type="email" class="form-input" id="emp-correo" placeholder="correo@empresa.com"><div class="error-msg" id="error-emp-correo">Correo inválido.</div></div>
                     <div class="field-group"><label class="form-label-custom">Teléfono <span class="required">*</span></label><input type="tel" class="form-input" id="emp-telefono" placeholder="55 1234 5678" maxlength="10"><div class="error-msg" id="error-emp-telefono">Campo obligatorio.</div></div>
@@ -1151,6 +1152,7 @@ function submitEmpresa() {
     var payload = {
         nombre: document.getElementById('emp-nombre').value.trim(),
         empresa: document.getElementById('emp-empresa').value.trim(),
+        giro_empresa: (document.getElementById('emp-giro') || {}).value?.trim() || '',
         correo: correo,
         telefono: '+52' + document.getElementById('emp-telefono').value.trim(),
         empleados: document.getElementById('emp-empleados').value,

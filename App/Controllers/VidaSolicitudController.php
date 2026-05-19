@@ -58,9 +58,10 @@ class VidaSolicitudController
         $urgencia   = trim($input['urgencia']      ?? '');
 
         // ── Campos empresas ───────────────────────────────────────────────────
-        $empresa    = trim($input['empresa']       ?? '');
-        $empleados  = trim($input['empleados']     ?? '');
-        $servicios  = trim($input['servicios']     ?? '');
+        $empresa    = trim($input['empresa']      ?? '');
+        $giroEmp    = trim($input['giro_empresa'] ?? '');
+        $empleados  = trim($input['empleados']    ?? '');
+        $servicios  = trim($input['servicios']    ?? '');
 
         // ── Campos autos (extendidos) ─────────────────────────────────────────
         $tipoVeh     = trim($input['tipo_vehiculo']  ?? '');
@@ -135,7 +136,7 @@ class VidaSolicitudController
             ramo: $ramo, tipoVeh: $tipoVeh, marca: $marca, submarca: $submarca,
             modelo: $modelo, version: $version, anio: $anio, domicilio: $domicilio, cp: $cp,
             edadGmm: $edadGmm, depGmm: $depGmm, hospitales: $hospitales,
-            empresa: $empresa, empleados: $empleados, servicios: $servicios,
+            empresa: $empresa, giroEmp: $giroEmp, empleados: $empleados, servicios: $servicios,
             comentarios: $comentarios, numUnidades: $numUnidades, tipoFlota: $tipoFlota
         );
 
@@ -154,7 +155,7 @@ class VidaSolicitudController
             nombre: $nombre, correo: $correo ?: self::ASESOR_EMAIL,
             telefono: $telefono, fechaPref: $fechaPref, ramo: $ramo,
             edadGmm: $edadGmm, depGmm: $depGmm, comentarios: $comentarios,
-            empresa: $empresa, empleados: $empleados, servicios: $servicios,
+            empresa: $empresa, giroEmp: $giroEmp, empleados: $empleados, servicios: $servicios,
             marca: $marca, submarca: $submarca, modelo: $modelo, version: $version,
             anio: $anio, tipoVeh: $tipoVeh, domicilio: $domicilio, cp: $cp,
             hospitales: $hospitales, urgencia: $urgencia,
@@ -207,7 +208,7 @@ class VidaSolicitudController
         string $ramo, string $tipoVeh, string $marca, string $submarca,
         string $modelo, string $version, string $anio, string $domicilio, string $cp,
         string $edadGmm, string $depGmm, string $hospitales,
-        string $empresa, string $empleados, string $servicios,
+        string $empresa, string $giroEmp, string $empleados, string $servicios,
         string $comentarios, string $numUnidades, string $tipoFlota
     ): int {
         try {
@@ -268,6 +269,13 @@ class VidaSolicitudController
                 $datos['anio_vehiculo'] = $anio           ? (int)$anio : null;
                 $datos['tipo_vehiculo'] = $tipoVeh        ?: null;
                 $datos['calle']         = $domicilio      ?: null;
+            }
+
+            if ($ramo === 'empresas') {
+                $datos['giro_empresa']  = $giroEmp  ?: null;
+                $datos['num_empleados'] = $empleados
+                    ? (int)filter_var($empleados, FILTER_SANITIZE_NUMBER_INT)
+                    : null;
             }
 
             $cols   = implode(', ', array_keys($datos));
@@ -348,7 +356,7 @@ class VidaSolicitudController
     private static function encolarCorreos(
         string $nombre, string $correo, string $telefono, string $fechaPref, string $ramo,
         string $edadGmm, string $depGmm, string $comentarios,
-        string $empresa = '', string $empleados = '', string $servicios = '',
+        string $empresa = '', string $giroEmp = '', string $empleados = '', string $servicios = '',
         string $marca = '', string $submarca = '', string $modelo = '',
         string $version = '', string $anio = '', string $tipoVeh = '',
         string $domicilio = '', string $cp = '', string $hospitales = '',
@@ -397,9 +405,10 @@ class VidaSolicitudController
             }
 
             if ($ramo === 'empresas') {
-                if ($empresa)   $extraRows .= self::row('🏢 Empresa',   htmlspecialchars($empresa));
-                if ($empleados) $extraRows .= self::row('👥 Empleados', htmlspecialchars($empleados));
-                if ($servicios) $extraRows .= self::row('🧩 Servicios', htmlspecialchars($servicios));
+                if ($empresa)   $extraRows .= self::row('🏢 Empresa',         htmlspecialchars($empresa));
+                if ($giroEmp)   $extraRows .= self::row('🏭 Giro / Industria', htmlspecialchars($giroEmp));
+                if ($empleados) $extraRows .= self::row('👥 Empleados',        htmlspecialchars($empleados));
+                if ($servicios) $extraRows .= self::row('🧩 Seguro solicitado', htmlspecialchars($servicios));
             }
 
             if ($comentarios) $extraRows .= self::row('💬 Comentarios', htmlspecialchars($comentarios));
