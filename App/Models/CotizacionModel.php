@@ -180,7 +180,7 @@ class CotizacionModel extends BaseModel
     public static function coberturasPorRamo(): array
     {
         return [
-            'autos'          => ['Básica','Limitada','Amplia','Amplia Plus','Premium'],
+            'autos'          => ['Básico','Amplio','Amplio Total','Premium'],
             'vida'           => ['Temporal','Entera','Dotal'],
             'gastos_medicos' => ['Individual','Familiar','Empresarial'],
             'empresas'       => ['Responsabilidad Civil','Daños','Vida en Grupo','GMM Colectivo'],
@@ -193,7 +193,7 @@ class CotizacionModel extends BaseModel
     public static function companiasPorRamo(): array
     {
         return [
-            'autos'          => ['GNP','Qualitas','AXA','HDI','Mapfre','Zurich','Banorte','Chubb','Ana Seguros','Inbursa'],
+            'autos'          => ['GNP','Qualitas','Chubb','Inbursa'],
             'vida'           => ['GNP','MetLife','Seguros Monterrey','Banamex Seguros','BBVA Seguros','Inbursa'],
             'gastos_medicos' => ['GNP','AXA','Qualitas','Mapfre','Chubb','BUPA','Allianz'],
             'empresas'       => ['GNP','AXA','Mapfre','Chubb','HDI','Zurich','Allianz'],

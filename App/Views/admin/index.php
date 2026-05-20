@@ -445,12 +445,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         if ($notas)       { $sets[] = 'notas = ?'; $vals[] = $notas; }
         $vals[] = $polizaId;
         $db->prepare('UPDATE polizas SET '.implode(', ', $sets).' WHERE id = ?')->execute($vals);
+        // Guardar nuevo archivo de póliza si se subió
+        $archivoGuardado = false;
+        if (!empty($_FILES['nueva_poliza_archivo']['name'])) {
+            $file = $_FILES['nueva_poliza_archivo'];
+            $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['pdf','jpg','jpeg','png','webp'], true) && $file['error'] === UPLOAD_ERR_OK) {
+                $dir = dirname(__DIR__, 2) . '/uploads/polizas/' . $polizaId . '/';
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                $nomArch = 'renovacion_' . date('Ymd_His') . '.' . $ext;
+                if (move_uploaded_file($file['tmp_name'], $dir . $nomArch)) {
+                    // Guardar en tabla polizas como nombre_original/archivo_poliza
+                    $db->prepare("UPDATE polizas SET nombre_original=?, nombre_archivo=?, subido_en=NOW() WHERE id=?")
+                       ->execute([$file['name'], $nomArch, $polizaId]);
+                    $archivoGuardado = true;
+                }
+            }
+        }
         if ($clienteId) {
-            $desc = 'Renovada por coordinador.' . ($nuevoNumero ? " Nueva póliza: {$nuevoNumero}." : '') . ($notas ? " Nota: {$notas}" : '');
+            $desc = 'Renovada por coordinador.' . ($nuevoNumero ? " Nueva póliza: {$nuevoNumero}." : '') . ($notas ? " Nota: {$notas}" : '') . ($archivoGuardado ? ' | Nueva póliza adjunta.' : '');
             $db->prepare("INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha) VALUES (?, ?, 'nota', '✅ Póliza renovada', ?, NOW())")->execute([$clienteId, $agenteId, $desc]);
             $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'")->execute([$clienteId]);
+            // Notificar al asesor que la póliza fue renovada
+            $stPol2 = $db->prepare('SELECT agente_id, numero_poliza, compania FROM polizas WHERE id=?');
+            $stPol2->execute([$polizaId]);
+            $polRow = $stPol2->fetch(PDO::FETCH_ASSOC);
+            if ($polRow) {
+                $db->prepare("INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en) VALUES (?,?,?,?,1,'green',?,0,NOW())")
+                   ->execute([
+                       $polRow['agente_id'], 'renovacion',
+                       '✅ Póliza renovada — ' . ($polRow['numero_poliza'] ?? '#'.$polizaId),
+                       'El coordinador procesó la renovación de la póliza ' . ($polRow['numero_poliza'] ?? '') . ' de ' . ($polRow['compania'] ?? '') . '. Ya está vigente.',
+                       '/cliente/' . $clienteId,
+                   ]);
+            }
         }
-        echo json_encode(['ok'=>true]);
+        echo json_encode(['ok'=>true, 'archivo_guardado'=>$archivoGuardado]);
 
     } elseif ($a === 'renov_marcar_gestionada') {
         $clienteId = (int)($_POST['cliente_id'] ?? 0);
@@ -1265,6 +1295,11 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                 </select></div>
             <div class="form-group"><label class="form-label">Nuevo número de póliza (si cambió)</label><input type="text" class="form-input" id="grNuevoNumero" placeholder="Dejar vacío para mantener el actual"></div>
             <div class="form-group"><label class="form-label">Notas del coordinador</label><textarea class="form-input" id="grNotas" rows="2" style="resize:vertical;"></textarea></div>
+            <div class="form-group">
+                <label class="form-label">📎 Nueva póliza (PDF/imagen) <span style="font-size:11px;color:var(--text-muted);">— opcional</span></label>
+                <input type="file" class="form-input" id="grArchivoPoliza" accept=".pdf,.jpg,.jpeg,.png,.webp" style="padding:6px;">
+                <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">El archivo se adjuntará a la póliza y se marcará como renovación.</p>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalGestionarRenovacion">Cancelar</button>
@@ -1307,10 +1342,12 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                 fd.append('fecha_inicio',document.getElementById('grFechaInicio').value); fd.append('fecha_fin',document.getElementById('grFechaFin').value);
                 fd.append('frecuencia',document.getElementById('grFrecuencia').value); fd.append('nuevo_numero',document.getElementById('grNuevoNumero').value.trim());
                 fd.append('notas',document.getElementById('grNotas').value.trim());
+                const grFile = document.getElementById('grArchivoPoliza');
+                if (grFile && grFile.files[0]) fd.append('nueva_poliza_archivo', grFile.files[0]);
                 btn.disabled = true; btn.textContent = 'Guardando…';
                 fetch('/admin', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
                     btn.disabled = false; btn.textContent = '💾 Guardar renovación';
-                    if (d.ok) { if (typeof showToast === 'function') showToast('Póliza actualizada y marcada como vigente', 'success'); if (typeof closeModal === 'function') closeModal('modalGestionarRenovacion'); setTimeout(() => location.reload(), 1200); }
+                    if (d.ok) { if (typeof showToast === 'function') showToast('Póliza renovada y marcada como vigente' + (d.archivo_guardado ? ' · 📎 archivo adjunto' : ''), 'success'); if (typeof closeModal === 'function') closeModal('modalGestionarRenovacion'); setTimeout(() => location.reload(), 1200); }
                     else { if (typeof showToast === 'function') showToast(d.msg || 'Error al guardar', 'error'); }
                 }).catch(() => { btn.disabled = false; btn.textContent = '💾 Guardar renovación'; if (typeof showToast === 'function') showToast('Error de conexión', 'error'); });
                 break;

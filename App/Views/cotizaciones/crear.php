@@ -230,12 +230,12 @@ $ramoLabel = match($ramoActivo) {
 };
 
 $coberturasPorRamo = [
-    'autos'          => ['Básica','Limitada','Amplia','Amplia Plus','Premium'],
+    'autos'          => ['Básico','Amplio','Amplio Total','Premium'],
     'vida'           => ['Temporal','Entera','Dotal','Entera con Ahorro'],
     'gastos_medicos' => ['Individual','Familiar','Empresarial','PyME'],
     'empresas'       => ['Responsabilidad Civil','Daños','Flotillas','Colectivo de Vida','GMM Colectivo','Multirriesgo','Fianzas'],
 ];
-$companias = ['GNP','Qualitas','AXA','HDI','Mapfre','Zurich','Banorte','Chubb','Ana Seguros','Inbursa'];
+$companias = ['GNP','Qualitas','Chubb','Inbursa'];
 $estadosF  = ['N'=>'Nueva','R'=>'Renovación'];
 
 $coberturasPorRamoJSON = json_encode($coberturasPorRamo);

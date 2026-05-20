@@ -303,13 +303,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 echo json_encode(['ok'=>false,'msg'=>'Solo disponible para ramo autos.']); exit;
             }
             $campos = [];
-            if (($_POST['marca'] ?? '') !== '') $campos['marca'] = trim($_POST['marca']);
-            if (($_POST['modelo'] ?? '') !== '') $campos['modelo'] = trim($_POST['modelo']);
+            // Campos directos en tabla clientes (autos)
+            if (($_POST['marca']         ?? '') !== '') $campos['marca']         = trim($_POST['marca']);
+            if (($_POST['modelo']        ?? '') !== '') $campos['modelo']        = trim($_POST['modelo']); // submarca->modelo
             if (($_POST['anio_vehiculo'] ?? '') !== '') $campos['anio_vehiculo'] = (int)$_POST['anio_vehiculo'] ?: null;
             if (($_POST['tipo_vehiculo'] ?? '') !== '') $campos['tipo_vehiculo'] = trim($_POST['tipo_vehiculo']);
-            if (empty($campos)) { echo json_encode(['ok'=>true]); exit; }
             try {
                 $db = \Database\Connection::getConnection();
+                // Leer extra actual (color, placas, vin, rines, gps, uso) guardado en detalle_adaptaciones como JSON
+                $stAct = $db->prepare('SELECT detalle_adaptaciones FROM clientes WHERE id = ? AND agente_id = ?');
+                $stAct->execute([$clienteId, $agenteId]);
+                $rowAct = $stAct->fetch(\PDO::FETCH_ASSOC);
+                $prevExtra = [];
+                if (!empty($rowAct['detalle_adaptaciones'])) {
+                    $decoded = @json_decode($rowAct['detalle_adaptaciones'], true);
+                    if (is_array($decoded)) $prevExtra = $decoded;
+                }
+                $extra = [];
+                foreach (['color','placas','vin','rines_lujo','gps','uso_auto'] as $key) {
+                    if (($_POST[$key] ?? '') !== '') $extra[$key] = trim($_POST[$key]);
+                }
+                if (!empty($extra)) {
+                    $merged = array_merge($prevExtra, $extra);
+                    $campos['detalle_adaptaciones'] = json_encode($merged, JSON_UNESCAPED_UNICODE);
+                    $campos['tiene_adaptaciones']   = !empty($merged) ? 1 : 0;
+                }
+                if (empty($campos)) { echo json_encode(['ok'=>true]); exit; }
                 $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($campos)));
                 $vals = array_values($campos);
                 $vals[] = $clienteId;
@@ -389,7 +408,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             // Verificar que la cot pertenece al asesor
             $stC = $db->prepare('SELECT c.id, c.folio, c.compania, c.cliente_id, cl.nombre, cl.apellido_paterno
                                   FROM cotizaciones c JOIN clientes cl ON cl.id = c.cliente_id
-                                  WHERE c.id = ? AND c.agente_id = ? AND c.eliminado_en IS NULL');
+                                  WHERE c.id = ? AND c.agente_id = ?');
             $stC->execute([$cotId, $agenteId]);
             $datCot = $stC->fetch(\PDO::FETCH_ASSOC);
             if (!$datCot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
@@ -441,25 +460,47 @@ try {
 } catch (\Throwable $e) { $vehiculo = []; }
 // Mapear desde $cliente (campos autos guardados en clientes)
 if (($cliente['ramo'] ?? 'autos') === 'autos') {
+    // Leer campos extra (color, placas, vin, rines_lujo, gps, uso_auto) desde detalle_adaptaciones JSON
+    $_extra = [];
+    if (!empty($cliente['detalle_adaptaciones'])) {
+        $_decoded = @json_decode($cliente['detalle_adaptaciones'], true);
+        if (is_array($_decoded)) $_extra = $_decoded;
+    }
     $vehiculo = [
         'id'                  => 0,
         'marca'               => $cliente['marca']         ?? '',
-        'submarca'            => $cliente['modelo']        ?? '',
-        'version'             => '',
-        'modelo'              => $cliente['anio_vehiculo'] ?? '',
-        'color'               => '',
-        'placas'              => '',
-        'vin'                 => '',
+        'submarca'            => $cliente['modelo']        ?? '',    // modelo en BD = submarca UI
+        'version'             => $_extra['version']        ?? '',
+        'modelo'              => $cliente['anio_vehiculo'] ?? '',    // anio_vehiculo = Modelo(año)
+        'color'               => $_extra['color']          ?? '',
+        'placas'              => $_extra['placas']         ?? '',
+        'vin'                 => $_extra['vin']            ?? '',
         'tipo'                => $cliente['tipo_vehiculo'] ?? '',
-        'tiene_adaptaciones'  => 0,
-        'detalle_adaptaciones'=> '',
-        'info_adicional'      => '',
+        'rines_lujo'          => $_extra['rines_lujo']     ?? '',
+        'gps'                 => $_extra['gps']            ?? '',
+        'uso_auto'            => $_extra['uso_auto']       ?? '',
+        'tiene_adaptaciones'  => (int)($cliente['tiene_adaptaciones'] ?? 0),
+        'detalle_adaptaciones'=> is_array($_extra) ? (implode(', ', array_filter([
+            !empty($_extra['color'])      ? 'Color: '.$_extra['color']      : '',
+            !empty($_extra['placas'])     ? 'Placas: '.$_extra['placas']    : '',
+            !empty($_extra['vin'])        ? 'VIN: '.$_extra['vin']          : '',
+            !empty($_extra['rines_lujo']) ? 'Rines lujo: '.$_extra['rines_lujo'] : '',
+            !empty($_extra['gps'])        ? 'GPS: '.$_extra['gps']          : '',
+            !empty($_extra['uso_auto'])   ? 'Uso: '.$_extra['uso_auto']     : '',
+        ]))) : '',
+        'info_adicional'      => $_extra['info_adicional'] ?? '',
     ];
 }
 
 $historial    =$historialModel->getByClienteIdConAgente($clienteId);
 $notas        =$clienteModel->getNotas($clienteId);
 $cotizaciones =$cotizacionModel->getByClienteId($clienteId);
+// Enriquecer cotizaciones con detalles_ramo (datos de vehículo/producto de cada cotización)
+foreach ($cotizaciones as &$_cotDet) {
+    $_detRow = $cotizacionModel->getDetalles((int)$_cotDet['id']);
+    $_cotDet['detalles_ramo'] = $_detRow;
+}
+unset($_cotDet);
 $polizas      =$polizaModel ? $polizaModel->listarPorCliente($clienteId,$agenteId) : [];
 // Auto-actualizar estado de pólizas según fecha_fin
 if ($polizaModel && !empty($polizas)) {
@@ -736,14 +777,17 @@ $pageTitle=$nombreCompleto;
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
             <?php
             $campos = [
-                ['Marca',        $vehiculo['marca'] ?? '—'],
-                ['Submarca',     $vehiculo['submarca'] ?? '—'],
-                ['Versión',      $vehiculo['version'] ?? '—'],
-                ['Modelo (año)', $vehiculo['modelo'] ?? '—'],
-                ['Color',        $vehiculo['color'] ?? '—'],
-                ['Placas',       $vehiculo['placas'] ?? '—'],
-                ['VIN / Serie',  $vehiculo['vin'] ?? '—'],
-                ['Tipo',         $vehiculo['tipo'] ?? '—'],
+                ['Marca',          $vehiculo['marca']      ?? '—'],
+                ['Submarca',       $vehiculo['submarca']   ?? '—'],
+                ['Versión',        $vehiculo['version']    ?? '—'],
+                ['Modelo (año)',   $vehiculo['modelo']     ?? '—'],
+                ['Color',          $vehiculo['color']      ?? '—'],
+                ['Placas',         $vehiculo['placas']     ?? '—'],
+                ['VIN / Serie',    $vehiculo['vin']        ?? '—'],
+                ['Tipo',           $vehiculo['tipo']       ?? '—'],
+                ['Rines de lujo',  $vehiculo['rines_lujo'] ? ucfirst($vehiculo['rines_lujo']) : '—'],
+                ['GPS',            $vehiculo['gps']        ? ucfirst($vehiculo['gps'])        : '—'],
+                ['Uso',            $vehiculo['uso_auto']   ? ucfirst($vehiculo['uso_auto'])   : '—'],
             ];
             foreach ($campos as [$lbl, $val]): ?>
             <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;">
@@ -837,6 +881,36 @@ $pageTitle=$nombreCompleto;
             </div>
         </div>
  
+        <!-- Rines / GPS / Uso -->
+        <div class="form-row" style="margin-top:4px;">
+            <div class="form-group">
+                <label class="form-label">Rines de lujo</label>
+                <select class="form-select" name="vehiculo_rines_lujo">
+                    <option value="">— No especificado —</option>
+                    <option value="si"  <?= ($vehiculo['rines_lujo'] ?? '') === 'si'    ? 'selected' : '' ?>>Sí</option>
+                    <option value="no"  <?= ($vehiculo['rines_lujo'] ?? '') === 'no'    ? 'selected' : '' ?>>No</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">GPS instalado</label>
+                <select class="form-select" name="vehiculo_gps">
+                    <option value="">— No especificado —</option>
+                    <option value="si"    <?= ($vehiculo['gps'] ?? '') === 'si'    ? 'selected' : '' ?>>Sí</option>
+                    <option value="no"    <?= ($vehiculo['gps'] ?? '') === 'no'    ? 'selected' : '' ?>>No</option>
+                    <option value="no_se" <?= ($vehiculo['gps'] ?? '') === 'no_se' ? 'selected' : '' ?>>No sé</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Uso del vehículo</label>
+                <select class="form-select" name="vehiculo_uso_auto">
+                    <option value="">— No especificado —</option>
+                    <option value="particular" <?= ($vehiculo['uso_auto'] ?? '') === 'particular' ? 'selected' : '' ?>>Particular</option>
+                    <option value="comercial"  <?= ($vehiculo['uso_auto'] ?? '') === 'comercial'  ? 'selected' : '' ?>>Comercial</option>
+                    <option value="uber_didi"  <?= ($vehiculo['uso_auto'] ?? '') === 'uber_didi'  ? 'selected' : '' ?>>Uber / DiDi</option>
+                </select>
+            </div>
+        </div>
+
         <!-- Adaptaciones -->
         <div class="form-group" style="margin-top:8px;">
             <label class="form-label" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
@@ -1182,6 +1256,25 @@ $BADGE_PAGO_CL = [
                                     <div style="font-family:'Courier New',monospace;font-size:11px;font-weight:700;color:var(--accent-color,#0ea5e9);background:var(--info-light,#eff6ff);padding:2px 7px;border-radius:4px;display:inline-block;margin-bottom:5px;"><?php echo htmlspecialchars($cot['folio']); ?></div>
                                     <?php endif; ?>
                                     <div style="font-weight:600;font-size:13px;"><?php echo htmlspecialchars($cot['compania']); ?> &mdash; <?php echo htmlspecialchars($cot['tipo_cobertura']); ?></div>
+                                    <?php
+                                    // Mostrar datos de vehículo distintos por cotización (si los hay en detalles_ramo)
+                                    $_dr = $cot['detalles_ramo'] ?? [];
+                                    $_ramoC = $cot['ramo'] ?? 'autos';
+                                    if ($_ramoC === 'autos' && !empty($_dr)):
+                                        $_partes = array_filter([
+                                            !empty($_dr['tipo_vehiculo']) ? ucfirst($_dr['tipo_vehiculo']) : '',
+                                            !empty($_dr['marca'])        ? $_dr['marca']  : '',
+                                            !empty($_dr['modelo'])       ? $_dr['modelo'] : '',
+                                            !empty($_dr['anio'])         ? $_dr['anio']   : '',
+                                            !empty($_dr['uso'])          ? '(' . ucfirst($_dr['uso']) . ')' : '',
+                                        ]);
+                                        if (!empty($_partes)): ?>
+                                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;">
+                                        🚗 <span><?= htmlspecialchars(implode(' ', $_partes)) ?></span>
+                                        <?php if (!empty($_dr['gps'])): ?><span>· GPS: <?= ucfirst($_dr['gps']) ?></span><?php endif; ?>
+                                        <?php if (!empty($_dr['rines_lujo'])): ?><span>· Rines: <?= ucfirst($_dr['rines_lujo']) ?></span><?php endif; ?>
+                                    </div>
+                                    <?php endif; endif; ?>
                                     <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;"><?php echo date('d/m/Y',strtotime($cot['fecha'])); ?>
                                     <?php
                                     $cotEst = $cot['estado'] ?? '';
@@ -1933,21 +2026,19 @@ function guardarEdicionCliente() {
         btnSave.textContent = 'Guardando…';
         const fd = new FormData();
         fd.append('accion', 'editar_cliente');
-        // Campos generales del cliente que están en el modal de edición principal
-        // Para vehículo: leer desde el formulario inline del card
         const form = editMode;
-        const get = (name) => form.querySelector(`[name="${name}"]`)?.value ?? '';
-        fd.append('marca',           form.querySelector('[name="vehiculo_marca"]')?.value ?? '');
-        fd.append('modelo',          form.querySelector('[name="vehiculo_submarca"]')?.value ?? '');
-        fd.append('anio_vehiculo',   form.querySelector('[name="vehiculo_anio"]')?.value ?? '');
-        fd.append('tipo_vehiculo',   form.querySelector('[name="vehiculo_tipo"]')?.value ?? '');
-        fd.append('vehiculo_color',  form.querySelector('[name="vehiculo_color"]')?.value ?? '');
-        fd.append('vehiculo_placas', form.querySelector('[name="vehiculo_placas"]')?.value ?? '');
-        fd.append('vehiculo_vin',    form.querySelector('[name="vehiculo_vin"]')?.value ?? '');
-        fd.append('tiene_adaptaciones', form.querySelector('[name="vehiculo_tiene_adaptaciones"]')?.checked ? '1' : '0');
-        fd.append('detalle_adaptaciones', form.querySelector('[name="vehiculo_detalle_adaptaciones"]')?.value ?? '');
-        fd.append('info_adicional',  form.querySelector('[name="vehiculo_info_adicional"]')?.value ?? '');
-        // Preservar campos de cliente que NO queremos borrar
+        // Campos principales (nombres exactos que espera el PHP handler)
+        fd.append('marca',         form.querySelector('[name="vehiculo_marca"]')?.value ?? '');
+        fd.append('modelo',        form.querySelector('[name="vehiculo_submarca"]')?.value ?? ''); // submarca→modelo en BD
+        fd.append('anio_vehiculo', form.querySelector('[name="vehiculo_anio"]')?.value ?? '');
+        fd.append('tipo_vehiculo', form.querySelector('[name="vehiculo_tipo"]')?.value ?? '');
+        // Campos adicionales (se guardan en detalle_adaptaciones JSON)
+        fd.append('color',      form.querySelector('[name="vehiculo_color"]')?.value ?? '');
+        fd.append('placas',     form.querySelector('[name="vehiculo_placas"]')?.value ?? '');
+        fd.append('vin',        form.querySelector('[name="vehiculo_vin"]')?.value ?? '');
+        fd.append('rines_lujo', form.querySelector('[name="vehiculo_rines_lujo"]')?.value ?? '');
+        fd.append('gps',        form.querySelector('[name="vehiculo_gps"]')?.value ?? '');
+        fd.append('uso_auto',   form.querySelector('[name="vehiculo_uso_auto"]')?.value ?? '');
         fd.append('_solo_vehiculo', '1');
         fetch(`/cliente/<?= $clienteId ?>`, { method: 'POST', body: fd })
             .then(r => r.json())
