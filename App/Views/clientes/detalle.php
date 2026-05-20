@@ -5,7 +5,9 @@ use App\Security\SessionManager;
 use App\Models\{ClientModel, CitaModel, CotizacionModel, HistorialModel};
 
 SessionManager::requireAuth('/login');
-
+if (!class_exists(\Database\Connection::class)) {
+    require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
+}
 // Capturar excepciones PHP y devolverlas como JSON en AJAX o HTML visible en GET
 set_exception_handler(function(\Throwable $e) {
     $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
