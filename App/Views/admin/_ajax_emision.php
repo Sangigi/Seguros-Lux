@@ -114,14 +114,14 @@ switch ($accion) {
         ]);
         $comprobanteId = $db->lastInsertId();
 
-        // Actualizar estado de pago en cotizacion
+        // Actualizar estado de pago en cotizacion + marcarla como pagado
         $db->prepare(
-            "UPDATE cotizaciones SET estado_pago = 'confirmado', comprobante_pago_id = ? WHERE id = ?"
+            "UPDATE cotizaciones SET estado_pago = 'confirmado', comprobante_pago_id = ?, estado = 'pagado' WHERE id = ?"
         )->execute([$comprobanteId, $cotId]);
 
-        // Obtener datos de cotización para la notificación
+        // Obtener datos completos de cotización para notificaciones
         $stCot = $db->prepare(
-            "SELECT c.folio, c.compania,
+            "SELECT c.folio, c.compania, c.agente_id AS cot_agente_id, c.cliente_id,
                     CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
              FROM cotizaciones c
              JOIN clientes cl ON cl.id = c.cliente_id
@@ -130,40 +130,76 @@ switch ($accion) {
         $stCot->execute([$cotId]);
         $datosCot = $stCot->fetch(\PDO::FETCH_ASSOC);
 
+        // Si no se pasó asesorId, obtenerlo de la cotización
+        if (!$asesorId && !empty($datosCot['cot_agente_id'])) {
+            $asesorId = (int)$datosCot['cot_agente_id'];
+        }
+
+        // Actualizar estado de la PÓLIZA vinculada (si existe) para reflejar pago confirmado
+        $stPol = $db->prepare(
+            "SELECT id FROM polizas WHERE cotizacion_id = ? AND eliminado_en IS NULL LIMIT 1"
+        );
+        $stPol->execute([$cotId]);
+        $polizaRow = $stPol->fetch(\PDO::FETCH_ASSOC);
+        if ($polizaRow) {
+            $db->prepare(
+                "UPDATE polizas SET notas = CONCAT(IFNULL(notas,''), ?) WHERE id = ?"
+            )->execute([
+                "\n[" . date('Y-m-d H:i') . "] Pago confirmado por coordinador — Método: " . _emi_metodoLabel($metodo) . ".",
+                $polizaRow['id']
+            ]);
+        }
+
         // Registrar en historial del coordinador
         $db->prepare(
-            "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id)
-             VALUES (?,?,?,?,?)"
+            "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id, cliente_id)
+             VALUES (?,?,?,?,?,?)"
         )->execute([
             $agenteId,
             'cobro',
             '💳 Comprobante de pago registrado',
-            "Folio: {$datosCot['folio']} — Cliente: {$datosCot['cliente_nombre']} — Método: {$metodo}",
+            "Folio: {$datosCot['folio']} — Cliente: {$datosCot['cliente_nombre']} — Método: " . _emi_metodoLabel($metodo),
             $cotId,
+            $datosCot['cliente_id'] ?? null,
         ]);
 
-        // Notificación importante (roja) al asesor
+        // Registrar en historial del cliente
+        try {
+            $db->prepare(
+                "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion)
+                 VALUES (?,?,?,?,?)"
+            )->execute([
+                $datosCot['cliente_id'] ?? 0,
+                $agenteId,
+                'venta',
+                '💰 Pago confirmado por coordinador — ' . ($datosCot['folio'] ?? '#'.$cotId),
+                'Método: ' . _emi_metodoLabel($metodo) . ($ref ? " · Ref: {$ref}" : '') . ($monto ? " · $" . number_format((float)$monto, 2) : ''),
+            ]);
+        } catch (\Throwable $he) { error_log('[historial_cliente cobro] ' . $he->getMessage()); }
+
+        // Notificación al asesor: pago confirmado (verde, urgente)
         if ($asesorId) {
+            $urlCliente = '/cliente/' . ($datosCot['cliente_id'] ?? '');
             _emi_notificar(
                 db: $db,
                 asesorId: $asesorId,
-                titulo: '✅ Pago confirmado',
-                cuerpo: "El coordinador confirmó el pago de la cotización {$datosCot['folio']} "
-                       . "({$datosCot['cliente_nombre']} / {$datosCot['compania']}). "
-                       . "Método: " . _emi_metodoLabel($metodo) . ".",
+                titulo: '✅ Pago confirmado — ' . ($datosCot['folio'] ?? '#'.$cotId),
+                cuerpo: "El coordinador confirmó el pago de la póliza del cliente {$datosCot['cliente_nombre']} "
+                       . "({$datosCot['compania']} · Folio: {$datosCot['folio']}). "
+                       . "Método: " . _emi_metodoLabel($metodo) . ($monto ? " · $" . number_format((float)$monto, 2) : '') . ".",
                 urgente: true,
                 color: 'green',
-                url: "/cotizacion/{$cotId}",
+                url: $urlCliente,
             );
-            // Notificación adicional: recordar al asesor que debe contactar al cliente para renovación
+            // Recordatorio de seguimiento post-pago
             _emi_notificar(
                 db: $db,
                 asesorId: $asesorId,
-                titulo: '🔔 Contacta al cliente para renovación',
-                cuerpo: "Pago de {$datosCot['cliente_nombre']} confirmado. Contáctalo para ofrecerle renovación o actualización de su póliza ({$datosCot['compania']} — Folio {$datosCot['folio']}).",
-                urgente: true,
-                color: 'red',
-                url: "/cotizacion/{$cotId}",
+                titulo: '🔔 Contacta a ' . ($datosCot['cliente_nombre'] ?? 'tu cliente'),
+                cuerpo: "La póliza de {$datosCot['cliente_nombre']} está activa y pagada. Recuerda dar seguimiento para renovación y agradecer la confianza.",
+                urgente: false,
+                color: 'blue',
+                url: $urlCliente,
             );
         }
 

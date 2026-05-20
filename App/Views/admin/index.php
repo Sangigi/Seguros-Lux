@@ -4,6 +4,24 @@ declare(strict_types=1);
 use App\Security\SessionManager;
 use App\Models\{AgentModel, CotizacionModel};
 use Database\Connection;
+
+// Capturar cualquier excepción PHP en peticiones AJAX y devolver JSON legible
+set_exception_handler(function(\Throwable $e) {
+    if (!headers_sent()) header('Content-Type: application/json');
+    $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+    if ($isPost) {
+        echo json_encode([
+            'ok'   => false,
+            'msg'  => '[PHP Exception] ' . $e->getMessage(),
+            'file' => basename($e->getFile()) . ':' . $e->getLine(),
+        ]);
+    } else {
+        echo '<div style="background:#fee2e2;color:#7f1d1d;padding:20px;font-family:monospace;border-radius:8px;margin:20px;">
+              <b>Error PHP:</b> ' . htmlspecialchars($e->getMessage()) . '<br>
+              <small>' . htmlspecialchars(basename($e->getFile()) . ':' . $e->getLine()) . '</small></div>';
+    }
+    exit;
+});
 // Forzar visualización de errores temporalmente
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
@@ -227,15 +245,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
 // ── AJAX ──────────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     header('Content-Type: application/json');
-    // Captura cualquier error/excepción PHP y retorna JSON para que el frontend lo muestre
-    set_exception_handler(function(Throwable $e) {
-        if (!headers_sent()) header('Content-Type: application/json');
-        echo json_encode(['ok'=>false, 'msg'=>'Error PHP: ' . $e->getMessage() . ' en ' . basename($e->getFile()) . ':' . $e->getLine()]);
-        exit;
-    });
-    set_error_handler(function(int $errno, string $errstr, string $errfile, int $errline): bool {
-        throw new ErrorException($errstr, $errno, $errno, $errfile, $errline);
-    });
     $a      = $_POST['accion'];
     $db     = Connection::getConnection();
     $soloSA = ['crear_agente','cambiar_rol','eliminar_agente','reactivar_agente','eliminar_cotizacion'];
@@ -251,38 +260,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         exit;
     }
 
-    // ── Router de acciones POST ─────────────────────────────────────────────────
-    // NOTA: usamos if/elseif en lugar de match() para evitar que PHP evalúe
-    // todos los closures de forma eagerly (bug PHP que causaba FATAL errors).
+    // ── Historial de pólizas (coordinador / SA) ────────────────────────────────
+    if ($a === 'get_polizas_resumen') {
+        $filtroAsesor = (int)($_POST['asesor_id'] ?? 0);
+        $sql = 'SELECT p.id, p.cliente_id, p.cotizacion_id, p.agente_id,
+                       p.compania, p.numero_poliza, p.fecha_inicio, p.fecha_fin,
+                       p.frecuencia_renovacion, p.estado, p.notas,
+                       p.nombre_original, p.subido_en,
+                       CONCAT(c.nombre," ",c.apellido_paterno) AS cliente_nombre,
+                       c.id AS cliente_id_ref,
+                       CONCAT(a.nombre," ",a.apellido) AS asesor_nombre,
+                       DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
+                       CASE
+                           WHEN cot.estado = "pagado"           THEN 1
+                           WHEN cot.estado_pago = "confirmado"  THEN 1
+                           WHEN ccp.id IS NOT NULL              THEN 1
+                           WHEN cp.id IS NOT NULL               THEN 1
+                           ELSE 0
+                       END AS pago_confirmado,
+                       COALESCE(ccp.metodo_pago, cot.metodo_pago) AS metodo_pago,
+                       COALESCE(ccp.creado_en, cp.fecha_pago)     AS fecha_pago
+                FROM polizas p
+                JOIN clientes c   ON c.id  = p.cliente_id
+                JOIN agentes  a   ON a.id  = p.agente_id
+                LEFT JOIN cotizaciones                cot ON cot.id  = p.cotizacion_id
+                LEFT JOIN cotizacion_comprobantes_pago ccp ON ccp.cotizacion_id = p.cotizacion_id AND ccp.eliminado_en IS NULL
+                LEFT JOIN cotizacion_pagos             cp  ON cp.cotizacion_id  = p.cotizacion_id
+                WHERE p.eliminado_en IS NULL';
+        $params = [];
+        if ($filtroAsesor) { $sql .= ' AND p.agente_id = ?'; $params[] = $filtroAsesor; }
+        $sql .= ' ORDER BY p.fecha_fin ASC LIMIT 500';
+        try {
+            $st = $db->prepare($sql);
+            $st->execute($params);
+            $polizas = $st->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            echo json_encode(['ok'=>false, 'msg'=>'Error SQL: ' . $e->getMessage()]);
+            exit;
+        } catch (Throwable $e) {
+            echo json_encode(['ok'=>false, 'msg'=>'Error: ' . $e->getMessage()]);
+            exit;
+        }
+        $pagadas    = array_values(array_filter($polizas, fn($p) => !empty($p['pago_confirmado'])));
+        $pendientes = array_values(array_filter($polizas, fn($p) => empty($p['pago_confirmado']) && ($p['estado'] ?? '') !== 'vencida'));
+        $vencer     = array_values(array_filter($polizas, fn($p) => is_numeric($p['dias_restantes']) && (int)$p['dias_restantes'] >= 0 && (int)$p['dias_restantes'] <= 30));
+        echo json_encode([
+            'ok'         => true,
+            'total'      => count($polizas),
+            'pagadas'    => count($pagadas),
+            'pendientes' => count($pendientes),
+            'por_vencer' => count($vencer),
+            'polizas'    => array_values($polizas),
+        ]);
+        exit;
+    }
+
+    // ── Router de acciones POST ──────────────────────────────────────────────────
 
     if ($a === 'editar_agente_nombre') {
-        $tid   = (int)($_POST['agente_id'] ?? 0);
-        $nombre= trim($_POST['nombre']   ?? '');
-        $apell = trim($_POST['apellido'] ?? '');
-        if (!$tid || !$nombre || !$apell) { echo json_encode(['ok'=>false,'msg'=>'Datos incompletos.']); exit; }
-        if ($tid === $agenteId)           { echo json_encode(['ok'=>false,'msg'=>'No puedes editar tu propio nombre aquí.']); exit; }
-        $target    = $agentModel->find($tid);
-        if (!$target) { echo json_encode(['ok'=>false,'msg'=>'Agente no encontrado.']); exit; }
-        $rolDestino= $target['rol'] ?? 'asesor';
-        if ($_agenteRol === 'coordinador' && $rolDestino !== 'asesor') { echo json_encode(['ok'=>false,'msg'=>'Solo puedes editar asesores.']); exit; }
-        if ($isSuperadmin && $rolDestino === 'superadmin')             { echo json_encode(['ok'=>false,'msg'=>'No puedes editar otro superadmin.']); exit; }
+        $tid    = (int)($_POST['agente_id'] ?? 0);
+        $nombre = trim($_POST['nombre'] ?? '');
+        $apell  = trim($_POST['apellido'] ?? '');
+        if (!$tid || !$nombre) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
+        $puedeEditar = $isSuperadmin || ($_agenteRol === 'coordinador' && $agentModel->getRol($tid) === 'asesor');
+        if (!$puedeEditar) { echo json_encode(['ok'=>false,'msg'=>'Sin permiso.']); exit; }
         $db->prepare('UPDATE agentes SET nombre=?, apellido=? WHERE id=?')->execute([$nombre, $apell, $tid]);
-        try { $db->prepare("INSERT INTO agente_cambios_log (agente_id,modificado_por,tipo_cambio,descripcion) VALUES (?,?,'nombre',?)")->execute([$tid,$agenteId,"Nombre cambiado a: {$nombre} {$apell}"]); } catch(\Throwable $e){}
         echo json_encode(['ok'=>true]);
 
     } elseif ($a === 'cambiar_password_agente') {
         $tid = (int)($_POST['agente_id'] ?? 0);
-        $pw  = trim($_POST['password']  ?? '');
+        $pw  = trim($_POST['password'] ?? '');
         if (!$tid || strlen($pw) < 6) { echo json_encode(['ok'=>false,'msg'=>'Contraseña mínimo 6 caracteres.']); exit; }
-        if ($tid === $agenteId)        { echo json_encode(['ok'=>false,'msg'=>'Usa el perfil para cambiar tu propia contraseña.']); exit; }
-        $target    = $agentModel->find($tid);
-        if (!$target) { echo json_encode(['ok'=>false,'msg'=>'Agente no encontrado.']); exit; }
-        $rolDestino= $target['rol'] ?? 'asesor';
-        if ($_agenteRol === 'coordinador' && $rolDestino !== 'asesor') { echo json_encode(['ok'=>false,'msg'=>'Solo puedes cambiar contraseñas de asesores.']); exit; }
-        if ($isSuperadmin && $rolDestino === 'superadmin')             { echo json_encode(['ok'=>false,'msg'=>'No puedes cambiar la contraseña de otro superadmin.']); exit; }
+        $puedeEditar = $isSuperadmin || ($_agenteRol === 'coordinador' && $agentModel->getRol($tid) === 'asesor');
+        if (!$puedeEditar) { echo json_encode(['ok'=>false,'msg'=>'Sin permiso.']); exit; }
         $db->prepare('UPDATE agentes SET contrasena=? WHERE id=?')->execute([password_hash($pw, PASSWORD_BCRYPT), $tid]);
-        try { $db->prepare("INSERT INTO agente_cambios_log (agente_id,modificado_por,tipo_cambio,descripcion) VALUES (?,?,'contrasena','Contraseña actualizada por supervisor')")->execute([$tid,$agenteId]); } catch(\Throwable $e){}
-        echo json_encode(['ok'=>true,'msg'=>'Contraseña actualizada.']);
+        echo json_encode(['ok'=>true]);
 
     } elseif ($a === 'get_historial_coordinador') {
         if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Acceso denegado.']); exit; }
@@ -290,162 +342,120 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $limit = min((int)($_POST['limit'] ?? 50), 200);
         if (!$tid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
         $st = $db->prepare(
-            'SELECT h.tipo, h.titulo, h.descripcion, h.fecha,
+            "SELECT h.tipo, h.titulo, h.descripcion, h.fecha,
                     c.folio,
-                    CONCAT(cl.nombre," ",cl.apellido_paterno) AS cliente_nombre
+                    CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
              FROM historial_coordinador h
              LEFT JOIN cotizaciones c  ON c.id  = h.cotizacion_id
-             LEFT JOIN clientes    cl ON cl.id  = h.cliente_id
+             LEFT JOIN clientes    cl ON cl.id = h.cliente_id
              WHERE h.coordinador_id = ?
              ORDER BY h.fecha DESC
-             LIMIT ?'
+             LIMIT ?"
         );
         $st->execute([$tid, $limit]);
-        $rows = $st->fetchAll(\PDO::FETCH_ASSOC);
-        foreach ($rows as &$r) { $r['fecha_fmt'] = date('d/m/Y H:i', strtotime($r['fecha'] ?? 'now')); }
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$r) { $r['fecha_fmt'] = date('d/m/Y H:i', strtotime($r['fecha'])); }
         unset($r);
         echo json_encode(['ok'=>true,'historial'=>$rows]);
 
     } elseif ($a === 'cambiar_rol') {
-        $tid = (int)($_POST['agente_id'] ?? 0);
-        $rol = trim($_POST['rol'] ?? '');
+        $tid = (int)($_POST['agente_id']??0);
+        $rol = trim($_POST['rol']??'');
         if (!$tid || !in_array($rol,['asesor','coordinador','superadmin'],true)) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
         if ($tid === $agenteId) { echo json_encode(['ok'=>false,'msg'=>'No puedes cambiar tu propio rol.']); exit; }
         $agentModel->cambiarRol($tid, $rol);
         echo json_encode(['ok'=>true]);
 
     } elseif ($a === 'crear_agente') {
-        $n =$db->quote(trim($_POST['nombre']    ?? ''));
-        $ap= trim($_POST['apellido']  ?? '');
-        $co= trim($_POST['correo']    ?? '');
-        $te= trim($_POST['telefono']  ?? '');
-        $pw= trim($_POST['password']  ?? '');
-        $ro= trim($_POST['rol']       ?? 'asesor');
-        $n = trim($_POST['nombre'] ?? '');
-        if (!$n||!$ap||!$co||!$pw) { echo json_encode(['ok'=>false,'msg'=>'Faltan campos.']); exit; }
-        if (!filter_var($co, FILTER_VALIDATE_EMAIL)) { echo json_encode(['ok'=>false,'msg'=>'Correo inválido.']); exit; }
-        if (strlen($pw)<6) { echo json_encode(['ok'=>false,'msg'=>'Contraseña mínimo 6 caracteres.']); exit; }
+        $n=trim($_POST['nombre']??''); $ap=trim($_POST['apellido']??'');
+        $co=trim($_POST['correo']??''); $te=trim($_POST['telefono']??'');
+        $pw=trim($_POST['password']??''); $ro=trim($_POST['rol']??'asesor');
+        if (!$n||!$ap||!$co||!$pw) { echo json_encode(['ok'=>false,'msg'=>'Faltan campos obligatorios.']); exit; }
         if (!in_array($ro,['asesor','coordinador','superadmin'],true)) $ro='asesor';
         $id = $agentModel->crear($n,$ap,$co,$te,$pw,$ro);
-        echo json_encode($id ? ['ok'=>true,'id'=>$id] : ['ok'=>false,'msg'=>'Correo ya registrado.']);
+        echo json_encode(['ok'=>true,'id'=>$id]);
 
     } elseif ($a === 'eliminar_agente') {
-        $tid=(int)($_POST['agente_id'] ?? 0);
-        if (!$tid || $tid===$agenteId) { echo json_encode(['ok'=>false,'msg'=>'No válido.']); exit; }
-        $agentModel->eliminar($tid);   // método correcto en AgentModel
+        $tid=(int)($_POST['agente_id']??0);
+        if (!$tid||$tid===$agenteId) { echo json_encode(['ok'=>false,'msg'=>'No puedes desactivarte a ti mismo.']); exit; }
+        $agentModel->desactivar($tid);
         echo json_encode(['ok'=>true,'msg'=>'Asesor desactivado.']);
 
     } elseif ($a === 'reactivar_agente') {
-        $tid=(int)($_POST['agente_id'] ?? 0);
-        if (!$tid) { echo json_encode(['ok'=>false,'msg'=>'No válido.']); exit; }
+        $tid=(int)($_POST['agente_id']??0);
+        if (!$tid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
         $agentModel->reactivar($tid);
         echo json_encode(['ok'=>true,'msg'=>'Asesor reactivado.']);
 
     } elseif ($a === 'eliminar_cotizacion') {
-        $cid=(int)($_POST['cotizacion_id'] ?? 0);
+        $cid=(int)($_POST['cotizacion_id']??0);
         if (!$cid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
-        $cotModel->delete($cid);
+        $cotModel->eliminar($cid,$agenteId);
         echo json_encode(['ok'=>true]);
 
     } elseif ($a === 'get_documentos_admin') {
-        $cotId=(int)($_POST['cotizacion_id'] ?? 0);
+        $cotId=(int)($_POST['cotizacion_id']??0);
         if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
-        $archivos=$cotModel->getArchivos($cotId);
-        $cot=$cotModel->find($cotId,['folio']);
+        $cot=$cotModel->getById($cotId);
+        if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
         $tipoLabel=['poliza'=>'Póliza','ine'=>'INE','comprobante_dom'=>'Comp. domicilio',
-            'tarjeta_circulacion'=>'T. circulación','factura_auto'=>'Factura auto',
-            'constancia_fiscal'=>'Constancia fiscal','foto_coche_1'=>'Foto 1',
-            'foto_coche_2'=>'Foto 2','foto_coche_3'=>'Foto 3','foto_coche_4'=>'Foto 4',
-            'foto_coche_5'=>'Foto 5','comprobante_pago'=>'Comp. pago'];
-        $docs=array_map(function($a) use ($tipoLabel) {
-            $ext     = strtolower(pathinfo($a['nombre_archivo'], PATHINFO_EXTENSION));
-            $esImg   = in_array($ext,['jpg','jpeg','png','webp'],true);
-            $rutaFis = dirname(__DIR__,3).'/uploads/cotizaciones/'.$a['cotizacion_id'].'/'.$a['nombre_archivo'];
-            $dispLocal=($a['idrive_borrado']===null) && file_exists($rutaFis);
-            return ['id'=>(int)$a['id'],
-                'tipo_label' =>$tipoLabel[$a['tipo_documento']]??ucfirst(str_replace('_',' ',$a['tipo_documento'])),
-                'nombre_orig'=>$a['nombre_original'],
-                'url_local'  =>$dispLocal?'/archivo?file=cotizaciones/'.$a['cotizacion_id'].'/'.$a['nombre_archivo']:null,
-                'en_idrive'  =>!empty($a['idrive_subido']),'es_imagen'=>$esImg,'es_pdf'=>$ext==='pdf'];
-        },$archivos);
-        echo json_encode(['ok'=>true,'docs'=>$docs,'folio'=>$cot['folio']??'']);
+            'tarjeta_circulacion'=>'Tarjeta circulación','constancia_fiscal'=>'Constancia fiscal',
+            'foto_coche_1'=>'Foto 1','foto_coche_2'=>'Foto 2','foto_coche_3'=>'Foto 3',
+            'foto_coche_4'=>'Foto 4','foto_coche_5'=>'Foto 5','comprobante_pago'=>'Comp. pago',
+        ];
+        $docs=array_map(function($a) use($tipoLabel,$cotId){
+            $ext=strtolower(pathinfo($a['nombre_original']??'',PATHINFO_EXTENSION));
+            $esImg=in_array($ext,['jpg','jpeg','png','gif','webp'],true);
+            $ruta=dirname(__DIR__,3).'/'.$a['ruta'];
+            return [
+                'id'          => (int)$a['id'],
+                'tipo_label'  => $tipoLabel[$a['tipo_documento']] ?? ucfirst(str_replace('_',' ',$a['tipo_documento'])),
+                'nombre_orig' => $a['nombre_original'],
+                'url_local'   => file_exists($ruta) ? '/archivo?file='.preg_replace('#^uploads/#','',$a['ruta']) : null,
+                'en_idrive'   => !empty($a['idrive_key']),
+                'es_imagen'   => $esImg,
+                'es_pdf'      => $ext==='pdf',
+            ];
+        }, $cotModel->getArchivos($cotId));
+        echo json_encode(['ok'=>true,'folio'=>$cot['folio']??'','docs'=>$docs]);
 
     } elseif ($a === 'reasignar_clientes') {
-        $ids    =array_filter(array_map('intval',explode(',',$_POST['cliente_ids']??'')));
-        $nuevoId=(int)($_POST['nuevo_asesor_id'] ?? 0);
+        $ids     = array_filter(array_map('intval', explode(',', $_POST['cliente_ids']??'')));
+        $nuevoId = (int)($_POST['nuevo_asesor_id']??0);
         if (empty($ids)||!$nuevoId) { echo json_encode(['ok'=>false,'msg'=>'Datos incompletos.']); exit; }
-        $n=$agentModel->reasignarClientes($ids,$nuevoId);
+        $n = $agentModel->reasignarClientes($ids, $nuevoId);
         echo json_encode(['ok'=>true,'reasignados'=>$n]);
 
     } elseif ($a === 'renov_actualizar_poliza') {
-        $polizaId   =(int)($_POST['poliza_id']   ?? 0);
-        $clienteId2 =(int)($_POST['cliente_id']  ?? 0);
-        $fechaInicio=trim($_POST['fecha_inicio']  ?? '');
-        $fechaFin   =trim($_POST['fecha_fin']     ?? '');
-        $frecuencia =trim($_POST['frecuencia']    ?? 'anual');
-        $nuevoNumero=trim($_POST['nuevo_numero']  ?? '');
-        $notas      =trim($_POST['notas']         ?? '');
-        if (!$polizaId||!$fechaFin) { echo json_encode(['ok'=>false,'msg'=>'Faltan datos obligatorios.']); exit; }
+        $polizaId    = (int)($_POST['poliza_id']   ?? 0);
+        $clienteId   = (int)($_POST['cliente_id']  ?? 0);
+        $fechaInicio = trim($_POST['fecha_inicio']  ?? '');
+        $fechaFin    = trim($_POST['fecha_fin']     ?? '');
+        $frecuencia  = trim($_POST['frecuencia']    ?? 'anual');
+        $nuevoNumero = trim($_POST['nuevo_numero']  ?? '');
+        $notas       = trim($_POST['notas']         ?? '');
+        if (!$polizaId || !$fechaFin) { echo json_encode(['ok'=>false,'msg'=>'Faltan datos obligatorios.']); exit; }
         if (!in_array($frecuencia,['semanal','mensual','trimestral','anual'],true)) $frecuencia='anual';
-        $sets=['estado=?','fecha_fin=?','frecuencia_renovacion=?','renovacion_notificada=0','actualizado_en=NOW()'];
-        $vals=['vigente',$fechaFin,$frecuencia];
-        if ($fechaInicio){$sets[]='fecha_inicio=?';$vals[]=$fechaInicio;}
-        if ($nuevoNumero){$sets[]='numero_poliza=?';$vals[]=$nuevoNumero;}
-        if ($notas)      {$sets[]='notas=?';$vals[]=$notas;}
-        $vals[]=$polizaId;
-        $db->prepare('UPDATE polizas SET '.implode(',',$sets).' WHERE id=?')->execute($vals);
-        if ($clienteId2) {
-            $desc='Renovada por coordinador.'.($nuevoNumero?" Nueva póliza: {$nuevoNumero}.":'').($notas?" Nota: {$notas}":'');
-            $db->prepare("INSERT INTO historial_cliente (cliente_id,agente_id,tipo,titulo,descripcion,fecha) VALUES (?,?,'nota','✅ Póliza renovada',?,NOW())")->execute([$clienteId2,$agenteId,$desc]);
-            $db->prepare("UPDATE historial_cliente SET titulo='✅ Renovación gestionada' WHERE cliente_id=? AND titulo='🔄 Solicitud de renovación'")->execute([$clienteId2]);
+        $sets = ['estado = ?', 'fecha_fin = ?', 'frecuencia_renovacion = ?', 'renovacion_notificada = 0', 'actualizado_en = NOW()'];
+        $vals = ['vigente', $fechaFin, $frecuencia];
+        if ($fechaInicio) { $sets[] = 'fecha_inicio = ?'; $vals[] = $fechaInicio; }
+        if ($nuevoNumero) { $sets[] = 'numero_poliza = ?'; $vals[] = $nuevoNumero; }
+        if ($notas)       { $sets[] = 'notas = ?'; $vals[] = $notas; }
+        $vals[] = $polizaId;
+        $db->prepare('UPDATE polizas SET '.implode(', ', $sets).' WHERE id = ?')->execute($vals);
+        if ($clienteId) {
+            $desc = 'Renovada por coordinador.' . ($nuevoNumero ? " Nueva póliza: {$nuevoNumero}." : '') . ($notas ? " Nota: {$notas}" : '');
+            $db->prepare("INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha) VALUES (?, ?, 'nota', '✅ Póliza renovada', ?, NOW())")->execute([$clienteId, $agenteId, $desc]);
+            $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'")->execute([$clienteId]);
         }
         echo json_encode(['ok'=>true]);
 
     } elseif ($a === 'renov_marcar_gestionada') {
-        $clienteId2=(int)($_POST['cliente_id'] ?? 0);
-        $fecha     =trim($_POST['fecha'] ?? '');
-        if (!$clienteId2) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
-        $db->prepare("UPDATE historial_cliente SET titulo='✅ Renovación gestionada' WHERE cliente_id=? AND titulo='🔄 Solicitud de renovación' AND DATE(fecha)=DATE(?)")->execute([$clienteId2,$fecha?:date('Y-m-d')]);
+        $clienteId = (int)($_POST['cliente_id'] ?? 0);
+        $fecha     = trim($_POST['fecha'] ?? '');
+        if (!$clienteId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación' AND DATE(fecha) = DATE(?)")->execute([$clienteId, $fecha ?: date('Y-m-d')]);
         echo json_encode(['ok'=>true]);
-
-    } elseif ($a === 'get_polizas_resumen') {
-        $filtroAsesor=(int)($_POST['asesor_id'] ?? 0);
-        $sql='SELECT p.id, p.cliente_id, p.cotizacion_id, p.agente_id,
-                     p.compania, p.numero_poliza, p.fecha_inicio, p.fecha_fin,
-                     p.frecuencia_renovacion, p.estado, p.notas,
-                     p.nombre_original, p.subido_en,
-                     CONCAT(c.nombre," ",c.apellido_paterno) AS cliente_nombre,
-                     c.id AS cliente_id_ref,
-                     CONCAT(a.nombre," ",a.apellido) AS asesor_nombre,
-                     DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
-                     CASE
-                         WHEN cot.estado_pago="confirmado" THEN 1
-                         WHEN cot.estado="pagado"          THEN 1
-                         WHEN cp.id IS NOT NULL            THEN 1
-                         ELSE 0
-                     END AS pago_confirmado,
-                     cot.metodo_pago, cp.fecha_pago
-              FROM polizas p
-              JOIN clientes c  ON c.id = p.cliente_id
-              JOIN agentes  a  ON a.id = p.agente_id
-              LEFT JOIN cotizaciones     cot ON cot.id = p.cotizacion_id
-              LEFT JOIN cotizacion_pagos cp  ON cp.cotizacion_id = p.cotizacion_id
-              WHERE p.eliminado_en IS NULL';
-        $params=[];
-        if ($filtroAsesor) { $sql.=' AND p.agente_id=?'; $params[]=$filtroAsesor; }
-        $sql.=' ORDER BY p.fecha_fin ASC LIMIT 500';
-        try {
-            $st=$db->prepare($sql);
-            $st->execute($params);
-            $polizas=$st->fetchAll(\PDO::FETCH_ASSOC);
-        } catch (\Throwable $e) {
-            echo json_encode(['ok'=>false,'msg'=>'Error SQL: '.$e->getMessage()]);
-            exit;
-        }
-        $pagadas   =array_values(array_filter($polizas,fn($p)=>!empty($p['pago_confirmado'])));
-        $pendientes=array_values(array_filter($polizas,fn($p)=>empty($p['pago_confirmado'])&&($p['estado']??'')!=='vencida'));
-        $vencer    =array_values(array_filter($polizas,fn($p)=>is_numeric($p['dias_restantes'])&&(int)$p['dias_restantes']>=0&&(int)$p['dias_restantes']<=30));
-        echo json_encode(['ok'=>true,'total'=>count($polizas),'pagadas'=>count($pagadas),'pendientes'=>count($pendientes),'por_vencer'=>count($vencer),'polizas'=>array_values($polizas)]);
 
     } else {
         echo json_encode(['ok'=>false,'msg'=>'Acción desconocida: '.$a]);

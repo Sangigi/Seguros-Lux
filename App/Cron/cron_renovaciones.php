@@ -30,18 +30,15 @@ foreach ($DIAS_OBJETIVO as $dias) {
     // Buscar pólizas que vencen en exactamente $dias días y no han sido notificadas para ese intervalo
     $st = $db->prepare(
         "SELECT p.id AS poliza_id, p.numero_poliza, p.compania,
-                p.fecha_fin, p.cliente_id,
-                cl.id AS cliente_id,
+                p.fecha_fin, p.cliente_id, p.agente_id AS asesor_id,
+                cl.id AS cliente_id_ref,
                 CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre,
                 c.id AS cotizacion_id, c.folio,
-                a.id AS asesor_id,
                 CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre
          FROM polizas p
          JOIN clientes cl ON cl.id = p.cliente_id
-         JOIN agentes   a ON a.id  = cl.agente_id
-         LEFT JOIN cotizaciones c ON c.cliente_id = p.cliente_id
-                                 AND c.estado IN ('aceptada','pagado')
-                                 AND c.eliminado_en IS NULL
+         JOIN agentes   a ON a.id  = p.agente_id
+         LEFT JOIN cotizaciones c ON c.id = p.cotizacion_id
          WHERE p.estado IN ('vigente','por_vencer')
            AND p.eliminado_en IS NULL
            AND DATE(p.fecha_fin) = ?

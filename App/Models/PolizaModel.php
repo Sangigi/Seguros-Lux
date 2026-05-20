@@ -31,9 +31,16 @@ class PolizaModel extends BaseModel
     public function crear(array $data): int
     {
         $data['frecuencia_renovacion'] = $data['frecuencia_renovacion'] ?? 'anual';
-        // Estado inicial: vigente (el coordinador confirma el pago por separado)
-        if (!isset($data['estado'])) $data['estado'] = 'vigente';
+        $data['estado']               = $data['estado'] ?? 'vigente';
         return $this->insert($data);
+    }
+
+    // ── Marcar póliza como pagada cuando el coordinador confirma cobro ───────
+    public function marcarPagada(int $polizaId): void
+    {
+        $this->db()->prepare(
+            "UPDATE polizas SET notas = CONCAT(IFNULL(notas,''), ?) WHERE id = ?"
+        )->execute(["\n[" . date('Y-m-d H:i') . "] Pago confirmado por coordinador.", $polizaId]);
     }
 
     // ── Obtener todas del agente ─────────────────────────────────────────────
@@ -79,15 +86,18 @@ class PolizaModel extends BaseModel
             'SELECT p.*,
                     DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
                     CASE
-                        WHEN cot.estado = \'pagado\'          THEN 1
-                        WHEN cot.estado_pago = \'confirmado\' THEN 1
+                        WHEN cot.estado = \'pagado\'           THEN 1
+                        WHEN cot.estado_pago = \'confirmado\'  THEN 1
+                        WHEN ccp.id IS NOT NULL               THEN 1
                         WHEN cp.id IS NOT NULL                THEN 1
                         ELSE 0
                     END AS pago_confirmado,
-                    cp.metodo_pago, cp.fecha_pago
+                    COALESCE(ccp.metodo_pago, cp.metodo_pago) AS metodo_pago_display,
+                    COALESCE(ccp.creado_en, cp.fecha_pago)    AS fecha_pago_display
              FROM   polizas p
-             LEFT JOIN cotizaciones         cot ON cot.id = p.cotizacion_id
-             LEFT JOIN cotizacion_pagos     cp  ON cp.cotizacion_id = p.cotizacion_id
+             LEFT JOIN cotizaciones                cot ON cot.id  = p.cotizacion_id
+             LEFT JOIN cotizacion_comprobantes_pago ccp ON ccp.cotizacion_id = p.cotizacion_id AND ccp.eliminado_en IS NULL
+             LEFT JOIN cotizacion_pagos             cp  ON cp.cotizacion_id  = p.cotizacion_id
              WHERE  p.cliente_id = ?
                AND  p.eliminado_en IS NULL
              ORDER  BY p.fecha_fin ASC'

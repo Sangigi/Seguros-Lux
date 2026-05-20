@@ -6,9 +6,26 @@ use App\Models\{ClientModel, CitaModel, CotizacionModel, HistorialModel};
 
 SessionManager::requireAuth('/login');
 
+// Capturar excepciones PHP y devolverlas como JSON en AJAX o HTML visible en GET
+set_exception_handler(function(\Throwable $e) {
+    $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+    if ($isPost) {
+        if (!headers_sent()) header('Content-Type: application/json');
+        echo json_encode([
+            'ok'   => false,
+            'msg'  => '[PHP] ' . $e->getMessage(),
+            'file' => basename($e->getFile()) . ':' . $e->getLine(),
+        ]);
+    } else {
+        echo '<div style="background:#fee2e2;color:#7f1d1d;padding:20px;font-family:monospace;border-radius:8px;margin:20px;">
+              <b>Error PHP:</b> ' . htmlspecialchars($e->getMessage()) . '<br>
+              <small>' . htmlspecialchars(basename($e->getFile()) . ':' . $e->getLine()) . '</small></div>';
+    }
+    exit;
+});
+
 $agenteId               = SessionManager::getAgentId();
-$puedeGestionarPolizas   = true; // Todos pueden ver/gestionar pólizas; el pago solo lo confirma coordinador
-$esCoordi = SessionManager::isAdmin(); // coordinador/admin/superadmin
+$puedeGestionarPolizas   = SessionManager::isAdmin();
 $clienteId       = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if (!$clienteId) { header('Location: /clientes'); exit; }
 
@@ -45,14 +62,6 @@ if (!function_exists('idriveUpload')) {
 // ── AJAX ──────────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     header('Content-Type: application/json');
-    set_exception_handler(function(Throwable $e) {
-        if (!headers_sent()) header('Content-Type: application/json');
-        echo json_encode(['ok'=>false, 'msg'=>'Error PHP: ' . $e->getMessage() . ' en ' . basename($e->getFile()) . ':' . $e->getLine()]);
-        exit;
-    });
-    set_error_handler(function(int $errno, string $errstr, string $errfile, int $errline): bool {
-        throw new ErrorException($errstr, $errno, $errno, $errfile, $errline);
-    });
 
     if ($_POST['accion'] === 'nota') {
         $texto = trim($_POST['texto'] ?? '');
@@ -66,24 +75,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $tipo=$_POST['tipo']??'llamada'; $fecha=$_POST['fecha']??''; $hora=$_POST['hora']??'';
         $com=$_POST['comentarios']??''; $enlace=$_POST['enlace_meet']??'';
         if (!$fecha||!$hora) { echo json_encode(['ok'=>false,'msg'=>'Indica fecha y hora.']); exit; }
-        // Límite: máx 3 citas activas por cliente
+        // Límite: máx 20 citas por cliente (anti-spam)
         $dbCitaChk = \Database\Connection::getConnection();
-        $stCitaCount = $dbCitaChk->prepare(
-            "SELECT COUNT(*) FROM citas WHERE cliente_id = ?
-             AND estado IN ('programada','pendiente') AND fecha >= CURDATE()"
-        );
+        $stCitaCount = $dbCitaChk->prepare('SELECT COUNT(*) FROM citas WHERE cliente_id = ?');
         $stCitaCount->execute([$clienteId]);
-        if ((int)$stCitaCount->fetchColumn() >= 3) {
-            echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene 3 citas activas (máximo permitido).']); exit;
+        if ((int)$stCitaCount->fetchColumn() >= 20) {
+            echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene 20 citas registradas (límite máximo).']); exit;
         }
         if ($tipo==='videollamada'&&$enlace) $com=($com?$com."\n":'').'🎥 Enlace: '.$enlace;
-        $ramoCliente = $cliente['ramo'] ?? SessionManager::getRamo() ?? 'autos';
-        $citaModel->crear($clienteId,$agenteId,$tipo,$fecha,$hora,$com,$ramoCliente);
+        $citaModel->crear($clienteId,$agenteId,$tipo,$fecha,$hora,$com,SessionManager::getRamo());
         $historialModel->registrar($clienteId,$agenteId,'cita','Cita programada — '.ucfirst($tipo),"$fecha a las $hora");
-        // Recargar citas para el badge en la respuesta
-        $citasActuales = $citaModel->getByClienteId($clienteId);
-        $activas = count(array_filter($citasActuales, fn($c) => in_array($c['estado'],['programada','pendiente']) && strtotime($c['fecha']) >= strtotime('today')));
-        echo json_encode(['ok'=>true,'citas_activas'=>$activas]); exit;
+        echo json_encode(['ok'=>true]); exit;
     }
 
     if ($_POST['accion'] === 'solicitar_renovacion') {
@@ -130,8 +132,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     }
 
     if ($_POST['accion'] === 'subir_poliza' && $polizaModel) {
-        // El ASESOR emite (sube) la póliza; el COORDINADOR confirma el pago.
-        SessionManager::requireAuth('/login');
+        // Regla de negocio: el asesor NO puede subir póliza final.
+        // Solo coordinador/admin/superadmin pueden cerrar el caso subiendo la póliza.
+        SessionManager::requireRole('coordinador', '/login');
 
         if (empty($_FILES['archivo_poliza']['name'])||$_FILES['archivo_poliza']['error']!==UPLOAD_ERR_OK) {
             echo json_encode(['ok'=>false,'msg'=>'Archivo no recibido.']); exit;
@@ -196,12 +199,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         } catch(\Throwable $e){ echo json_encode(['ok'=>false,'msg'=>'Error.']); exit; }
     }
 
-    // ── Confirmar pago de cotización (SOLO COORDINADOR) ───────────────────────
+    // ── Confirmar pago de cotización ──────────────────────────────────────────
     if ($_POST['accion'] === 'confirmar_pago') {
-        // Solo el coordinador/admin puede registrar el pago.
-        if (!SessionManager::isAdmin()) {
-            echo json_encode(['ok'=>false,'msg'=>'Solo el coordinador puede confirmar pagos.']); exit;
-        }
         $cotId  = (int)($_POST['cotizacion_id'] ?? 0);
         $metodo = trim($_POST['metodo_pago'] ?? '');
         $notas  = trim($_POST['notas_pago'] ?? '');
@@ -274,15 +273,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             // Notificación importante al asesor confirmando el pago registrado
             try {
                 $db->prepare(
-                    "INSERT INTO notificaciones (agente_id, titulo, cuerpo, urgente, color, url_accion, leido, creado_en)
-                     VALUES (?,?,?,1,'green',?,0,NOW())"
+                    "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
+                     VALUES (?,?,?,?,1,'green',?,0,NOW())"
                 )->execute([
                     $agenteId,
+                    'pago',
                     '✅ Pago confirmado — ' . ($cot['folio'] ?? '#'.$cotId),
                     'El pago de la cotización ' . ($cot['folio'] ?? '#'.$cotId) . ' ha sido registrado correctamente. Método: ' . ucfirst(str_replace('_',' ',$metodo)) . '. Recuerda contactar al cliente para gestionar su renovación cuando corresponda.',
                     '/cliente/' . $clienteId,
                 ]);
-            } catch (\Throwable $ne) { /* No interrumpir el flujo */ }
+            } catch (\Throwable $ne) { error_log('[notif_pago] ' . $ne->getMessage()); }
             $db->commit();
             echo json_encode(['ok'=>true]); exit;
         } catch(\Throwable $e) {
@@ -293,46 +293,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     }
 
     // ── Editar datos del cliente ───────────────────────────────────────────────
-    if ($_POST['accion'] === 'editar_vehiculo') {
-        $campos = [
-            'submarca'             => trim($_POST['vehiculo_submarca']              ?? ''),
-            'version'              => trim($_POST['vehiculo_version']               ?? ''),
-            'modelo'               => trim($_POST['vehiculo_modelo']                ?? ''),
-            'marca'                => trim($_POST['vehiculo_marca']                 ?? ''),
-            'tipo_vehiculo'        => trim($_POST['vehiculo_tipo']                  ?? ''),
-            'tiene_adaptaciones'   => (int)($_POST['vehiculo_tiene_adaptaciones']  ?? 0),
-            'detalle_adaptaciones' => trim($_POST['vehiculo_detalle_adaptaciones']  ?? ''),
-        ];
-        // Campos extras que podrían no existir en DB aún; los manejamos con un try
-        $camposExtras = [
-            'color'  => trim($_POST['vehiculo_color']  ?? ''),
-            'placas' => trim($_POST['vehiculo_placas'] ?? ''),
-            'vin'    => trim($_POST['vehiculo_vin']    ?? ''),
-        ];
-        try {
-            $db = \Database\Connection::getConnection();
-            // Intentar guardar todos juntos; si las columnas no existen, guardar solo las seguras
-            try {
-                $todosCampos = array_merge($campos, $camposExtras);
-                $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($todosCampos)));
-                $vals = array_values($todosCampos);
-                $vals[] = $clienteId; $vals[] = $agenteId;
-                $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")->execute($vals);
-            } catch (\Throwable $e2) {
-                // Columnas color/placas/vin no existen aún — guardar solo las seguras
-                $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($campos)));
-                $vals = array_values($campos);
-                $vals[] = $clienteId; $vals[] = $agenteId;
-                $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")->execute($vals);
-            }
-            $historialModel->registrar($clienteId, $agenteId, 'nota', 'Datos del vehículo actualizados', '');
-            echo json_encode(['ok'=>true]); exit;
-        } catch (\Throwable $e) {
-            error_log('editar_vehiculo error: ' . $e->getMessage());
-            echo json_encode(['ok'=>false,'msg'=>'Error al guardar el vehículo.']); exit;
-        }
-    }
-
     if ($_POST['accion'] === 'editar_cliente') {
         $campos = [
             'nombre'           => trim($_POST['nombre']           ?? ''),
@@ -392,29 +352,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         }
     }
 
-    if ($_POST['accion'] === 'cambiar_estado_cita') {
-        $citaId      = (int)($_POST['cita_id']  ?? 0);
-        $nuevoEstado = trim($_POST['estado']     ?? '');
-        $validos = ['programada','completada','cancelada'];
-        if (!$citaId || !in_array($nuevoEstado, $validos, true)) {
-            echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit;
-        }
-        // Admins pueden cambiar cualquier cita; asesores solo las propias
-        if (SessionManager::isAdmin()) {
-            $db = \Database\Connection::getConnection();
-            $st = $db->prepare('UPDATE citas SET estado = ? WHERE id = ?');
-            $st->execute([$nuevoEstado, $citaId]);
-            $ok = $st->rowCount() > 0;
-        } else {
-            $ok = $citaModel->updateEstado($citaId, $agenteId, $nuevoEstado);
-        }
-        if ($ok) {
-            $historialModel->registrar($clienteId, $agenteId, 'cita',
-                "Cita #{$citaId} marcada como '{$nuevoEstado}'", '');
-        }
-        echo json_encode(['ok'=>$ok,'msg'=>$ok?'OK':'No tienes permiso para cambiar esta cita.']); exit;
-    }
-
     echo json_encode(['ok'=>false,'msg'=>'Acción desconocida.']); exit;
 }
 
@@ -425,23 +362,36 @@ if (!$cliente) { header('Location: /clientes'); exit; }
 $cliente['asegurado']       =($cliente['asegurado']==='si');
 $cliente['recien_comprado'] =($cliente['recien_comprado']==='si');
 
+// ── Vehículo (tabla vehiculos no tiene cliente_id; usar campos del cliente) ──
+$vehiculo = [];
+try {
+    $dbVeh = \Database\Connection::getConnection();
+    // Intentar tabla vehiculos si existe con cliente_id
+    $stVeh = $dbVeh->prepare('SELECT * FROM vehiculos WHERE id = ? LIMIT 1');
+    $stVeh->execute([0]); // stub — tabla sin FK a clientes
+    $vehiculo = [];
+} catch (\Throwable $e) { $vehiculo = []; }
+// Mapear desde $cliente (campos autos guardados en clientes)
+if (($cliente['ramo'] ?? 'autos') === 'autos') {
+    $vehiculo = [
+        'id'                  => 0,
+        'marca'               => $cliente['marca']         ?? '',
+        'submarca'            => $cliente['modelo']        ?? '',
+        'version'             => '',
+        'modelo'              => $cliente['anio_vehiculo'] ?? '',
+        'color'               => '',
+        'placas'              => '',
+        'vin'                 => '',
+        'tipo'                => $cliente['tipo_vehiculo'] ?? '',
+        'tiene_adaptaciones'  => 0,
+        'detalle_adaptaciones'=> '',
+        'info_adicional'      => '',
+    ];
+}
+
 $historial    =$historialModel->getByClienteIdConAgente($clienteId);
 $notas        =$clienteModel->getNotas($clienteId);
 $cotizaciones =$cotizacionModel->getByClienteId($clienteId);
-$citas        =$citaModel->getByClienteId($clienteId);
-
-// Solicitudes enviadas desde formularios web (vida_solicitudes)
-$solicitudesWeb = [];
-try {
-    $dbSol = \Database\Connection::getConnection();
-    $stSol = $dbSol->prepare(
-        "SELECT * FROM vida_solicitudes
-         WHERE correo = ? OR (correo IS NULL AND telefono = ?)
-         ORDER BY created_at DESC LIMIT 20"
-    );
-    $stSol->execute([$cliente['correo'] ?? '', $cliente['telefono'] ?? '']);
-    $solicitudesWeb = $stSol->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-} catch (\Throwable) {}
 $polizas      =$polizaModel ? $polizaModel->listarPorCliente($clienteId,$agenteId) : [];
 // Auto-actualizar estado de pólizas según fecha_fin
 if ($polizaModel && !empty($polizas)) {
@@ -466,6 +416,43 @@ foreach ($cotizaciones as $cot) {
     if (!empty($arch)) $archivosPorCot[$cot['id']]=$arch;
 }
 
+// ── Checklist del asesor por cotización (documentos subidos vs requeridos) ──
+$checklistReqs = [
+    'autos'          => ['doc_cotizacion','ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2'],
+    'vida'           => ['doc_cotizacion','ine','comprobante_dom'],
+    'gastos_medicos' => ['doc_cotizacion','ine','comprobante_dom'],
+];
+$checklistLabelMap = [
+    'doc_cotizacion'     => 'Cotización PDF','ine'=>'INE',
+    'comprobante_dom'    => 'Comp. domicilio','tarjeta_circulacion'=>'Tarjeta circulación',
+    'foto_coche_1'       => 'Foto 1','foto_coche_2'=>'Foto 2','foto_coche_3'=>'Foto 3',
+    'foto_coche_4'       => 'Foto 4','foto_coche_5'=>'Foto 5',
+    'factura_auto'       => 'Factura auto','constancia_fiscal'=>'Constancia fiscal',
+    'comprobante_pago'   => 'Comprobante de pago',
+];
+$checklistPorCot = [];
+foreach ($cotizaciones as $cot) {
+    $ramo = $cot['ramo'] ?? 'autos';
+    $reqs = $checklistReqs[$ramo] ?? $checklistReqs['autos'];
+    $docsTipos = array_column($archivosPorCot[$cot['id']] ?? [], 'tipo_documento');
+    $items = [];
+    foreach ($reqs as $tipo) {
+        $items[$tipo] = [
+            'label'    => $checklistLabelMap[$tipo] ?? $tipo,
+            'subido'   => in_array($tipo, $docsTipos, true),
+            'required' => true,
+        ];
+    }
+    $total    = count($reqs);
+    $completos = count(array_filter($items, fn($i) => $i['subido']));
+    $checklistPorCot[(int)$cot['id']] = [
+        'items'     => $items,
+        'total'     => $total,
+        'completos' => $completos,
+        'listo'     => $completos >= $total,
+    ];
+}
+
 $pagosPorCot=[];
 try {
     $db=\Database\Connection::getConnection();
@@ -476,6 +463,23 @@ try {
         if ($p) $pagosPorCot[(int)$cot['id']]=$p;
     }
 } catch(\Throwable $e){}
+
+// Documentos de póliza subidos por el coordinador en el flujo de emisión
+$docPolizaPorCot = [];
+try {
+    $db = \Database\Connection::getConnection();
+    foreach ($cotizaciones as $cot) {
+        $st = $db->prepare(
+            "SELECT ca.*, ca.nombre_original, ca.nombre_archivo, ca.ruta
+             FROM cotizacion_archivos ca
+             WHERE ca.cotizacion_id = ? AND ca.tipo_documento = 'poliza' AND ca.eliminado_en IS NULL
+             ORDER BY ca.subido_en DESC LIMIT 5"
+        );
+        $st->execute([(int)$cot['id']]);
+        $docs = $st->fetchAll(\PDO::FETCH_ASSOC);
+        if ($docs) $docPolizaPorCot[(int)$cot['id']] = $docs;
+    }
+} catch(\Throwable $e) {}
 
 // Datos extra del vehículo desde mini-form (en comentarios de cita)
 // Busca en DB directamente para no depender de CitaModel::getByClienteId
@@ -508,41 +512,6 @@ try {
         if (!empty($datosExtrasVehiculo)) break;
     }
 } catch(\Throwable $e){}
-
-// ── Vehículo: mapear desde campos del cliente (los datos están en la tabla clientes)
-$vehiculo = [];
-if (!empty($cliente['marca']) || !empty($cliente['modelo'])) {
-    $vehiculo = [
-        'id'                  => null,  // sin tabla vehiculos separada
-        'marca'               => $cliente['marca']               ?? '',
-        'submarca'            => $cliente['submarca']            ?? '',
-        'version'             => $cliente['version']             ?? '',
-        'modelo'              => $cliente['modelo']              ?? '',
-        'color'               => '',
-        'placas'              => '',
-        'vin'                 => '',
-        'tipo'                => $cliente['tipo_vehiculo']       ?? '',
-        'anio_vehiculo'       => $cliente['anio_vehiculo']       ?? '',
-        'tiene_adaptaciones'  => $cliente['tiene_adaptaciones']  ?? 0,
-        'detalle_adaptaciones'=> $cliente['detalle_adaptaciones'] ?? '',
-        'info_adicional'      => '',
-    ];
-}
-
-// ── Checklist de emisión (por cotización) ──────────────────────────────────────
-$checklistPorCot = [];
-try {
-    $db2 = \Database\Connection::getConnection();
-    foreach ($cotizaciones as $_cot) {
-        $stCk = $db2->prepare(
-            'SELECT doc_tipo, estado, nota, revisado_en
-             FROM emision_checklist WHERE cotizacion_id=? ORDER BY id ASC'
-        );
-        $stCk->execute([(int)$_cot['id']]);
-        $rows = $stCk->fetchAll(\PDO::FETCH_ASSOC);
-        if ($rows) $checklistPorCot[(int)$_cot['id']] = $rows;
-    }
-} catch (\Throwable $e) {}
 
 if (empty($historial)) {
     $historial=[['tipo'=>'registro','titulo'=>'Cliente registrado','descripcion'=>'Registro inicial.',
@@ -602,6 +571,20 @@ $pageTitle=$nombreCompleto;
         .dias-danger{background:#fee2e2;color:#dc2626;}
         .pago-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-color,#e5e7eb);font-size:13px;}
         .pago-row:last-child{border-bottom:none;}
+        /* Checklist del asesor */
+        .checklist-wrap{background:var(--bg-secondary,#f8fafc);border:1px solid var(--border-color,#e5e7eb);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+        .checklist-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+        .checklist-progress{height:6px;background:var(--border-color,#e5e7eb);border-radius:99px;overflow:hidden;margin-bottom:10px;}
+        .checklist-progress-bar{height:100%;border-radius:99px;transition:width .3s;}
+        .checklist-items{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+        .checklist-item{display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border-radius:5px;}
+        .checklist-item.ok{color:var(--success-color,#22c55e);}
+        .checklist-item.pending{color:var(--text-muted,#9ca3af);}
+        .checklist-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+        .checklist-dot.ok{background:var(--success-color,#22c55e);}
+        .checklist-dot.pending{background:var(--border-color,#e5e7eb);}
+        .badge-pagado{background:#dcfce7;color:#15803d;font-size:11px;padding:2px 8px;border-radius:99px;font-weight:700;}
+        .badge-pendiente-pago{background:#fef9c3;color:#a16207;font-size:11px;padding:2px 8px;border-radius:99px;font-weight:700;}
     </style>
 </head>
 <body>
@@ -851,173 +834,62 @@ $pageTitle=$nombreCompleto;
                     </div>
                 </div>
 
-                <!-- ═══ CITAS ═══ -->
-                <div class="card mb-24">
-                    <div class="card-header">
-                        <h3 class="card-title">📅 Citas
-                            <?php
-                            $citasActivas = array_filter($citas, fn($c) => in_array($c['estado'], ['programada','pendiente'], true) && strtotime($c['fecha']) >= strtotime('today'));
-                            $totalActivas = count($citasActivas);
-                            ?>
-                            <span class="badge badge-neutral"><?php echo count($citas); ?></span>
-                            <?php if ($totalActivas > 0): ?>
-                            <span class="badge badge-success" title="Citas activas">✅ <?php echo $totalActivas; ?> activa<?php echo $totalActivas>1?'s':''; ?></span>
-                            <?php endif; ?>
-                            <?php if ($totalActivas >= 3): ?>
-                            <span class="badge badge-warning" title="Límite alcanzado">⚠️ Límite máx.</span>
-                            <?php endif; ?>
-                        </h3>
-                        <button class="btn btn-sm btn-primary" data-action="det-open" data-modal="modalCita"
-                            <?php echo $totalActivas >= 3 ? 'disabled title="Máximo 3 citas activas"' : ''; ?>>
-                            + Programar
-                        </button>
-                    </div>
-                    <div class="card-body" style="padding:0 20px;">
-                        <?php if (empty($citas)): ?>
-                        <div style="text-align:center;padding:24px 0;color:var(--text-muted);">
-                            <div style="font-size:32px;margin-bottom:8px;">📅</div>
-                            <p style="font-size:13px;margin-bottom:10px;">Sin citas registradas.</p>
-                            <button class="btn btn-primary btn-sm" data-action="det-open" data-modal="modalCita">Programar primera cita</button>
-                        </div>
-                        <?php else: ?>
-                        <?php
-                        // Sort: active first, then by date desc
-                        usort($citas, function($a, $b) {
-                            $aActiva = in_array($a['estado'], ['programada','pendiente']);
-                            $bActiva = in_array($b['estado'], ['programada','pendiente']);
-                            if ($aActiva !== $bActiva) return $bActiva - $aActiva;
-                            return strcmp($b['fecha'].$b['hora'], $a['fecha'].$a['hora']);
-                        });
-                        $estadosCita = [
-                            'programada' => ['label'=>'Programada','color'=>'#0284c7','bg'=>'#eff6ff','emoji'=>'📅'],
-                            'pendiente'  => ['label'=>'Pendiente', 'color'=>'#b45309','bg'=>'#fef3c7','emoji'=>'⏳'],
-                            'completada' => ['label'=>'Completada','color'=>'#16a34a','bg'=>'#f0fdf4','emoji'=>'✅'],
-                            'cancelada'  => ['label'=>'Cancelada', 'color'=>'#dc2626','bg'=>'#fef2f2','emoji'=>'❌'],
-                            'vencida'    => ['label'=>'Vencida',   'color'=>'#6b7280','bg'=>'#f9fafb','emoji'=>'⌛'],
-                        ];
-                        $tiposCita = ['llamada'=>'📞 Llamada','videollamada'=>'💻 Videollamada','presencial'=>'🤝 Presencial'];
-                        foreach ($citas as $cita):
-                            $ei = $estadosCita[$cita['estado']] ?? ['label'=>$cita['estado'],'color'=>'#6b7280','bg'=>'#f9fafb','emoji'=>'•'];
-                            $esActiva = in_array($cita['estado'], ['programada','pendiente']);
-                            $fechaStr = date('d/m/Y', strtotime($cita['fecha']));
-                            $horaStr  = date('H:i', strtotime($cita['hora']));
-                        ?>
-                        <div style="padding:14px 0;border-bottom:1px solid var(--border-color,#e5e7eb);">
-                            <div style="display:flex;align-items:flex-start;gap:10px;">
-                                <div style="width:36px;height:36px;border-radius:8px;background:<?php echo $ei['bg']; ?>;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;"><?php echo $ei['emoji']; ?></div>
-                                <div style="flex:1;min-width:0;">
-                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-                                        <span style="font-weight:700;font-size:13px;"><?php echo $fechaStr; ?> · <?php echo $horaStr; ?></span>
-                                        <span style="font-size:11px;padding:2px 8px;border-radius:99px;background:<?php echo $ei['bg']; ?>;color:<?php echo $ei['color']; ?>;font-weight:600;"><?php echo $ei['label']; ?></span>
-                                        <span style="font-size:12px;color:var(--text-muted);"><?php echo $tiposCita[$cita['tipo']] ?? ucfirst($cita['tipo']); ?></span>
-                                        <?php if (!empty($cita['ramo'])): ?><span style="font-size:11px;background:var(--bg-secondary);padding:2px 7px;border-radius:4px;color:var(--text-secondary);"><?php echo strtoupper($cita['ramo']); ?></span><?php endif; ?>
-                                    </div>
-                                    <?php if (!empty($cita['comentarios'])): ?>
-                                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;white-space:pre-line;"><?php echo htmlspecialchars(mb_substr($cita['comentarios'], 0, 120)); ?><?php echo mb_strlen($cita['comentarios'])>120?'…':''; ?></div>
-                                    <?php endif; ?>
-                                    <div style="font-size:11px;color:var(--text-muted);">Asesor: <?php echo htmlspecialchars($cita['agente_nombre'] ?? '—'); ?> · ID #<?php echo $cita['id']; ?></div>
-                                </div>
-                                <?php if ($esActiva): ?>
-                                <div style="display:flex;gap:4px;flex-shrink:0;">
-                                    <button class="btn btn-sm" style="font-size:11px;padding:3px 9px;background:#f0fdf4;color:#16a34a;border:1px solid #16a34a;"
-                                        data-action="det-citaEstado" data-cita-id="<?php echo $cita['id']; ?>" data-estado="completada" title="Marcar completada">✓</button>
-                                    <button class="btn btn-sm" style="font-size:11px;padding:3px 9px;background:#fef2f2;color:#dc2626;border:1px solid #dc2626;"
-                                        data-action="det-citaEstado" data-cita-id="<?php echo $cita['id']; ?>" data-estado="cancelada" title="Cancelar cita">✕</button>
-                                </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- ═══ CHECKLIST DE EMISIÓN ═══ -->
-                <?php foreach ($cotizaciones as $_cot):
-                    $_ckItems = $checklistPorCot[(int)$_cot['id']] ?? [];
-                    if (empty($_ckItems)) continue;
-                    $_ckTotal  = count($_ckItems);
-                    $_ckOk     = count(array_filter($_ckItems, fn($i) => $i['estado'] === 'ok'));
-                    $_ckPct    = $_ckTotal > 0 ? round($_ckOk/$_ckTotal*100) : 0;
-                ?>
-                <div class="card mb-24">
-                    <div class="card-header">
-                        <h3 class="card-title">✅ Checklist Emisión
-                            <span class="badge <?php echo $_ckOk===$_ckTotal?'badge-success':'badge-warning'; ?>" style="margin-left:8px;">
-                                <?php echo $_ckOk; ?>/<?php echo $_ckTotal; ?>
-                            </span>
-                        </h3>
-                        <span style="font-size:12px;color:var(--text-muted);"><?php echo htmlspecialchars($_cot['folio']??'#'.$_cot['id']); ?></span>
-                    </div>
-                    <div class="card-body" style="padding:12px 16px;">
-                        <!-- Barra de progreso -->
-                        <div style="background:var(--border-color);border-radius:99px;height:6px;margin-bottom:14px;">
-                            <div style="width:<?php echo $_ckPct; ?>%;height:6px;border-radius:99px;background:<?php echo $_ckPct===100?'var(--success-color,#22c55e)':'var(--warning-color,#f59e0b)'; ?>;transition:width .3s;"></div>
-                        </div>
-                        <?php foreach ($_ckItems as $_item):
-                            $_ico = match($_item['estado']) {
-                                'ok'        => '✅',
-                                'rechazado' => '❌',
-                                default     => '⏳',
-                            };
-                            $_badgeCls = match($_item['estado']) {
-                                'ok'        => 'badge-success',
-                                'rechazado' => 'badge-danger',
-                                default     => 'badge-warning',
-                            };
-                            $_label = match($_item['doc_tipo']) {
-                                'poliza'               => 'Póliza',
-                                'ine'                  => 'INE',
-                                'comprobante_dom'      => 'Comp. domicilio',
-                                'tarjeta_circulacion'  => 'Tarjeta circulación',
-                                'factura_auto'         => 'Factura auto',
-                                'constancia_fiscal'    => 'Constancia fiscal',
-                                'comprobante_pago'     => 'Comp. de pago',
-                                'foto_coche_1'         => 'Foto vehículo 1',
-                                'foto_coche_2'         => 'Foto vehículo 2',
-                                'foto_coche_3'         => 'Foto vehículo 3',
-                                default                => ucfirst(str_replace('_',' ',$_item['doc_tipo'])),
-                            };
-                        ?>
-                        <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border-color);">
-                            <span style="font-size:16px;"><?php echo $_ico; ?></span>
-                            <span style="flex:1;font-size:13px;"><?php echo htmlspecialchars($_label); ?></span>
-                            <span class="badge <?php echo $_badgeCls; ?>" style="font-size:10px;"><?php echo ucfirst($_item['estado']); ?></span>
-                            <?php if (!empty($_item['nota'])): ?>
-                            <span style="font-size:11px;color:var(--text-muted);" title="<?php echo htmlspecialchars($_item['nota']); ?>">💬</span>
-                            <?php endif; ?>
-                        </div>
-                        <?php endforeach; ?>
-                        <?php if ($_ckOk < $_ckTotal): ?>
-                        <p style="margin-top:10px;font-size:12px;color:var(--text-muted);">
-                            Documentos pendientes de revisión por el coordinador.
-                        </p>
-                        <?php else: ?>
-                        <p style="margin-top:10px;font-size:12px;color:var(--success-color,#22c55e);font-weight:600;">
-                            ✅ Todos los documentos aprobados.
-                        </p>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-
                 <!-- ═══ PÓLIZAS ═══ -->
                 <div class="card mb-24">
                     <div class="card-header">
                         <h3 class="card-title">Pólizas <span class="badge badge-neutral"><?php echo count($polizas); ?></span></h3>
+                        <?php if ($puedeGestionarPolizas): ?>
                         <button class="btn btn-sm btn-primary" data-action="det-open" data-modal="modalSubirPoliza">+ Subir Póliza</button>
+                        <?php endif; ?>
                     </div>
                     <div class="card-body">
-                        <?php if (!$esCoordi): ?>
+                        <?php if (!$puedeGestionarPolizas): ?>
                         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.45;">
-                            Como asesor puedes subir pólizas y gestionar documentos. El coordinador es quien confirma el pago.
+                            Resumen informativo: la administración registra aquí las pólizas emitidas. Como asesor no puedes subirlas ni descargar el PDF; ante dudas, contacta al coordinador.
                         </p>
                         <?php endif; ?>
-                        <?php if (empty($polizas)): ?>
+                        <?php
+                        // Recopilar documentos de póliza del coordinador para todas las cotizaciones del cliente
+                        $allDocPoliza = [];
+                        foreach ($cotizaciones as $_cot) {
+                            if (!empty($docPolizaPorCot[(int)$_cot['id']])) {
+                                foreach ($docPolizaPorCot[(int)$_cot['id']] as $_doc) {
+                                    $_doc['_folio']   = $_cot['folio'] ?? '#'.$_cot['id'];
+                                    $_doc['_compania'] = $_cot['compania'] ?? '';
+                                    $allDocPoliza[] = $_doc;
+                                }
+                            }
+                        }
+                        ?>
+                        <?php if (empty($polizas) && empty($allDocPoliza)): ?>
                         <div style="text-align:center;padding:28px 0;color:var(--text-muted);">
                             <div style="font-size:36px;margin-bottom:8px;">📄</div>
                             <p style="font-size:13px;margin-bottom:10px;">Sin pólizas registradas.</p>
+                            <?php if ($puedeGestionarPolizas): ?>
                             <button class="btn btn-primary btn-sm" data-action="det-open" data-modal="modalSubirPoliza">Subir primera póliza</button>
+                            <?php endif; ?>
+                        </div>
+                        <?php elseif (empty($polizas) && !empty($allDocPoliza)): ?>
+                        <!-- El coordinador subió documentos de póliza pero no hay póliza en la tabla polizas -->
+                        <div style="margin-bottom:12px;">
+                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">📋 Documentos de póliza registrados por el coordinador:</p>
+                            <?php foreach ($allDocPoliza as $_dp):
+                                $_rutaF = dirname(__DIR__,3).'/uploads/cotizaciones/'.(int)($_dp['cotizacion_id'] ?? 0).'/'.$_dp['nombre_archivo'];
+                                $_urlD  = file_exists($_rutaF) ? '/archivo?file=cotizaciones/'.(int)$_dp['cotizacion_id'].'/'.$_dp['nombre_archivo'] : null;
+                                $_extD  = strtolower(pathinfo($_dp['nombre_original'] ?? '', PATHINFO_EXTENSION));
+                                $_iconD = $_extD === 'pdf' ? '📄' : '🖼️';
+                            ?>
+                            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;">
+                                <span style="font-size:22px;"><?php echo $_iconD; ?></span>
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($_dp['nombre_original'] ?? $_dp['nombre_archivo']); ?></div>
+                                    <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($_dp['_folio']); ?> · <?php echo htmlspecialchars($_dp['_compania']); ?></div>
+                                </div>
+                                <?php if ($_urlD): ?>
+                                <a href="<?php echo $_urlD; ?>" target="_blank" class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;">Ver</a>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
                         </div>
                         <?php else: ?>
                         <?php foreach ($polizas as $pol):
@@ -1027,16 +899,17 @@ $pageTitle=$nombreCompleto;
                             $cCss  =$pol['estado']==='vencida'?'vencida':($pol['estado']==='por_vencer'?'por_vencer':'');
                             $rutaF =dirname(__DIR__,3).'/uploads/polizas/'.$clienteId.'/'.$pol['nombre_archivo'];
                             $urlP  =file_exists($rutaF)?'/archivo?file=polizas/'.$clienteId.'/'.$pol['nombre_archivo']:null;
+                            $pagada=(bool)($pol['pago_confirmado']??false);
                         ?>
                         <div class="poliza-card <?php echo $cCss; ?>">
                             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;">
                                 <div style="flex:1;min-width:0;">
                                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
                                         <span class="badge <?php echo $epI['class']; ?>"><?php echo $epI['emoji'].' '.$epI['label']; ?></span>
-                                        <?php if (!empty($pol['pago_confirmado'])): ?>
-                                        <span class="badge badge-success" title="Pago confirmado">✅ Pagada</span>
+                                        <?php if ($pagada): ?>
+                                        <span class="badge-pagado">✅ Pagada</span>
                                         <?php else: ?>
-                                        <span class="badge badge-warning" title="Pago pendiente de confirmar">⏳ Pago pendiente</span>
+                                        <span class="badge-pendiente-pago">⏳ Pago pendiente</span>
                                         <?php endif; ?>
                                         <?php if ($pol['idrive_subido']): ?><span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">☁️ iDrive</span><?php endif; ?>
                                         <?php if (!empty($pol['compania'])): ?><span style="font-size:12px;font-weight:600;"><?php echo htmlspecialchars($pol['compania']); ?></span><?php endif; ?>
@@ -1061,13 +934,15 @@ $pageTitle=$nombreCompleto;
                                     <a href="/cotizaciones?ver=<?php echo (int)$pol['cotizacion_id']; ?>"
                                        style="font-size:11px;color:var(--accent-color);" title="Ver cotización vinculada">📋 Cotización</a>
                                     <?php endif; ?>
-                                    <?php if ($urlP): ?>
+                                    <?php if ($puedeGestionarPolizas): ?>
+                                        <?php if ($urlP): ?>
                                     <a href="<?php echo $urlP; ?>" target="_blank" class="btn btn-sm btn-outline" title="Ver">👁</a>
                                     <a href="<?php echo $urlP; ?>" download="<?php echo htmlspecialchars($pol['nombre_original']); ?>" class="btn btn-sm btn-outline" title="Descargar">⬇</a>
-                                    <?php endif; ?>
+                                        <?php endif; ?>
                                     <button class="btn btn-sm btn-outline" data-action="det-editarPoliza" data-pol="<?php echo htmlspecialchars(json_encode($pol),ENT_QUOTES); ?>" title="Editar">✏️</button>
-                                    <?php if ($esCoordi): ?>
                                     <button class="btn btn-sm btn-outline" data-action="det-eliminarPoliza" data-id="<?php echo $pol['id']; ?>" title="Eliminar" style="color:var(--danger-color,#ef4444);">🗑</button>
+                                    <?php elseif ($urlP): ?>
+                                    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Archivo en custodia</span>
                                     <?php endif; ?>
                                     <!-- Botón de Renovación: visible siempre para el asesor -->
                                     <button class="btn btn-sm btn-outline"
@@ -1125,7 +1000,7 @@ $pageTitle=$nombreCompleto;
                                 <div style="font-size:20px;">💰</div>
                                 <div style="flex:1;">
                                     <div style="font-weight:600;"><?php echo $mLabel; ?></div>
-                                    <div style="font-size:11px;color:var(--text-muted);"><?php echo date('d/m/Y', strtotime($pago['fecha_pago'] ?? $pago['creado_en'] ?? 'now')); ?><?php if ($pago['notas']): ?> · <?php echo htmlspecialchars($pago['notas']); ?><?php endif; ?></div>
+                                    <div style="font-size:11px;color:var(--text-muted);"><?php echo date('d/m/Y', strtotime($pago['fecha_pago'] ?? $pago['creada_en'] ?? 'now')); ?><?php if ($pago['notas']): ?> · <?php echo htmlspecialchars($pago['notas']); ?><?php endif; ?></div>
                                 </div>
                                 <?php if ($pago['monto']>0): ?><div style="font-weight:700;color:var(--success-color,#22c55e);">$<?php echo number_format((float)$pago['monto'],2); ?></div><?php endif; ?>
                                 <?php if ($urlPago): ?><a href="<?php echo $urlPago; ?>" target="_blank" class="btn btn-sm btn-outline" title="Ver comprobante">📎</a><?php endif; ?>
@@ -1194,7 +1069,9 @@ $pageTitle=$nombreCompleto;
                         <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="quick-action-btn">📋 Nueva Cotización</a>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalCita">📅 Programar Cita</button>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalNota">📝 Agregar Nota</button>
+                        <?php if ($puedeGestionarPolizas): ?>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalSubirPoliza">📄 Subir Póliza</button>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -1256,13 +1133,9 @@ $BADGE_PAGO_CL = [
                                 <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
                                    class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion">&#9999;&#65039; Editar</a>
                                 <?php if ($cot['estado'] !== 'pagado'): ?>
-                                    <?php if ($esCoordi): ?>
-                                    <button class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;color:var(--success-color,#22c55e);border-color:var(--success-color,#22c55e);"
-                                            data-action="det-abrirPago" data-cot="<?php echo htmlspecialchars(json_encode(['id'=>(int)$cot['id'],'folio'=>$cot['folio']??'','compania'=>$cot['compania'],'precio'=>(float)$cot['precio'],'metodo_pago'=>$cot['metodo_pago']??''],JSON_UNESCAPED_UNICODE),ENT_QUOTES); ?>"
-                                            title="Confirmar pago">&#128176; Confirmar Pago</button>
-                                    <?php else: ?>
-                                    <span style="font-size:11px;padding:3px 10px;background:#fef3c7;color:#b45309;border-radius:6px;font-weight:600;">⏳ Pago pendiente (coordinador)</span>
-                                    <?php endif; ?>
+                                <button class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;color:var(--success-color,#22c55e);border-color:var(--success-color,#22c55e);"
+                                        data-action="det-abrirPago" data-cot="<?php echo htmlspecialchars(json_encode(['id'=>(int)$cot['id'],'folio'=>$cot['folio']??'','compania'=>$cot['compania'],'precio'=>(float)$cot['precio'],'metodo_pago'=>$cot['metodo_pago']??''],JSON_UNESCAPED_UNICODE),ENT_QUOTES); ?>"
+                                        title="Confirmar pago">&#128176; Confirmar Pago</button>
                                 <?php else: ?>
                                 <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pagado</span>
                                 <?php endif; ?>
@@ -1285,6 +1158,45 @@ $BADGE_PAGO_CL = [
                                 <?php endforeach; ?>
                             </div>
                             <?php endif; ?>
+                            <?php
+                            // ── Checklist del asesor ─────────────────────────
+                            $cl = $checklistPorCot[(int)$cot['id']] ?? null;
+                            if ($cl && !$puedeGestionarPolizas):
+                                $pct = $cl['total'] > 0 ? round($cl['completos'] / $cl['total'] * 100) : 0;
+                                $barColor = $cl['listo'] ? '#22c55e' : ($pct >= 50 ? '#f59e0b' : '#ef4444');
+                            ?>
+                            <div class="checklist-wrap" style="margin-top:10px;">
+                                <div class="checklist-header">
+                                    <span style="font-size:12px;font-weight:700;color:var(--text-secondary);">
+                                        📋 Documentos (<?php echo $cl['completos']; ?>/<?php echo $cl['total']; ?>)
+                                    </span>
+                                    <?php if ($cl['listo']): ?>
+                                    <span style="font-size:11px;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:99px;font-weight:700;">✅ Completo</span>
+                                    <?php else: ?>
+                                    <span style="font-size:11px;background:#fef9c3;color:#a16207;padding:2px 8px;border-radius:99px;font-weight:700;">⚠ Faltan docs</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="checklist-progress">
+                                    <div class="checklist-progress-bar" style="width:<?php echo $pct; ?>%;background:<?php echo $barColor; ?>;"></div>
+                                </div>
+                                <div class="checklist-items">
+                                    <?php foreach ($cl['items'] as $tipo => $item): ?>
+                                    <div class="checklist-item <?php echo $item['subido'] ? 'ok' : 'pending'; ?>">
+                                        <div class="checklist-dot <?php echo $item['subido'] ? 'ok' : 'pending'; ?>"></div>
+                                        <span><?php echo htmlspecialchars($item['label']); ?></span>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <?php if (!$cl['listo']): ?>
+                                <div style="margin-top:8px;">
+                                    <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
+                                       class="btn btn-sm btn-outline" style="font-size:11px;width:100%;text-align:center;padding:5px 10px;">
+                                        📎 Subir documentos faltantes
+                                    </a>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
                         </div>
                         <?php endforeach; ?>
                         <?php endif; ?>
@@ -1292,73 +1204,6 @@ $BADGE_PAGO_CL = [
                 </div>
             </div>
         </div>
-
-                <!-- ═══ SOLICITUDES WEB ═══ -->
-                <?php if (!empty($solicitudesWeb)): ?>
-                <div class="card mb-24" style="grid-column:1/-1;">
-                    <div class="card-header">
-                        <h3 class="card-title">🌐 Solicitudes desde formularios web
-                            <span class="badge badge-neutral"><?php echo count($solicitudesWeb); ?></span>
-                        </h3>
-                    </div>
-                    <div class="card-body" style="padding:0;">
-                        <div style="overflow-x:auto;">
-                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                            <thead>
-                                <tr style="background:var(--bg-secondary);border-bottom:2px solid var(--border-color);">
-                                    <th style="padding:10px 14px;text-align:left;font-weight:700;white-space:nowrap;">Fecha</th>
-                                    <th style="padding:10px 14px;text-align:left;font-weight:700;">Ramo</th>
-                                    <th style="padding:10px 14px;text-align:left;font-weight:700;">Datos enviados</th>
-                                    <th style="padding:10px 14px;text-align:left;font-weight:700;">Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            <?php
-                            $ramoIcons = ['vida'=>'❤️','gmm'=>'🏥','autos'=>'🚗','empresas'=>'🏢'];
-                            $estadoColores = [
-                                'pendiente'  => ['#b45309','#fef3c7'],
-                                'contactado' => ['#1d4ed8','#eff6ff'],
-                                'cerrado'    => ['#16a34a','#f0fdf4'],
-                            ];
-                            foreach ($solicitudesWeb as $sol):
-                                $icon   = $ramoIcons[$sol['ramo']] ?? '📄';
-                                $esc    = $estadoColores[$sol['estado']] ?? ['#6b7280','#f9fafb'];
-                                $detalle = array_filter([
-                                    $sol['marca']    ? "🚗 {$sol['marca']}" .($sol['submarca']?" {$sol['submarca']}":"").($sol['modelo']?" {$sol['modelo']}":"").($sol['anio']?" ({$sol['anio']})":"") : '',
-                                    $sol['version']  ? "📋 {$sol['version']}" : '',
-                                    $sol['domicilio'] ? "🏠 {$sol['domicilio']}" : '',
-                                    $sol['cp']       ? "📍 CP {$sol['cp']}"    : '',
-                                    $sol['edad']     ? "🎂 {$sol['edad']} años" : '',
-                                    $sol['dependientes'] ? "👨‍👩‍👧 {$sol['dependientes']} dep." : '',
-                                    $sol['hospitales']   ? "🏥 {$sol['hospitales']}" : '',
-                                    $sol['comentarios']  ? "💬 ".mb_substr($sol['comentarios'],0,80) : '',
-                                ]);
-                            ?>
-                            <tr style="border-bottom:1px solid var(--border-color);">
-                                <td style="padding:10px 14px;white-space:nowrap;color:var(--text-secondary);">
-                                    <?php echo date('d/m/Y H:i', strtotime($sol['created_at'])); ?>
-                                </td>
-                                <td style="padding:10px 14px;white-space:nowrap;">
-                                    <?php echo $icon; ?> <strong><?php echo strtoupper(htmlspecialchars($sol['ramo'])); ?></strong>
-                                </td>
-                                <td style="padding:10px 14px;font-size:12px;color:var(--text-secondary);line-height:1.7;">
-                                    <?php echo implode(' &nbsp;·&nbsp; ', array_map('htmlspecialchars', $detalle)); ?>
-                                    <?php if (empty($detalle)): ?><em style="color:var(--text-muted);">Solo datos de contacto</em><?php endif; ?>
-                                </td>
-                                <td style="padding:10px 14px;">
-                                    <span style="font-size:11px;padding:3px 9px;border-radius:99px;background:<?php echo $esc[1]; ?>;color:<?php echo $esc[0]; ?>;font-weight:600;">
-                                        <?php echo ucfirst($sol['estado']); ?>
-                                    </span>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                        </div>
-                    </div>
-                </div>
-                <?php endif; ?>
-
     </main>
 </div>
 
@@ -1407,7 +1252,8 @@ $BADGE_PAGO_CL = [
     </div>
 </div>
 
-<!-- Modal Subir Póliza -->
+<!-- Modal Subir Póliza (solo coordinador) -->
+<?php if ($puedeGestionarPolizas): ?>
 <div class="modal-overlay" id="modalSubirPoliza">
     <div class="modal" style="max-width:580px;">
         <div class="modal-header"><h3 class="modal-title">📄 Subir Póliza</h3><button class="modal-close" data-close="modalSubirPoliza">&times;</button></div>
@@ -1465,8 +1311,10 @@ $BADGE_PAGO_CL = [
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- Modal Editar Póliza -->
+<?php if ($puedeGestionarPolizas): ?>
 <div class="modal-overlay" id="modalEditarPoliza">
     <div class="modal" style="max-width:520px;">
         <div class="modal-header"><h3 class="modal-title">✏️ Editar Póliza</h3><button class="modal-close" data-close="modalEditarPoliza">&times;</button></div>
@@ -1507,6 +1355,7 @@ $BADGE_PAGO_CL = [
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ── Modal: Solicitar Renovación de Póliza ─────────────────────────── -->
 <div class="modal-overlay" id="modalRenovacion">
@@ -1914,55 +1763,6 @@ document.getElementById('selectEstadoCliente')?.addEventListener('change', funct
 </script>
 
 <script nonce="<?= $cspNonce ?>">
-// ── Vehículo: toggle entre vista y edición ────────────────────────────────────
-(function(){
-    const btnEdit   = document.getElementById('btnEditarVehiculo');
-    const btnCancel = document.getElementById('btnCancelarVehiculo');
-    const btnSave   = document.getElementById('btnGuardarVehiculo');
-    const viewMode  = document.getElementById('vehiculoViewMode');
-    const editMode  = document.getElementById('vehiculoEditMode');
-    if (!btnEdit || !viewMode || !editMode) return;
-
-    btnEdit.addEventListener('click', () => {
-        viewMode.style.display = 'none';
-        editMode.style.display = '';
-        btnEdit.style.display  = 'none';
-    });
-    if (btnCancel) btnCancel.addEventListener('click', () => {
-        viewMode.style.display = '';
-        editMode.style.display = 'none';
-        btnEdit.style.display  = '';
-    });
-    if (btnSave) btnSave.addEventListener('click', () => {
-        btnSave.disabled = true;
-        btnSave.textContent = 'Guardando…';
-        const fd = new FormData();
-        fd.append('accion', 'editar_vehiculo');
-        const campos = ['marca','submarca','version','modelo','tipo','color','placas','vin','tiene_adaptaciones','detalle_adaptaciones','info_adicional'];
-        campos.forEach(c => {
-            const el = editMode.querySelector(`[name="vehiculo_${c}"]`);
-            if (el) fd.append(`vehiculo_${c}`, el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value);
-        });
-        fetch(`/cliente/${clienteId}`, {method:'POST', body:fd})
-            .then(r => r.json())
-            .then(d => {
-                btnSave.disabled = false;
-                btnSave.textContent = '💾 Guardar vehículo';
-                if (d.ok) {
-                    showToast('Vehículo actualizado', 'success');
-                    setTimeout(() => location.reload(), 900);
-                } else {
-                    showToast(d.msg || 'Error al guardar', 'error');
-                }
-            })
-            .catch(() => {
-                btnSave.disabled = false;
-                btnSave.textContent = '💾 Guardar vehículo';
-                showToast('Error de conexión', 'error');
-            });
-    });
-})();
-
 function guardarEdicionCliente() {
     const btn = document.getElementById('btnGuardarEdicionCliente');
     btn.disabled = true;
@@ -2068,23 +1868,6 @@ document.addEventListener('click', function(e) {
             try { abrirModalPago && abrirModalPago(JSON.parse(el.dataset.cot)); }
             catch(err) { console.error('abrirModalPago', err); }
             break;
-        case 'det-citaEstado': {
-            const citaId = el.dataset.citaId;
-            const nuevoE = el.dataset.estado;
-            const label  = nuevoE === 'completada' ? 'completar' : 'cancelar';
-            if (!confirm(`¿Deseas ${label} esta cita?`)) return;
-            const fd = new FormData();
-            fd.append('accion', 'cambiar_estado_cita');
-            fd.append('cita_id', citaId);
-            fd.append('estado', nuevoE);
-            fetch(`/cliente/${clienteId}`, {method:'POST', body:fd})
-                .then(r=>r.json())
-                .then(d=>{
-                    if (d.ok) { showToast('Cita actualizada','success'); setTimeout(()=>location.reload(),900); }
-                    else showToast(d.msg||'Error','error');
-                }).catch(()=>showToast('Error de conexión','error'));
-            break;
-        }
         case 'det-eliminarArchivo':
             if (typeof eliminarArchivoCot === 'function') eliminarArchivoCot(parseInt(el.dataset.id), el);
             break;
