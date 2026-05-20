@@ -609,15 +609,32 @@ class CotizacionModel extends BaseModel
             default                  => 'GEN',
         };
 
-        $anio        = date('y');
-        $agenteCod   = str_pad((string)$agenteId, 3, '0', STR_PAD_LEFT);
-        $stmt        = $this->db()->prepare(
-            'SELECT COUNT(*) FROM cotizaciones WHERE agente_id = ? AND YEAR(fecha_creacion)=YEAR(NOW())'
-        );
-        $stmt->execute([$agenteId]);
-        $consecutivo = str_pad((string)($stmt->fetchColumn() + 1), 4, '0', STR_PAD_LEFT);
+        $anio      = date('y');
+        $agenteCod = str_pad((string)$agenteId, 3, '0', STR_PAD_LEFT);
 
-        return "{$ramoPrefix}-{$cobPrefix}-{$anio}-{$agenteCod}-{$consecutivo}-" . strtoupper($estado);
+        // Usar MAX del consecutivo existente para este agente+año en lugar de COUNT
+        // Evita colisiones cuando hay registros eliminados o intentos fallidos previos
+        $stmtMax = $this->db()->prepare(
+            "SELECT MAX(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(folio, '-', 5), '-', -1) AS UNSIGNED))
+             FROM cotizaciones
+             WHERE agente_id = ? AND YEAR(fecha_creacion) = YEAR(NOW())
+               AND folio REGEXP '^[A-Z]+-[A-Z]+-[0-9]+-[0-9]+-[0-9]+-[A-Z]+$'"
+        );
+        $stmtMax->execute([$agenteId]);
+        $maxConsec   = (int)($stmtMax->fetchColumn() ?? 0);
+        $consecutivo = $maxConsec + 1;
+
+        // Generar folio y verificar unicidad, incrementando si ya existe
+        $stmtCheck = $this->db()->prepare('SELECT COUNT(*) FROM cotizaciones WHERE folio = ?');
+        do {
+            $folio = "{$ramoPrefix}-{$cobPrefix}-{$anio}-{$agenteCod}-" .
+                     str_pad((string)$consecutivo, 4, '0', STR_PAD_LEFT) . '-' . strtoupper($estado);
+            $stmtCheck->execute([$folio]);
+            if ((int)$stmtCheck->fetchColumn() === 0) break;
+            $consecutivo++;
+        } while ($consecutivo < 9999);
+
+        return $folio;
     }
 
     public function generarFolioPublico(int $agenteId, string $ramo, string $cobertura, string $estado = 'N'): string
