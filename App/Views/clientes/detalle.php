@@ -1306,59 +1306,50 @@ $BADGE_PAGO_CL = [
                             ?>
                             <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
                                 <?php if ($rolAgente === 'asesor'): ?>
-                                <?php
-                                // 1. Definir los documentos estrictamente obligatorios del ASESOR
-                                $docs_obligatorios_asesor = [];
-                                $ramo_cot = $cot['ramo'] ?? 'autos';
-                                if ($ramo_cot === 'autos') {
-                                    $docs_obligatorios_asesor = ['doc_cotizacion', 'ine', 'comprobante_dom', 'tarjeta_circulacion', 'foto_coche_1', 'foto_coche_2'];
-                                } else {
-                                    $docs_obligatorios_asesor = ['doc_cotizacion', 'ine', 'comprobante_dom'];
-                                }
+    <?php
+    // 1. Aseguramos que $archs sea array para evitar errores
+    $archs = $archs ?? [];
+    
+    // 2. Lógica simplificada de validación
+    $ramo_cot = $cot['ramo'] ?? 'autos';
+    $docs_req = ($ramo_cot === 'autos') 
+        ? ['doc_cotizacion', 'ine', 'comprobante_dom', 'tarjeta_circulacion', 'foto_coche_1', 'foto_coche_2']
+        : ['doc_cotizacion', 'ine', 'comprobante_dom'];
 
-                                // 2. Mapeo de nombres limpios para la interfaz
-                                $nombres_documentos = [
-                                    'doc_cotizacion'      => 'Cotización',
-                                    'ine'                 => 'INE',
-                                    'comprobante_dom'     => 'Comprobante de Domicilio',
-                                    'tarjeta_circulacion' => 'Tarjeta de Circulación',
-                                    'foto_coche_1'        => 'Foto de Coche 1',
-                                    'foto_coche_2'        => 'Foto de Coche 2'
-                                ];
+    $nombres_docs = [
+        'doc_cotizacion' => 'Cotización', 'ine' => 'INE', 'comprobante_dom' => 'Comprobante Domicilio',
+        'tarjeta_circulacion' => 'Tarj. Circulación', 'foto_coche_1' => 'Foto 1', 'foto_coche_2' => 'Foto 2'
+    ];
 
-                                // 3. Obtener los documentos que el asesor ya subió en esta cotización
-                                $tipos_subidos = array_column($archs, 'tipo_documento');
+    $tipos_subidos = array_column($archs, 'tipo_documento');
+    $faltantes = [];
+    foreach ($docs_req as $d) {
+        if (!in_array($d, $tipos_subidos)) $faltantes[] = $nombres_docs[$d] ?? $d;
+    }
+    $estaBloqueado = !empty($faltantes);
+    ?>
 
-                                // 4. Calcular cuáles le faltan
-                                $documentos_faltantes = [];
-                                foreach ($docs_obligatorios_asesor as $doc_req) {
-                                    if (!in_array($doc_req, $tipos_subidos)) {
-                                        $documentos_faltantes[] = $nombres_documentos[$doc_req] ?? $doc_req;
-                                    }
-                                }
-                                $bloquear_boton_emision = !empty($documentos_faltantes);
-                                ?>
+    <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>" 
+       class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;">&#9999;&#65039; Editar</a>
+    
+    <?php if ($yaPagada): ?>
+        <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">✓ Pago confirmado</span>
+    <?php else: ?>
+        <button type="button" 
+                class="btn btn-sm btn-primary" 
+                style="font-size:11px;padding:3px 12px; <?php echo $estaBloqueado ? 'opacity:0.5;' : ''; ?>" 
+                <?php echo $estaBloqueado ? 'disabled' : ''; ?>
+                onclick="document.getElementById('polizaCotizacion').value='<?php echo (int)$cot['id']; ?>'; openModal('modalSubirPoliza');">
+            📝 Emitir y Subir Póliza
+        </button>
+    <?php endif; ?>
 
-                                <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
-                                   class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion">&#9999;&#65039; Editar</a>
-                                
-                                <?php if ($yaPagada): ?>
-                                    <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pago confirmado</span>
-                                <?php else: ?>
-                                    <button type="button" 
-                                            class="btn btn-sm btn-primary" 
-                                            style="font-size:11px;padding:3px 12px; <?php echo $bloquear_boton_emision ? 'opacity:0.5; cursor:not-allowed;' : ''; ?>" 
-                                            <?php echo $bloquear_boton_emision ? 'disabled' : ''; ?>
-                                            onclick="document.getElementById('polizaCotizacion').value='<?php echo $cot['id']; ?>'; openModal('modalSubirPoliza');">
-                                        📝 Emitir y Subir Póliza
-                                    </button>
-                                <?php endif; ?>
-
-                                <?php if ($bloquear_boton_emision && !$yaPagada): ?>
-                                    <div style="flex-basis: 100%; background-color: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; padding: 6px 10px; border-radius: 6px; margin-top: 4px; font-size: 11px;">
-                                        <strong>⚠️ Faltan:</strong> <?php echo htmlspecialchars(implode(', ', $documentos_faltantes)); ?>
-                                    </div>
-                                <?php endif; ?>
+    <?php if ($estaBloqueado && !$yaPagada): ?>
+        <div style="flex-basis:100%; background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; padding:4px; margin-top:4px; font-size:10px;">
+            <strong>⚠️ Faltan:</strong> <?php echo implode(', ', $faltantes); ?>
+        </div>
+    <?php endif; ?>
+<?php endif; ?>
                             </div>
                             <?php if (!empty($archs)): ?>
                             <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
