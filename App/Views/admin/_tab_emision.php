@@ -95,7 +95,7 @@ $stCots = $db->prepare(
             -- ¿Tiene póliza subida? Susituir por la tabla polizas corregida antes
             (SELECT COUNT(*) FROM polizas p WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL) AS tiene_poliza,
             -- NUEVO: Traer el archivo real de la póliza
-            (SELECT p.archivo_poliza FROM polizas p WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL LIMIT 1) AS archivo_poliza,
+            (SELECT p.nombre_archivo FROM polizas p WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL LIMIT 1) AS archivo_poliza,
             -- Comprobante de pago del coordinador
             (SELECT id FROM cotizacion_comprobantes_pago cp
              WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
