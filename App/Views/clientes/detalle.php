@@ -200,97 +200,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     }
 
     // ── Confirmar pago de cotización ──────────────────────────────────────────
-    if ($_POST['accion'] === 'confirmar_pago') {
-        $cotId  = (int)($_POST['cotizacion_id'] ?? 0);
-        $metodo = trim($_POST['metodo_pago'] ?? '');
-        $notas  = trim($_POST['notas_pago'] ?? '');
-        $metodosValidos = ['spei','contado','meses_sin_intereses'];
+    // if ($_POST['accion'] === 'confirmar_pago') {
+    //     $cotId  = (int)($_POST['cotizacion_id'] ?? 0);
+    //     $metodo = trim($_POST['metodo_pago'] ?? '');
+    //     $notas  = trim($_POST['notas_pago'] ?? '');
+    //     $metodosValidos = ['spei','contado','meses_sin_intereses'];
 
-        if (!$cotId || !in_array($metodo, $metodosValidos, true)) {
-            echo json_encode(['ok'=>false,'msg'=>'Datos incompletos.']); exit;
-        }
+    //     if (!$cotId || !in_array($metodo, $metodosValidos, true)) {
+    //         echo json_encode(['ok'=>false,'msg'=>'Datos incompletos.']); exit;
+    //     }
 
-        // Verificar que la cotización pertenece al agente
-        $db = \Database\Connection::getConnection();
-        $stCot = $db->prepare('SELECT id, estado, precio, folio FROM cotizaciones WHERE id=? AND agente_id=?');
-        $stCot->execute([$cotId, $agenteId]);
-        $cot = $stCot->fetch(\PDO::FETCH_ASSOC);
-        if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
-        if ($cot['estado'] === 'pagado') { echo json_encode(['ok'=>false,'msg'=>'Esta cotización ya está marcada como pagada.']); exit; }
+    //     // Verificar que la cotización pertenece al agente
+    //     $db = \Database\Connection::getConnection();
+    //     $stCot = $db->prepare('SELECT id, estado, precio, folio FROM cotizaciones WHERE id=? AND agente_id=?');
+    //     $stCot->execute([$cotId, $agenteId]);
+    //     $cot = $stCot->fetch(\PDO::FETCH_ASSOC);
+    //     if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
+    //     if ($cot['estado'] === 'pagado') { echo json_encode(['ok'=>false,'msg'=>'Esta cotización ya está marcada como pagada.']); exit; }
 
-        // Si el método requiere comprobante y no lo subieron
-        $requiereComprobante = in_array($metodo, ['spei','meses_sin_intereses'], true);
-        $rutaPago = null;
-        $nombreArch = null;
-        $nombreOrig = null;
+    //     // Si el método requiere comprobante y no lo subieron
+    //     $requiereComprobante = in_array($metodo, ['spei','meses_sin_intereses'], true);
+    //     $rutaPago = null;
+    //     $nombreArch = null;
+    //     $nombreOrig = null;
 
-        if ($requiereComprobante) {
-            if (empty($_FILES['comprobante_pago']['name']) || $_FILES['comprobante_pago']['error'] !== UPLOAD_ERR_OK) {
-                echo json_encode(['ok'=>false,'msg'=>'El comprobante de pago es obligatorio para transferencia o MSI.']); exit;
-            }
-            $file = $_FILES['comprobante_pago'];
-            $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            if (!in_array($ext, ['pdf','jpg','jpeg','png'], true) || $file['size'] > 15*1024*1024) {
-                echo json_encode(['ok'=>false,'msg'=>'Formato inválido o mayor a 15MB.']); exit;
-            }
-            $uploadDir = dirname(__DIR__,3) . "/uploads/cotizaciones/{$cotId}/";
-            if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-            $nombreArch = 'comprobante_pago_' . time() . '.' . $ext;
-            $rutaPago   = "uploads/cotizaciones/{$cotId}/{$nombreArch}";
-            $nombreOrig = $file['name'];
-            if (!move_uploaded_file($file['tmp_name'], $uploadDir . $nombreArch)) {
-                echo json_encode(['ok'=>false,'msg'=>'Error al guardar el comprobante.']); exit;
-            }
-        }
+    //     if ($requiereComprobante) {
+    //         if (empty($_FILES['comprobante_pago']['name']) || $_FILES['comprobante_pago']['error'] !== UPLOAD_ERR_OK) {
+    //             echo json_encode(['ok'=>false,'msg'=>'El comprobante de pago es obligatorio para transferencia o MSI.']); exit;
+    //         }
+    //         $file = $_FILES['comprobante_pago'];
+    //         $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    //         if (!in_array($ext, ['pdf','jpg','jpeg','png'], true) || $file['size'] > 15*1024*1024) {
+    //             echo json_encode(['ok'=>false,'msg'=>'Formato inválido o mayor a 15MB.']); exit;
+    //         }
+    //         $uploadDir = dirname(__DIR__,3) . "/uploads/cotizaciones/{$cotId}/";
+    //         if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+    //         $nombreArch = 'comprobante_pago_' . time() . '.' . $ext;
+    //         $rutaPago   = "uploads/cotizaciones/{$cotId}/{$nombreArch}";
+    //         $nombreOrig = $file['name'];
+    //         if (!move_uploaded_file($file['tmp_name'], $uploadDir . $nombreArch)) {
+    //             echo json_encode(['ok'=>false,'msg'=>'Error al guardar el comprobante.']); exit;
+    //         }
+    //     }
 
-        try {
-            $db->beginTransaction();
-            // Actualizar estado de cotización a pagado
-            $db->prepare('UPDATE cotizaciones SET estado=?, metodo_pago=? WHERE id=?')
-               ->execute(['pagado', $metodo, $cotId]);
+    //     try {
+    //         $db->beginTransaction();
+    //         // Actualizar estado de cotización a pagado
+    //         $db->prepare('UPDATE cotizaciones SET estado=?, metodo_pago=? WHERE id=?')
+    //            ->execute(['pagado', $metodo, $cotId]);
 
-            if ($nombreArch !== null && $rutaPago !== null && $requiereComprobante) {
-                $cotizacionModel->adjuntarArchivo(
-                    $cotId,
-                    $agenteId,
-                    'comprobante_pago',
-                    $nombreOrig ?: $nombreArch,
-                    $nombreArch,
-                    $rutaPago
-                );
-            }
+    //         if ($nombreArch !== null && $rutaPago !== null && $requiereComprobante) {
+    //             $cotizacionModel->adjuntarArchivo(
+    //                 $cotId,
+    //                 $agenteId,
+    //                 'comprobante_pago',
+    //                 $nombreOrig ?: $nombreArch,
+    //                 $nombreArch,
+    //                 $rutaPago
+    //             );
+    //         }
 
-            // Insertar en cotizacion_pagos
-            $db->prepare(
-                'INSERT INTO cotizacion_pagos (cotizacion_id, agente_id, metodo_pago, notas, ruta, nombre_archivo, nombre_original, fecha_pago, creado_en)
-                 VALUES (?,?,?,?,?,?,?,CURDATE(),NOW())'
-            )->execute([$cotId, $agenteId, $metodo, $notas, $rutaPago, $nombreArch, $nombreOrig]);
-            // Historial
-            $historialModel->registrar($clienteId, $agenteId, 'venta',
-                'Pago confirmado — Folio: ' . ($cot['folio'] ?? '#'.$cotId),
-                ucfirst(str_replace('_',' ',$metodo)) . ($notas ? " · $notas" : '')
-            );
-            // Notificación importante al asesor confirmando el pago registrado
-            try {
-                $db->prepare(
-                    "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
-                     VALUES (?,?,?,?,1,'green',?,0,NOW())"
-                )->execute([
-                    $agenteId,
-                    'pago',
-                    '✅ Pago confirmado — ' . ($cot['folio'] ?? '#'.$cotId),
-                    'El pago de la cotización ' . ($cot['folio'] ?? '#'.$cotId) . ' ha sido registrado correctamente. Método: ' . ucfirst(str_replace('_',' ',$metodo)) . '. Recuerda contactar al cliente para gestionar su renovación cuando corresponda.',
-                    '/cliente/' . $clienteId,
-                ]);
-            } catch (\Throwable $ne) { error_log('[notif_pago] ' . $ne->getMessage()); }
-            $db->commit();
-            echo json_encode(['ok'=>true]); exit;
-        } catch(\Throwable $e) {
-            $db->rollBack();
-            error_log('confirmar_pago error: ' . $e->getMessage());
-            echo json_encode(['ok'=>false,'msg'=>'Error al registrar el pago.']); exit;
-        }
-    }
+    //         // Insertar en cotizacion_pagos
+    //         $db->prepare(
+    //             'INSERT INTO cotizacion_pagos (cotizacion_id, agente_id, metodo_pago, notas, ruta, nombre_archivo, nombre_original, fecha_pago, creado_en)
+    //              VALUES (?,?,?,?,?,?,?,CURDATE(),NOW())'
+    //         )->execute([$cotId, $agenteId, $metodo, $notas, $rutaPago, $nombreArch, $nombreOrig]);
+    //         // Historial
+    //         $historialModel->registrar($clienteId, $agenteId, 'venta',
+    //             'Pago confirmado — Folio: ' . ($cot['folio'] ?? '#'.$cotId),
+    //             ucfirst(str_replace('_',' ',$metodo)) . ($notas ? " · $notas" : '')
+    //         );
+    //         // Notificación importante al asesor confirmando el pago registrado
+    //         try {
+    //             $db->prepare(
+    //                 "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
+    //                  VALUES (?,?,?,?,1,'green',?,0,NOW())"
+    //             )->execute([
+    //                 $agenteId,
+    //                 'pago',
+    //                 '✅ Pago confirmado — ' . ($cot['folio'] ?? '#'.$cotId),
+    //                 'El pago de la cotización ' . ($cot['folio'] ?? '#'.$cotId) . ' ha sido registrado correctamente. Método: ' . ucfirst(str_replace('_',' ',$metodo)) . '. Recuerda contactar al cliente para gestionar su renovación cuando corresponda.',
+    //                 '/cliente/' . $clienteId,
+    //             ]);
+    //         } catch (\Throwable $ne) { error_log('[notif_pago] ' . $ne->getMessage()); }
+    //         $db->commit();
+    //         echo json_encode(['ok'=>true]); exit;
+    //     } catch(\Throwable $e) {
+    //         $db->rollBack();
+    //         error_log('confirmar_pago error: ' . $e->getMessage());
+    //         echo json_encode(['ok'=>false,'msg'=>'Error al registrar el pago.']); exit;
+    //     }
+    // }
 
     // ── Editar datos del cliente ───────────────────────────────────────────────
     if ($_POST['accion'] === 'editar_cliente') {
@@ -1324,9 +1324,9 @@ $BADGE_PAGO_CL = [
                                 <?php if ($yaPagada): ?>
                                 <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pagado</span>
                                 <?php else: ?>
-                                <button class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;color:var(--success-color,#22c55e);border-color:var(--success-color,#22c55e);"
+                                <!-- <button class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;color:var(--success-color,#22c55e);border-color:var(--success-color,#22c55e);"
                                         data-action="det-abrirPago" data-cot="<?php echo htmlspecialchars(json_encode(['id'=>(int)$cot['id'],'folio'=>$cot['folio']??'','compania'=>$cot['compania'],'precio'=>(float)$cot['precio'],'metodo_pago'=>$cot['metodo_pago']??''],JSON_UNESCAPED_UNICODE),ENT_QUOTES); ?>"
-                                        title="Registrar pago">&#128176; Registrar pago</button>
+                                        title="Registrar pago">&#128176; Registrar pago</button> -->
                                 <?php endif; ?>
                                 <?php endif; ?>
                             </div>

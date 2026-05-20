@@ -29,9 +29,9 @@ $emiEstatoPago = trim($_GET['emi_pago'] ?? '');
 // Ramones disponibles + estados de póliza
 $RAMOS_LABEL = ['autos'=>'Autos','vida'=>'Vida','gastos_medicos'=>'Gastos Médicos'];
 $REQS = [
-    'autos'         => ['ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2','comprobante_pago'],
-    'vida'          => ['ine','comprobante_dom','comprobante_pago'],
-    'gastos_medicos'=> ['ine','comprobante_dom','comprobante_pago'],
+    'autos'         => ['ine', 'comprobante_dom', 'tarjeta_circulacion', 'foto_coche_1', 'foto_coche_2'],
+    'vida'          => ['ine', 'comprobante_dom'],
+    'gastos_medicos'=> ['ine', 'comprobante_dom'],
 ];
 $TIPO_LABEL = [
     'ine'=>'INE','comprobante_dom'=>'Comp. domicilio','tarjeta_circulacion'=>'T. circulación',
