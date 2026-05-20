@@ -245,26 +245,55 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
     <?php endif; ?>
 </td>
                 <td class="emi-stop-prop">
-                    <?php if (!$enProceso): ?>
-                    <span style="font-size:11px;color:var(--text-muted);">Esperando asesor</span>
+                    <?php if ($cot['estado'] === 'pagado' || $tienePoliza): ?>
+                        <div style="color:#10b981; font-size:12px; font-weight:700; margin-bottom:8px; text-align:center;">
+                            ✔️ Emitida y Pagada
+                        </div>
+                        <?php if (!empty($cot['comprobante_id'])): ?>
+                            <button class="btn btn-ghost btn-sm"
+                                    data-action="emi-verComprobante"
+                                    data-comprobante-id="<?= (int)$cot['comprobante_id'] ?>" style="width:100%; margin-bottom:4px;">
+                                👁 Ver comprobante
+                            </button>
+                            <button class="btn btn-outline btn-sm"
+                                    data-action="emi-abrirComprobante"
+                                    data-cot-id="<?= $cot['id'] ?>"
+                                    data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
+                                    data-asesor-id="<?= (int)$cot['asesor_id'] ?>" style="width:100%; margin-bottom:4px;">
+                                🔄 Cambiar cobro
+                            </button>
+                        <?php endif; ?>
+
+                    <?php elseif (!$enProceso): ?>
+                        <span style="font-size:11px;color:var(--text-muted); display:block; text-align:center; margin-bottom:8px;">Esperando asesor</span>
+                    
                     <?php elseif (($cot['estado_pago'] ?? 'pendiente') !== 'confirmado'): ?>
-                    <div style="font-size:10px;color:var(--success-color);font-weight:700;margin-bottom:6px;">✅ Docs. recibidos, listo para cobro</div>
-                    <button class="btn btn-primary btn-sm"
-                            data-action="emi-abrirComprobante"
-                            data-cot-id="<?= $cot['id'] ?>"
-                            data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
-                            data-asesor-id="<?= (int)$cot['asesor_id'] ?>">
-                        💳 Registrar pago
-                    </button>
+                        <div style="font-size:10px;color:var(--success-color);font-weight:700;margin-bottom:6px;">✅ Docs. recibidos, listo para cobro</div>
+                        <button class="btn btn-primary btn-sm"
+                                data-action="emi-abrirComprobante"
+                                data-cot-id="<?= $cot['id'] ?>"
+                                data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
+                                data-asesor-id="<?= (int)$cot['asesor_id'] ?>" style="width:100%; margin-bottom:4px;">
+                            💳 Registrar pago
+                        </button>
+
                     <?php else: ?>
-                    <button class="btn btn-ghost btn-sm"
-                            data-action="emi-verComprobante"
-                            data-comprobante-id="<?= (int)$cot['comprobante_id'] ?>">
-                        👁 Ver comprobante
-                    </button>
+                        <button class="btn btn-ghost btn-sm"
+                                data-action="emi-verComprobante"
+                                data-comprobante-id="<?= (int)$cot['comprobante_id'] ?>" style="width:100%; margin-bottom:4px;">
+                            👁 Ver comprobante
+                        </button>
+                        <button class="btn btn-outline btn-sm"
+                                data-action="emi-abrirComprobante"
+                                data-cot-id="<?= $cot['id'] ?>"
+                                data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
+                                data-asesor-id="<?= (int)$cot['asesor_id'] ?>" style="width:100%; margin-bottom:4px;">
+                            🔄 Cambiar cobro
+                        </button>
                     <?php endif; ?>
+
                     <a href="/admin?accion=emi_pdf_checklist&cotizacion_id=<?= $cot['id'] ?>"
-                       target="_blank" class="btn btn-outline btn-sm" style="margin-top:4px;display:block;text-align:center;">
+                       target="_blank" class="btn btn-outline btn-sm" style="display:block;text-align:center;">
                         📋 Checklist
                     </a>
                 </td>
