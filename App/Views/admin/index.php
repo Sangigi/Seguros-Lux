@@ -1193,7 +1193,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 </div>
 <?php endif; ?>
 
-<?php if ($tab === 'polizas'): ?>
+<?php elseif ($tab === 'polizas'): ?>
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
     <h2 style="font-size:17px;font-weight:600;margin:0;">📋 Historial de Pólizas</h2>
     <select id="polFiltroAsesor" class="form-select" style="width:auto;font-size:13px;">
