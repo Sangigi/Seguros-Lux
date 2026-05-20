@@ -546,8 +546,13 @@ switch ($accion) {
                 '💰 Pago confirmado por coordinador — ' . ($datosCot['folio'] ?? '#'.$cotId),
                 'Método: ' . _emi_metodoLabel($metodo) . ($ref ? " · Ref: {$ref}" : '') . ($monto ? " · $" . number_format((float)$monto, 2) : ''),
             ]);
+            
+            // ACTUALIZACIÓN EXTRA: Cambiar estado del cliente a "Cerrado" automáticamente
+            if (!empty($datosCot['cliente_id'])) {
+                $db->prepare("UPDATE clientes SET estado_cliente='cerrado' WHERE id=?")->execute([$datosCot['cliente_id']]);
+            }
+            
         } catch (\Throwable $he) { error_log('[historial_cliente cobro] ' . $he->getMessage()); }
-
         // Notificación al asesor: estado de póliza cambió a PAGADO
         if ($asesorId) {
             $urlCliente = '/cliente/' . ($datosCot['cliente_id'] ?? '');

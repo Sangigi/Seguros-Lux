@@ -417,8 +417,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $stC->execute([$cotId, $agenteId]);
             $datCot = $stC->fetch(\PDO::FETCH_ASSOC);
             if (!$datCot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
-            // Marcar cotización como "en_proceso" para que el coordinador la vea en emisión
-            $db->prepare("UPDATE cotizaciones SET emision_estado = 'en_proceso' WHERE id = ?")->execute([$cotId]);
+            // Cambiar estado a 'en_proceso' para que le aparezca al coordinador en su panel
+            $db->prepare("UPDATE cotizaciones SET estado='en_proceso' WHERE id=?")->execute([$cotId]);
             // Notificar a todos los coordinadores/admins
             $coords = $db->query("SELECT id FROM agentes WHERE rol IN ('coordinador','superadmin') AND activo = 1")->fetchAll(\PDO::FETCH_COLUMN);
             $folio = $datCot['folio'] ?? '#'.$cotId;
@@ -1351,12 +1351,11 @@ $BADGE_PAGO_CL = [
         <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pago confirmado</span>
     <?php else: ?>
         <button type="button" 
-        class="btn btn-sm btn-primary" 
-        style="font-size:11px;padding:3px 12px; <?php echo $bloquear_boton_emision ? 'opacity:0.5; cursor:not-allowed;' : ''; ?>" 
-        <?php echo $bloquear_boton_emision ? 'disabled' : ''; ?>
-        data-cot-id="<?php echo $cot['id']; ?>"
-        data-folio="<?php echo htmlspecialchars($cot['folio'] ?? '#'.$cot['id']); ?>"
-        data-action="det-enviarCoordinador">
+    class="btn btn-sm btn-primary" 
+    style="font-size:11px;padding:3px 12px; <?php echo $bloquear_boton_emision ? 'opacity:0.5; cursor:not-allowed;' : ''; ?>" 
+    <?php echo $bloquear_boton_emision ? 'disabled' : ''; ?>
+    data-cot-id="<?php echo $cot['id']; ?>"
+    data-action="abrir-emision">
     📝 Emitir y Subir Póliza
 </button>
     <?php endif; ?>
@@ -1637,6 +1636,21 @@ function eliminarArchivoCot(archivoId,btn){if(!confirm('¿Eliminar este archivo?
 function showToast(msg,type='success'){const c=document.getElementById('toastContainer');if(!c)return;const t=document.createElement('div');t.className=`toast ${type}`;t.innerHTML=`<div class="toast-icon">${type==='error'?'✗':'✓'}</div><div class="toast-message">${msg}</div><button class="toast-close" data-action="toast-close">&times;</button>`;c.appendChild(t);setTimeout(()=>{t.classList.add('hiding');setTimeout(()=>t.remove(),300);},5000);}
 </script>
 <script nonce="<?= $cspNonce ?>">
+    document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-action="abrir-emision"]');
+    if (btn) {
+        const cotId = btn.getAttribute('data-cot-id');
+        const campo = document.getElementById('polizaCotizacion');
+        if (campo) campo.value = cotId;
+        
+        // Hacer que el input de archivo del modal sea estrictamente obligatorio
+        const inputArchivo = document.querySelector('#modalSubirPoliza input[type="file"]');
+        if (inputArchivo) inputArchivo.required = true;
+
+        // Abrir la ventana
+        if (typeof openModal === 'function') openModal('modalSubirPoliza');
+    }
+});
 // ── Historial paginación (10 por página) — botones sin inline handlers (CSP) ──
 (function(){
     const feed=document.getElementById('histFeed');
