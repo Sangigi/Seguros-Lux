@@ -83,7 +83,7 @@ $emiPages = max(1, ceil($emiTotal / $emiPP));
 
 $stCots = $db->prepare(
     "SELECT c.id, c.folio, c.ramo, c.compania, c.tipo_cobertura,
-            c.estado, c.estado_pago, c.precio, c.periodicidad,
+            c.estado, c.estado_pago, c.emision_estado, c.precio, c.periodicidad,
             c.fecha, c.fecha_fin_vigencia,
             CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',COALESCE(cl.apellido_materno,'')) AS cliente_nombre,
             cl.id AS cliente_id,
@@ -200,6 +200,7 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
                 $bEst   = $BADGE_ESTADO[$cot['estado']] ?? 'badge-neutral';
                 [$bPago, $lPago] = $BADGE_PAGO[$cot['estado_pago'] ?? 'pendiente'] ?? ['badge-neutral','—'];
                 $tienePoliza = (int)$cot['tiene_poliza'] > 0;
+                $enProceso   = ($cot['emision_estado'] ?? '') === 'en_proceso';
             ?>
             <tr style="cursor:pointer;"
                 data-cot-id="<?= (int)$cot['id'] ?>"
@@ -233,9 +234,10 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
                     <div style="font-size:10px;color:var(--text-muted);"><?= $cot['total_archivos'] ?> docs</div>
                 </td>
                 <td class="emi-stop-prop">
-                    <?php if (!$tienePoliza): ?>
+                    <?php if (!$enProceso): ?>
                     <span style="font-size:11px;color:var(--text-muted);">Esperando asesor</span>
                     <?php elseif (($cot['estado_pago'] ?? 'pendiente') !== 'confirmado'): ?>
+                    <div style="font-size:10px;color:var(--success-color);font-weight:700;margin-bottom:6px;">✅ Docs. recibidos, listo para cobro</div>
                     <button class="btn btn-primary btn-sm"
                             data-action="emi-abrirComprobante"
                             data-cot-id="<?= $cot['id'] ?>"

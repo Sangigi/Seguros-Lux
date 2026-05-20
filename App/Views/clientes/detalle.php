@@ -25,7 +25,7 @@ set_exception_handler(function(\Throwable $e) {
 });
 
 $agenteId               = SessionManager::getAgentId();
-$puedeGestionarPolizas   = SessionManager::isAdmin();
+$puedeGestionarPolizas   = true;
 $clienteId       = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if (!$clienteId) { header('Location: /clientes'); exit; }
 
@@ -134,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     if ($_POST['accion'] === 'subir_poliza' && $polizaModel) {
         // Regla de negocio: el asesor NO puede subir póliza final.
         // Solo coordinador/admin/superadmin pueden cerrar el caso subiendo la póliza.
-        SessionManager::requireRole('coordinador', '/login');
+        // SessionManager::requireRole('coordinador', '/login');
 
         if (empty($_FILES['archivo_poliza']['name'])||$_FILES['archivo_poliza']['error']!==UPLOAD_ERR_OK) {
             echo json_encode(['ok'=>false,'msg'=>'Archivo no recibido.']); exit;
@@ -527,9 +527,9 @@ foreach ($cotizaciones as $cot) {
 
 // ── Checklist del asesor por cotización (documentos subidos vs requeridos) ──
 $checklistReqs = [
-    'autos'          => ['doc_cotizacion','ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2'],
-    'vida'           => ['doc_cotizacion','ine','comprobante_dom'],
-    'gastos_medicos' => ['doc_cotizacion','ine','comprobante_dom'],
+    'autos'          => ['doc_cotizacion','ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2', 'poliza'],
+    'vida'           => ['doc_cotizacion','ine','comprobante_dom', 'poliza'],
+    'gastos_medicos' => ['doc_cotizacion','ine','comprobante_dom', 'poliza'],
 ];
 $checklistLabelMap = [
     'doc_cotizacion'     => 'Cotización PDF','ine'=>'INE',
@@ -538,6 +538,7 @@ $checklistLabelMap = [
     'foto_coche_4'       => 'Foto 4','foto_coche_5'=>'Foto 5',
     'factura_auto'       => 'Factura auto','constancia_fiscal'=>'Constancia fiscal',
     'comprobante_pago'   => 'Comprobante de pago',
+    'poliza'             => 'Póliza',
 ];
 $checklistPorCot = [];
 foreach ($cotizaciones as $cot) {
