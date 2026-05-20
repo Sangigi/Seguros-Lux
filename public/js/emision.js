@@ -129,6 +129,36 @@
                 marcarDoc(id, el.dataset.tipo, el.dataset.estado, el);
                 break;
 
+            // ── Abrir modal registrar comprobante de pago (coordinador) ───────
+            case 'emi-abrirComprobante':
+                if (typeof window.emiAbrirComprobante === 'function') {
+                    window.emiAbrirComprobante(
+                        el.dataset.cotId,
+                        el.dataset.folio,
+                        el.dataset.asesorId
+                    );
+                }
+                break;
+
+            // ── Ver comprobante ya registrado ─────────────────────────────────
+            case 'emi-verComprobante':
+                if (typeof window.emiVerComprobante === 'function') {
+                    window.emiVerComprobante(parseInt(el.dataset.comprobanteId || '0'));
+                }
+                break;
+
+            // ── Abrir modal registrar pago desde el modal de detalle ──────────
+            case 'emi-abrirPagoDesdeDetalle':
+                if (typeof window.emiAbrirComprobante === 'function') {
+                    window.emiAbrirComprobante(
+                        el.dataset.cotId,
+                        el.dataset.folio,
+                        el.dataset.asesorId
+                    );
+                    if (typeof closeModal === 'function') closeModal('modalEmiDetalle');
+                }
+                break;
+
             // ── Descargar checklist PDF ───────────────────────────────────────
             case 'emi-descargarChecklist':
                 if (_cotActual) window.open('/admin?accion=emi_pdf_checklist&cotizacion_id=' + _cotActual, '_blank');
