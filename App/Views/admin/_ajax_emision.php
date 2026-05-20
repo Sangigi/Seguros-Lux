@@ -602,6 +602,28 @@ switch ($accion) {
         exit;
     }
 
+    // ── Configurar ventana de edición (solo SA) ───────────────────────────────
+    case 'emi_set_edit_window': {
+        if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Solo el superadmin puede hacer esto.']); exit; }
+        $horas = max(0, (int)($_POST['horas'] ?? 24));
+        try {
+            $db->prepare(
+                "INSERT INTO configuracion (clave, valor, descripcion)
+                 VALUES ('emi_edit_window_horas', ?, 'Ventana de edición de comprobantes del coordinador (en horas)')
+                 ON DUPLICATE KEY UPDATE valor=VALUES(valor)"
+            )->execute([$horas]);
+            // Registrar en historial
+            $db->prepare(
+                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion)
+                 VALUES (?,?,?,?)"
+            )->execute([$agenteId, 'nota', '⚙️ Ventana de edición actualizada', "Nueva ventana: {$horas} hora(s). Por superadmin."]);
+            echo json_encode(['ok'=>true]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok'=>false,'msg'=>$e->getMessage()]);
+        }
+        exit;
+    }
+
     // ── PDF Checklist (se procesa por GET en admin/index.php) ─────────────────
     case 'emi_pdf_checklist': {
         echo json_encode(['ok'=>false,'msg'=>'Usa el método GET para el checklist PDF.']); exit;

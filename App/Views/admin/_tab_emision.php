@@ -53,7 +53,10 @@ $METODOS_PAGO = [
 ];
 
 // ── Query de cotizaciones ─────────────────────────────────────────────────────
-$where = ["1=1"];
+// SOLO se muestran cotizaciones que el asesor envió explícitamente al coordinador
+// (emision_estado = 'en_proceso') y que aún no han sido completamente procesadas
+// (se siguen mostrando pagadas para que el coordinador vea el historial inmediato)
+$where = ["c.emision_estado IN ('en_proceso','emitida')"];
 $params = [];
 
 if ($emiSearch !== '') {
@@ -68,6 +71,13 @@ if ($emiEstado !== '') {
 if ($emiEstatoPago !== '') {
     $where[] = "c.estado_pago = ?";
     $params[] = $emiEstatoPago;
+}
+
+// Filtro: mostrar solo pendientes o también pagadas (archivadas)
+$emiMostrarPagadas = ($_GET['emi_ver_pagadas'] ?? '') === '1';
+if (!$emiMostrarPagadas) {
+    // Por defecto ocultar las ya completamente pagadas (pasan a historial/polizas)
+    $where[] = "NOT (c.estado_pago = 'confirmado' AND c.emision_estado = 'emitida')";
 }
 
 $whereSQL = implode(' AND ', $where);
@@ -99,7 +109,11 @@ $stCots = $db->prepare(
             -- Comprobante de pago del coordinador
             (SELECT id FROM cotizacion_comprobantes_pago cp
              WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
-             ORDER BY cp.creado_en DESC LIMIT 1) AS comprobante_id
+             ORDER BY cp.creado_en DESC LIMIT 1) AS comprobante_id,
+            -- Fecha en que se registró el comprobante (para ventana de edición)
+            (SELECT cp.creado_en FROM cotizacion_comprobantes_pago cp
+             WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
+             ORDER BY cp.creado_en DESC LIMIT 1) AS comprobante_registrado_en
      FROM cotizaciones c
      JOIN clientes cl ON cl.id = c.cliente_id
      JOIN agentes  a  ON a.id  = c.agente_id
@@ -110,11 +124,18 @@ $stCots = $db->prepare(
 $stCots->execute($params);
 $emiCots = $stCots->fetchAll(\PDO::FETCH_ASSOC);
 
-// KPIs rápidos
-$kpiCots  = $db->query("SELECT COUNT(*) FROM cotizaciones")->fetchColumn();
-$kpiConPol= $db->query("SELECT COUNT(DISTINCT cotizacion_id) FROM cotizacion_archivos WHERE tipo_documento='poliza' AND eliminado_en IS NULL")->fetchColumn();
-$kpiPagConf = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='confirmado'")->fetchColumn();
-$kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='pendiente'")->fetchColumn();
+// KPIs rápidos (solo sobre el universo de "en emisión")
+$kpiCots    = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE emision_estado IN ('en_proceso','emitida')")->fetchColumn();
+$kpiConPol  = $db->query("SELECT COUNT(DISTINCT p.cotizacion_id) FROM polizas p JOIN cotizaciones c ON c.id=p.cotizacion_id WHERE p.eliminado_en IS NULL AND c.emision_estado IN ('en_proceso','emitida')")->fetchColumn();
+$kpiPagConf = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='confirmado' AND emision_estado IN ('en_proceso','emitida')")->fetchColumn();
+$kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='pendiente' AND emision_estado='en_proceso'")->fetchColumn();
+
+// Ventana de edición para coordinador (configurable por SA/dev)
+$EDIT_WINDOW_HORAS = 24; // horas por defecto
+try {
+    $cfgEdit = $db->query("SELECT valor FROM configuracion WHERE clave='emi_edit_window_horas' LIMIT 1")->fetchColumn();
+    if ($cfgEdit !== false && is_numeric($cfgEdit)) $EDIT_WINDOW_HORAS = (int)$cfgEdit;
+} catch (\Throwable $e) {}
 ?>
 
 <!-- ── KPIs ─────────────────────────────────────────────────────────────────── -->
@@ -156,11 +177,24 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
         <option value="pendiente"  <?= $emiEstatoPago==='pendiente'  ?'selected':'' ?>>⏳ Pago pendiente</option>
         <option value="confirmado" <?= $emiEstatoPago==='confirmado' ?'selected':'' ?>>✅ Pago confirmado</option>
     </select>
+    <!-- Toggle: ver completadas (pagadas + emitidas) -->
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" name="emi_ver_pagadas" value="1" <?= $emiMostrarPagadas ? 'checked' : '' ?> onchange="this.form.submit()" style="width:14px;height:14px;">
+        Ver completadas
+    </label>
     <button type="submit" class="btn btn-outline btn-sm">Filtrar</button>
     <?php if ($emiSearch || $emiEstado || $emiEstatoPago): ?>
     <a href="/admin?tab=emision" class="btn btn-ghost btn-sm">✕ Limpiar</a>
     <?php endif; ?>
 </form>
+<!-- Ventana de edición activa -->
+<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+    ⏱ Ventana de edición del coordinador: <strong><?= $EDIT_WINDOW_HORAS ?> hora<?= $EDIT_WINDOW_HORAS != 1 ? 's' : '' ?></strong> desde el registro del pago.
+    <?php if ($isSuperadmin): ?>
+    <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;margin-left:8px;"
+            data-action="emi-editarVentana">⚙️ Cambiar</button>
+    <?php endif; ?>
+</div>
 
 <!-- ── Tabla ──────────────────────────────────────────────────────────────────── -->
 <div class="card">
@@ -202,6 +236,15 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
                 [$bPago, $lPago] = $BADGE_PAGO[$cot['estado_pago'] ?? 'pendiente'] ?? ['badge-neutral','—'];
                 $tienePoliza = (int)$cot['tiene_poliza'] > 0;
                 $enProceso   = ($cot['emision_estado'] ?? '') === 'en_proceso';
+
+                // Ventana de edición del comprobante
+                $puedeEditar = false;
+                if (!empty($cot['comprobante_registrado_en'])) {
+                    $segsRegistrado = time() - strtotime($cot['comprobante_registrado_en']);
+                    $puedeEditar    = $segsRegistrado <= ($EDIT_WINDOW_HORAS * 3600);
+                }
+                // SA y superadmin siempre pueden editar
+                if ($isSuperadmin) $puedeEditar = true;
             ?>
             <tr style="cursor:pointer;"
                 data-cot-id="<?= (int)$cot['id'] ?>"
@@ -264,6 +307,7 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
                                     style="width:100%; margin-bottom:4px;">
                                 👁 Ver comprobante
                             </button>
+                            <?php if ($puedeEditar): ?>
                             <button class="btn btn-outline btn-sm"
                                     data-action="emi-abrirComprobante"
                                     data-cot-id="<?= $cot['id'] ?>"
@@ -272,6 +316,11 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
                                     style="width:100%; margin-bottom:4px;">
                                 🔄 Cambiar cobro
                             </button>
+                            <?php else: ?>
+                            <div style="font-size:10px;color:var(--text-muted);text-align:center;margin-bottom:4px;">
+                                🔒 Ventana de edición cerrada
+                            </div>
+                            <?php endif; ?>
                         <?php endif; ?>
 
                     <?php elseif ($puedeRegistrarPago): ?>
@@ -664,9 +713,25 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
         if (img) window.open(img.src, '_blank');
         return;
     }
-    if (el.id === 'btnEmiRegistrarPagoDesdeDetalle') {
-        closeModal('modalEmiDetalle');
-        emiAbrirComprobante(el.dataset.cotId, el.dataset.folio, el.dataset.asesorId);
+    if (action === 'emi-editarVentana') {
+        e.stopPropagation();
+        const horas = prompt('Ventana de edición para el coordinador (en horas):\n(El SA/superadmin puede cambiarla en cualquier momento)', '<?= $EDIT_WINDOW_HORAS ?>');
+        if (horas === null || horas === '') return;
+        const h = parseInt(horas);
+        if (isNaN(h) || h < 0) { if(typeof toast==='function') toast('Valor inválido', 'error'); return; }
+        const fd = new FormData();
+        fd.append('accion', 'emi_set_edit_window');
+        fd.append('horas', h);
+        fetch('/admin', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => {
+                if (d.ok) {
+                    if(typeof toast==='function') toast(`Ventana de edición actualizada a ${h} hora${h!==1?'s':''}`, 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    if(typeof toast==='function') toast(d.msg || 'Error', 'error');
+                }
+            });
         return;
     }
 });

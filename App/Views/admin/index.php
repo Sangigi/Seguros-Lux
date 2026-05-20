@@ -342,22 +342,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $tid   = (int)($_POST['agente_id'] ?? 0);
         $limit = min((int)($_POST['limit'] ?? 50), 200);
         if (!$tid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
-        $st = $db->prepare(
-            "SELECT h.tipo, h.titulo, h.descripcion, h.fecha,
-                    c.folio,
-                    CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
-             FROM historial_coordinador h
-             LEFT JOIN cotizaciones c  ON c.id  = h.cotizacion_id
-             LEFT JOIN clientes    cl ON cl.id = h.cliente_id
-             WHERE h.coordinador_id = ?
-             ORDER BY h.fecha DESC
-             LIMIT ?"
-        );
-        $st->execute([$tid, $limit]);
-        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($rows as &$r) { $r['fecha_fmt'] = date('d/m/Y H:i', strtotime($r['fecha'])); }
-        unset($r);
-        echo json_encode(['ok'=>true,'historial'=>$rows]);
+        try {
+            $st = $db->prepare(
+                "SELECT h.tipo, h.titulo, h.descripcion,
+                        COALESCE(h.creado_en, h.fecha, NOW()) AS fecha_registro,
+                        c.folio,
+                        CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
+                 FROM historial_coordinador h
+                 LEFT JOIN cotizaciones c  ON c.id  = h.cotizacion_id
+                 LEFT JOIN clientes    cl ON cl.id = h.cliente_id
+                 WHERE h.coordinador_id = ?
+                 ORDER BY COALESCE(h.creado_en, h.fecha) DESC
+                 LIMIT ?"
+            );
+            $st->execute([$tid, $limit]);
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as &$r) {
+                $r['fecha_fmt'] = $r['fecha_registro']
+                    ? date('d/m/Y H:i', strtotime($r['fecha_registro']))
+                    : '—';
+            }
+            unset($r);
+            echo json_encode(['ok'=>true,'historial'=>$rows]);
+        } catch (\Throwable $eH) {
+            echo json_encode(['ok'=>false,'msg'=>'Error al consultar historial: '.$eH->getMessage()]);
+        }
 
     } elseif ($a === 'cambiar_rol') {
         $tid = (int)($_POST['agente_id']??0);
