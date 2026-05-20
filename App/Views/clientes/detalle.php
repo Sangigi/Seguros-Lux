@@ -25,7 +25,12 @@ set_exception_handler(function(\Throwable $e) {
 });
 
 $agenteId               = SessionManager::getAgentId();
-$puedeGestionarPolizas   = true;
+$agenteData             = SessionManager::getAgentData();
+$rolAgente              = $agenteData['rol'] ?? 'asesor';
+
+// Le damos el poder al asesor (y a todos) de manejar las pólizas
+$puedeGestionarPolizas  = true; 
+
 $clienteId       = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if (!$clienteId) { header('Location: /clientes'); exit; }
 
@@ -987,9 +992,9 @@ $pageTitle=$nombreCompleto;
                         <?php endif; ?>
                     </div>
                     <div class="card-body">
-                        <?php if (!$puedeGestionarPolizas): ?>
+                        <?php if ($rolAgente === 'asesor'): ?>
                         <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.45;">
-                            Resumen informativo: la administración registra aquí las pólizas emitidas. Como asesor no puedes subirlas ni descargar el PDF; ante dudas, contacta al coordinador.
+                            Resumen informativo: sube tu primera poliza.
                         </p>
                         <?php endif; ?>
                         <?php
@@ -1300,7 +1305,7 @@ $BADGE_PAGO_CL = [
                             $yaPagada  = ($cot['estado_pago'] ?? 'pendiente') === 'confirmado' || $cot['estado'] === 'pagado';
                             ?>
                             <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
-                                <?php if (!$puedeGestionarPolizas): ?>
+                                <?php if ($rolAgente === 'asesor'): ?>
                                 <!-- Asesor: solo puede editar y enviar al coordinador cuando el checklist esté completo -->
                                 <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
                                    class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion">&#9999;&#65039; Editar</a>

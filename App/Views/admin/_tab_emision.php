@@ -320,6 +320,14 @@ try {
                             <div style="font-size:10px;color:var(--text-muted);text-align:center;margin-bottom:4px;">
                                 🔒 Ventana de edición cerrada
                             </div>
+                            <?php if ($isSuperadmin && $tieneComp): ?>
+                            <button class="btn btn-ghost btn-sm"
+                                    data-action="emi-resetTimer"
+                                    data-cot-id="<?= (int)$cot['id'] ?>"
+                                    style="width:100%;font-size:10px;color:var(--warning-color);">
+                                ⏱ Reiniciar temporizador
+                            </button>
+                            <?php endif; ?>
                             <?php endif; ?>
                         <?php endif; ?>
 
@@ -701,6 +709,24 @@ try {
         e.stopPropagation();
         // CORRECCIÓN: Tenías el.dataset.colId, lo correcto es el.dataset.cotId
         emiAbrirComprobante(el.dataset.cotId, el.dataset.folio, el.dataset.asesorId);
+        return;
+    }
+    if (action === 'emi-resetTimer') {
+        e.stopPropagation();
+        if (!confirm('¿Reiniciar el temporizador de edición para esta cotización?')) return;
+        const fd = new FormData();
+        fd.append('accion', 'emi_reset_edit_timer');
+        fd.append('cotizacion_id', el.dataset.cotId);
+        fetch('/admin', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => {
+                if (d.ok) {
+                    if (typeof toast === 'function') toast('Temporizador reiniciado. La ventana de edición vuelve a estar activa.', 'success');
+                    setTimeout(() => location.reload(), 1200);
+                } else {
+                    if (typeof toast === 'function') toast(d.msg || 'Error', 'error');
+                }
+            });
         return;
     }
     if (action === 'emi-verComprobante') {
