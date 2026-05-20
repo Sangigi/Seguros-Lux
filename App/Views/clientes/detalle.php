@@ -170,7 +170,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         try { $iKey=idriveUpload($uploadDir.$nombreArch,"clientes/{$clienteId}/polizas/{$nombreArch}");
               if ($iKey) $polizaModel->marcarIdrive($polizaId,$iKey); } catch(\Throwable $e){}
         $historialModel->registrar($clienteId,$agenteId,'nota','Póliza subida',$file['name']);
+        
+        // --- INICIO DE FUSIÓN: ENVIAR AUTOMÁTICAMENTE AL COORDINADOR ---
+        if ($cotId) {
+            $db = \Database\Connection::getConnection();
+            // Marcar cotización como "en_proceso" para que aparezca en el panel del coordinador
+            $db->prepare("UPDATE cotizaciones SET emision_estado = 'en_proceso' WHERE id = ?")->execute([$cotId]);
+            
+            // Buscar datos para notificar a los coordinadores
+            $stC = $db->prepare('SELECT c.folio, c.compania, cl.nombre, cl.apellido_paterno FROM cotizaciones c JOIN clientes cl ON cl.id = c.cliente_id WHERE c.id = ?');
+            $stC->execute([$cotId]);
+            if ($datCot = $stC->fetch(\PDO::FETCH_ASSOC)) {
+                $coords = $db->query("SELECT id FROM agentes WHERE rol IN ('coordinador','superadmin') AND activo = 1")->fetchAll(\PDO::FETCH_COLUMN);
+                $folio = $datCot['folio'] ?? '#'.$cotId;
+                $clienteNombre = trim(($datCot['nombre'] ?? '') . ' ' . ($datCot['apellido_paterno'] ?? ''));
+                $stmt = $db->prepare("INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en) VALUES (?,?,?,?,1,'blue',?,0,NOW())");
+                
+                foreach ($coords as $cid) {
+                    $stmt->execute([
+                        $cid, 'emision', 
+                        "📤 Expediente listo y Póliza subida — {$folio}", 
+                        "El asesor completó el expediente de {$clienteNombre} ({$datCot['compania']}) y adjuntó la póliza. Pendiente de pago.", 
+                        "/admin?tab=emision"
+                    ]);
+                }
+                
+                // Actualizar el historial del cliente
+                $historialModel->registrar($clienteId, $agenteId, 'cotizacion', 
+                    "📤 Expediente enviado a revisión — {$folio}", 
+                    "Póliza subida. Pendiente confirmación de pago por el coordinador."
+                );
+            }
+        }
+        // --- FIN DE FUSIÓN ---
+
         echo json_encode(['ok'=>true,'id'=>$polizaId,'en_idrive'=>(bool)$iKey]); exit;
+    }
     }
 
     if ($_POST['accion'] === 'editar_poliza' && $polizaModel) {
@@ -987,9 +1022,9 @@ $pageTitle=$nombreCompleto;
                 <div class="card mb-24">
                     <div class="card-header">
                         <h3 class="card-title">Pólizas <span class="badge badge-neutral"><?php echo count($polizas); ?></span></h3>
-                        <?php if ($puedeGestionarPolizas): ?>
+                        <!-- <?php if ($puedeGestionarPolizas): ?>
                         <button class="btn btn-sm btn-primary" data-action="det-open" data-modal="modalSubirPoliza">+ Subir Póliza</button>
-                        <?php endif; ?>
+                        <?php endif; ?> -->
                     </div>
                     <div class="card-body">
                         <?php if ($rolAgente === 'asesor'): ?>
@@ -1014,9 +1049,9 @@ $pageTitle=$nombreCompleto;
                         <div style="text-align:center;padding:28px 0;color:var(--text-muted);">
                             <div style="font-size:36px;margin-bottom:8px;">📄</div>
                             <p style="font-size:13px;margin-bottom:10px;">Sin pólizas registradas.</p>
-                            <?php if ($puedeGestionarPolizas): ?>
+                            <!-- <?php if ($puedeGestionarPolizas): ?>
                             <button class="btn btn-primary btn-sm" data-action="det-open" data-modal="modalSubirPoliza">Subir primera póliza</button>
-                            <?php endif; ?>
+                            <?php endif; ?> -->
                         </div>
                         <?php elseif (empty($polizas) && !empty($allDocPoliza)): ?>
                         <!-- El coordinador subió documentos de póliza pero no hay póliza en la tabla polizas -->
@@ -1221,9 +1256,9 @@ $pageTitle=$nombreCompleto;
                         <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="quick-action-btn">📋 Nueva Cotización</a>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalCita">📅 Programar Cita</button>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalNota">📝 Agregar Nota</button>
-                        <?php if ($puedeGestionarPolizas): ?>
+                        <!-- <?php if ($puedeGestionarPolizas): ?>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalSubirPoliza">📄 Subir Póliza</button>
-                        <?php endif; ?>
+                        <?php endif; ?> -->
                     </div>
                 </div>
 
