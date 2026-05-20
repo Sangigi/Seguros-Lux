@@ -1050,7 +1050,8 @@ $pageTitle=$nombreCompleto;
                             $urlP  =file_exists($rutaF)?'/archivo?file=polizas/'.$clienteId.'/'.$pol['nombre_archivo']:null;
                             $estadoCotPol = '';
                             foreach ($cotizaciones as $_c) { if ($_c['id'] == $pol['cotizacion_id']) { $estadoCotPol = $_c['estado']; break; } }
-                            $pagada = ((bool)($pol['pago_confirmado']??false)) || ($estadoCotPol === 'pagado');
+                            // Asegurarnos de que verifique todos los indicadores de pago
+                            $pagada = ((bool)($pol['pago_confirmado']??false)) || ($estadoCotPol === 'pagado') || (($pol['estado_pago'] ?? '') === 'confirmado');
                         ?>
                         <div class="poliza-card <?php echo $cCss; ?>">
                             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;">
@@ -1354,7 +1355,8 @@ $BADGE_PAGO_CL = [
         style="font-size:11px;padding:3px 12px; <?php echo $bloquear_boton_emision ? 'opacity:0.5; cursor:not-allowed;' : ''; ?>" 
         <?php echo $bloquear_boton_emision ? 'disabled' : ''; ?>
         data-cot-id="<?php echo $cot['id']; ?>"
-        data-action="abrir-emision">
+        data-folio="<?php echo htmlspecialchars($cot['folio'] ?? '#'.$cot['id']); ?>"
+        data-action="det-enviarCoordinador">
     📝 Emitir y Subir Póliza
 </button>
     <?php endif; ?>
@@ -2040,19 +2042,6 @@ function guardarEdicionCliente() {
 </script>
 
 <script nonce="<?= $cspNonce ?>">
-    // Añade esto donde manejas tus eventos (probablemente ya tienes un addEventListener en detalle.php)
-document.addEventListener('click', function(e) {
-    const btn = e.target.closest('[data-action="abrir-emision"]');
-    if (btn) {
-        const cotId = btn.getAttribute('data-cot-id');
-        // Asignamos el valor al campo oculto
-        const campo = document.getElementById('polizaCotizacion');
-        if (campo) campo.value = cotId;
-        
-        // Llamamos a tu función modal
-        openModal('modalSubirPoliza');
-    }
-});
 // ── Vehículo: toggle edición ──────────────────────────────────────────────────
 (function(){
     const btnEdit   = document.getElementById('btnEditarVehiculo');
@@ -2172,7 +2161,7 @@ document.addEventListener('click', function(e) {
         case 'det-enviarCoordinador': {
             const cotId  = el.dataset.cotId;
             const folio  = el.dataset.folio || '#' + cotId;
-            if (!confirm(`¿Enviar el expediente "${folio}" al coordinador para cobro?\n\nEsto notificará al coordinador de que está listo para procesar el pago.`)) break;
+            if (!confirm(`¿Enviar el expediente "${folio}" al coordinador para emisión y cobro?\n\nEsto le notificará que los documentos están listos.`)) break;
             el.disabled = true;
             el.textContent = 'Enviando…';
             const fd = new FormData();
@@ -2182,9 +2171,9 @@ document.addEventListener('click', function(e) {
                 .then(r => r.json())
                 .then(d => {
                     el.disabled = false;
-                    el.textContent = '📤 Enviar al coordinador';
+                    el.textContent = '📝 Emitir y Subir Póliza';
                     if (d.ok) {
-                        showToast(d.msg || 'Expediente enviado al coordinador', 'success');
+                        showToast(d.msg || 'Expediente enviado a Emisión', 'success');
                         setTimeout(() => location.reload(), 1500);
                     } else {
                         showToast(d.msg || 'Error al enviar', 'error');
@@ -2192,7 +2181,7 @@ document.addEventListener('click', function(e) {
                 })
                 .catch(() => {
                     el.disabled = false;
-                    el.textContent = '📤 Enviar al coordinador';
+                    el.textContent = '📝 Emitir y Subir Póliza';
                     showToast('Error de conexión', 'error');
                 });
             break;
