@@ -213,33 +213,52 @@ switch ($accion) {
         exit;
     }
 
-    // ── Obtener datos de un comprobante ───────────────────────────────────────
+    // ── NUEVO: Obtener la vista previa del comprobante de pago ────────────────
     case 'emi_get_comprobante': {
-        $compId = (int)($_POST['comprobante_id'] ?? 0);
-        if (!$compId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        $id = (int)($_POST['comprobante_id'] ?? 0);
+        if (!$id) { echo json_encode(['ok'=>false, 'msg'=>'ID de comprobante inválido.']); exit; }
 
-        $st = $db->prepare(
-            "SELECT cp.*, c.id AS cotizacion_id
-             FROM cotizacion_comprobantes_pago cp
-             JOIN cotizaciones c ON c.id = cp.cotizacion_id
-             WHERE cp.id = ? AND cp.eliminado_en IS NULL"
-        );
-        $st->execute([$compId]);
+        $st = $db->prepare("SELECT * FROM cotizacion_comprobantes_pago WHERE id = ? AND eliminado_en IS NULL");
+        $st->execute([$id]);
         $comp = $st->fetch(\PDO::FETCH_ASSOC);
-        if (!$comp) { echo json_encode(['ok'=>false,'msg'=>'Comprobante no encontrado.']); exit; }
 
-        // URL archivo
-        if ($comp['nombre_archivo']) {
-            $rutaFis = dirname(__DIR__, 3) . '/uploads/comprobantes/' . $comp['cotizacion_id'] . '/' . $comp['nombre_archivo'];
-            $comp['url_local'] = file_exists($rutaFis)
-                ? '/archivo?file=comprobantes/' . $comp['cotizacion_id'] . '/' . $comp['nombre_archivo']
-                : null;
-        } else {
-            $comp['url_local'] = null;
+        if (!$comp) {
+            echo json_encode(['ok'=>false, 'msg'=>'El comprobante no existe o fue eliminado.']);
+            exit;
         }
 
-        $comp['creada_en'] = date('d/m/Y H:i', strtotime($comp['creada_en']));
-        echo json_encode(['ok'=>true,'comprobante'=>$comp]);
+        $ruta = '/files?file=' . urlencode('comprobantes/' . $comp['nombre_archivo']);
+        $ext = strtolower(pathinfo($comp['nombre_archivo'], PATHINFO_EXTENSION));
+
+        // Generamos el HTML que se inyectará dentro del Modal del coordinador
+        $html = '<div style="display:flex; flex-direction:column; gap:16px;">';
+        $html .= '<div style="display:flex; justify-content:space-between; align-items:center; background:#1e293b; padding:12px 16px; border-radius:6px; color:#fff;">';
+        $html .= '<div><b>Método:</b> ' . htmlspecialchars(_emi_metodoLabel($comp['metodo_pago'])) . ' | <b>Monto:</b> <span style="color:#f3c332; font-weight:700;">$' . number_format((float)$comp['monto'], 2) . '</span></div>';
+        $html .= '<a href="' . $ruta . '" target="_blank" class="emi-btn-primary" style="padding:6px 12px; font-size:12px; text-decoration:none; color:#fff; background:#2563eb; border-radius:4px;"><i class="fas fa-external-link-alt"></i> Abrir completo</a>';
+        $html .= '</div>';
+
+        if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
+            $html .= '<div style="text-align:center; background:#0f172a; border-radius:6px; padding:10px; overflow:auto; max-height:450px;">';
+            $html .= '<img src="' . $ruta . '" style="max-width:100%; height:auto; border-radius:4px;" />';
+            $html .= '</div>';
+        } elseif ($ext === 'pdf') {
+            $html .= '<iframe src="' . $ruta . '" style="width:100%; height:450px; border:none; border-radius:6px;"></iframe>';
+        } else {
+            $html .= '<div style="padding:30px; text-align:center; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:6px; color:#64748b;">';
+            $html .= '<i class="fas fa-file-download fa-3x" style="margin-bottom:10px;"></i><br>';
+            $html .= 'Este tipo de archivo (.' . $ext . ') no soporta vista previa dinámica.<br>';
+            $html .= '<a href="' . $ruta . '" target="_blank" style="color:#2563eb; font-weight:600; text-decoration:underline;">Haz clic aquí para descargarlo</a>';
+            $html .= '</div>';
+        }
+
+        if (!empty($comp['comentarios'])) {
+            $html .= '<div style="background:#f1f5f9; padding:12px; border-radius:6px; border-left:4px solid #94a3b8; font-size:13px; color:#334155;">';
+            $html .= '<b>Notas del Cobro:</b><br>' . nl2br(htmlspecialchars($comp['comentarios']));
+            $html .= '</div>';
+        }
+        $html .= '</div>';
+
+        echo json_encode(['ok'=>true, 'html'=>$html]);
         exit;
     }
 

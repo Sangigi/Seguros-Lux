@@ -192,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
     <?php
     $totalReq  = count($requeridos);
     $presentes = count(array_filter($requeridos, fn($t) => isset($docsMap[$t])));
-    $okCount   = count(array_filter($all, fn($t) => ($ckMap[$t]['estado'] ?? '') === 'ok'));
+    $okCount = count(array_filter($all, fn($t) => isset($docsMap[$t]) && ($ckMap[$t]['estado'] ?? 'ok') !== 'rechazado'));
     $pct = $totalReq > 0 ? round($presentes / $totalReq * 100) : 0;
     ?>
     <div class="progress-bar-wrap">
@@ -212,11 +212,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
             $estado = $ckr['estado']  ?? 'pendiente';
             $hasDoc = (bool)$doc;
             $label  = $tipoLabel[$tipo] ?? $tipo;
-            if (!$hasDoc && $isReq)       { $pillClass='pill-miss'; $pillTxt='⚠ Falta'; }
+            if (!$hasDoc && $isReq)        { $pillClass='pill-miss'; $pillTxt='⚠ Falta'; }
             elseif (!$hasDoc)              { $pillClass='pill-pend'; $pillTxt='—'; }
-            elseif ($estado==='ok')        { $pillClass='pill-ok';   $pillTxt='✓ OK'; }
             elseif ($estado==='rechazado') { $pillClass='pill-rej';  $pillTxt='⚠ Obs.'; }
-            else                           { $pillClass='pill-pend'; $pillTxt='⏳ Pendiente'; }
+            else                           { $pillClass='pill-ok';   $pillTxt='✓ Subido'; }
         ?>
             <tr>
                 <td><strong><?= htmlspecialchars($label) ?></strong><?php if ($isReq): ?><span class="req-star">*</span><?php endif; ?></td>

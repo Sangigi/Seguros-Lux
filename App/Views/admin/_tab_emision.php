@@ -92,9 +92,10 @@ $stCots = $db->prepare(
             -- Cuenta archivos subidos (incluyendo póliza)
             (SELECT COUNT(*) FROM cotizacion_archivos ca
              WHERE ca.cotizacion_id = c.id AND ca.eliminado_en IS NULL) AS total_archivos,
-            -- ¿Tiene póliza subida?
-            (SELECT COUNT(*) FROM polizas p
-             WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL) AS tiene_poliza,
+            -- ¿Tiene póliza subida? Susituir por la tabla polizas corregida antes
+            (SELECT COUNT(*) FROM polizas p WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL) AS tiene_poliza,
+            -- NUEVO: Traer el archivo real de la póliza
+            (SELECT p.archivo_poliza FROM polizas p WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL LIMIT 1) AS archivo_poliza,
             -- Comprobante de pago del coordinador
             (SELECT id FROM cotizacion_comprobantes_pago cp
              WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
@@ -225,14 +226,24 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
                 <td><strong style="color:var(--success-color);">$<?= number_format((float)$cot['precio'], 0) ?></strong></td>
                 <td><span class="badge <?= $bEst ?>"><?= ucfirst($cot['estado']) ?></span></td>
                 <td><span class="badge <?= $bPago ?>"><?= $lPago ?></span></td>
-                <td>
-                    <?php if ($tienePoliza): ?>
-                    <span style="color:var(--success-color);font-weight:700;font-size:13px;">✓ Subida</span>
-                    <?php else: ?>
-                    <span style="color:var(--text-muted);font-size:12px;">Sin póliza</span>
-                    <?php endif; ?>
-                    <div style="font-size:10px;color:var(--text-muted);"><?= $cot['total_archivos'] ?> docs</div>
-                </td>
+                <td style="text-align:center;">
+    <?php if ($cot['tiene_poliza'] > 0): ?>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+            <span class="emi-pill pill-ok" title="Póliza cargada y emitida">✓ Subida</span>
+            <?php if (!empty($cot['archivo_poliza'])): ?>
+                <a href="/files?file=<?php echo urlencode('polizas/' . $cot['archivo_poliza']); ?>" 
+                   target="_blank" 
+                   class="emi-btn-view" 
+                   style="padding:2px 6px; font-size:11px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; background:#0f172a; color:#fff; border-radius:4px;"
+                   title="Ver archivo de la póliza">
+                   👁 Ver Póliza
+                </a>
+            <?php endif; ?>
+        </div>
+    <?php else: ?>
+        <span class="emi-pill pill-pend" title="Falta emitir/subir póliza original">⏳ Pendiente</span>
+    <?php endif; ?>
+</td>
                 <td class="emi-stop-prop">
                     <?php if (!$enProceso): ?>
                     <span style="font-size:11px;color:var(--text-muted);">Esperando asesor</span>
