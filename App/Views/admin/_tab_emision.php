@@ -575,41 +575,44 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
 
     // ── Delegación de eventos (sustituye inline onclick, compatible con CSP) ──
     document.addEventListener('click', function(e) {
-        const el = e.target.closest('[data-action]');
-        if (!el) return;
-        const action = el.dataset.action;
+    // 1. Si hicieron clic dentro de la celda de acciones pero NO en un botón válido, ignorar para que no abra el detalle de la fila
+    if (e.target.closest('.emi-stop-prop') && !e.target.closest('[data-action]')) {
+        return;
+    }
 
-        if (action === 'emi-abrirDetalle') {
-            const tr = e.target.closest('tr[data-action="emi-abrirDetalle"]');
-            if (tr) { e.stopPropagation(); emiAbrirDetalle(tr); }
-            return;
-        }
-        if (action === 'emi-abrirComprobante') {
-            e.stopPropagation();
-            emiAbrirComprobante(el.dataset.cotId, el.dataset.folio, el.dataset.asesorId);
-            return;
-        }
-        if (action === 'emi-verComprobante') {
-            e.stopPropagation();
-            emiVerComprobante(el.dataset.comprobanteId);
-            return;
-        }
-        if (action === 'emi-openImg') {
-            const img = el.querySelector('img');
-            if (img) window.open(img.src, '_blank');
-            return;
-        }
-        // Botón pago desde modal detalle
-        if (el.id === 'btnEmiRegistrarPagoDesdeDetalle') {
-            closeModal('modalEmiDetalle');
-            emiAbrirComprobante(el.dataset.cotId, el.dataset.folio, el.dataset.asesorId);
-            return;
-        }
-    });
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const action = el.dataset.action;
 
-    // Stop propagation on action cells without inline onclick
-    document.querySelectorAll('td.emi-stop-prop').forEach(td => {
-        td.addEventListener('click', e => e.stopPropagation());
-    });
+    if (action === 'emi-abrirDetalle') {
+        // Evitar abrir detalle si hicieron clic específicamente en la celda de acciones
+        if (e.target.closest('.emi-stop-prop')) return; 
+        
+        const tr = e.target.closest('tr[data-action="emi-abrirDetalle"]');
+        if (tr) { emiAbrirDetalle(tr); }
+        return;
+    }
+    if (action === 'emi-abrirComprobante') {
+        e.stopPropagation();
+        // CORRECCIÓN: Tenías el.dataset.colId, lo correcto es el.dataset.cotId
+        emiAbrirComprobante(el.dataset.cotId, el.dataset.folio, el.dataset.asesorId);
+        return;
+    }
+    if (action === 'emi-verComprobante') {
+        e.stopPropagation();
+        emiVerComprobante(el.dataset.comprobanteId);
+        return;
+    }
+    if (action === 'emi-openImg') {
+        const img = el.querySelector('img');
+        if (img) window.open(img.src, '_blank');
+        return;
+    }
+    if (el.id === 'btnEmiRegistrarPagoDesdeDetalle') {
+        closeModal('modalEmiDetalle');
+        emiAbrirComprobante(el.dataset.cotId, el.dataset.folio, el.dataset.asesorId);
+        return;
+    }
+});
 })();
 </script>
