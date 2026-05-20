@@ -231,7 +231,7 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
         <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
             <span class="emi-pill pill-ok" title="Póliza cargada y emitida">✓ Subida</span>
             <?php if (!empty($cot['archivo_poliza'])): ?>
-                <a href="/files?file=<?php echo urlencode('polizas/' . $cot['archivo_poliza']); ?>" 
+                <a href="/archivo?file=<?php echo urlencode('polizas/' . $cot['id'] . '/' . $cot['archivo_poliza']); ?>" 
                    target="_blank" 
                    class="emi-btn-view" 
                    style="padding:2px 6px; font-size:11px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; background:#0f172a; color:#fff; border-radius:4px;"
@@ -244,52 +244,59 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
         <span class="emi-pill pill-pend" title="Falta emitir/subir póliza original">⏳ Pendiente</span>
     <?php endif; ?>
 </td>
+                <?php
+                    $estadoPago    = $cot['estado_pago'] ?? 'pendiente';
+                    $pagoCofirmado = ($estadoPago === 'confirmado');
+                    $tieneComp     = !empty($cot['comprobante_id']);
+                    $esEmitidaPagada = ($cot['estado'] === 'pagado' || $pagoCofirmado);
+                    // Mostrar "Registrar pago" si: no está pagado Y hay archivos subidos (el asesor actuó)
+                    $puedeRegistrarPago = !$pagoCofirmado && ((int)$cot['total_archivos'] > 0 || $tienePoliza || $enProceso);
+                ?>
                 <td class="emi-stop-prop">
-                    <?php if ($cot['estado'] === 'pagado' || $tienePoliza): ?>
+                    <?php if ($esEmitidaPagada): ?>
                         <div style="color:#10b981; font-size:12px; font-weight:700; margin-bottom:8px; text-align:center;">
                             ✔️ Emitida y Pagada
                         </div>
-                        <?php if (!empty($cot['comprobante_id'])): ?>
+                        <?php if ($tieneComp): ?>
                             <button class="btn btn-ghost btn-sm"
                                     data-action="emi-verComprobante"
-                                    data-comprobante-id="<?= (int)$cot['comprobante_id'] ?>" style="width:100%; margin-bottom:4px;">
+                                    data-comprobante-id="<?= (int)$cot['comprobante_id'] ?>"
+                                    style="width:100%; margin-bottom:4px;">
                                 👁 Ver comprobante
                             </button>
                             <button class="btn btn-outline btn-sm"
                                     data-action="emi-abrirComprobante"
                                     data-cot-id="<?= $cot['id'] ?>"
                                     data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
-                                    data-asesor-id="<?= (int)$cot['asesor_id'] ?>" style="width:100%; margin-bottom:4px;">
+                                    data-asesor-id="<?= (int)$cot['asesor_id'] ?>"
+                                    style="width:100%; margin-bottom:4px;">
                                 🔄 Cambiar cobro
                             </button>
                         <?php endif; ?>
 
-                    <?php elseif (!$enProceso): ?>
-                        <span style="font-size:11px;color:var(--text-muted); display:block; text-align:center; margin-bottom:8px;">Esperando asesor</span>
-                    
-                    <?php elseif (($cot['estado_pago'] ?? 'pendiente') !== 'confirmado'): ?>
-                        <div style="font-size:10px;color:var(--success-color);font-weight:700;margin-bottom:6px;">✅ Docs. recibidos, listo para cobro</div>
+                    <?php elseif ($puedeRegistrarPago): ?>
+                        <?php if ($enProceso): ?>
+                            <div style="font-size:10px;color:var(--success-color);font-weight:700;margin-bottom:6px;">
+                                ✅ Docs. recibidos, listo para cobro
+                            </div>
+                        <?php else: ?>
+                            <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;">
+                                📁 <?= (int)$cot['total_archivos'] ?> doc(s) subidos
+                            </div>
+                        <?php endif; ?>
                         <button class="btn btn-primary btn-sm"
                                 data-action="emi-abrirComprobante"
                                 data-cot-id="<?= $cot['id'] ?>"
                                 data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
-                                data-asesor-id="<?= (int)$cot['asesor_id'] ?>" style="width:100%; margin-bottom:4px;">
+                                data-asesor-id="<?= (int)$cot['asesor_id'] ?>"
+                                style="width:100%; margin-bottom:4px;">
                             💳 Registrar pago
                         </button>
 
                     <?php else: ?>
-                        <button class="btn btn-ghost btn-sm"
-                                data-action="emi-verComprobante"
-                                data-comprobante-id="<?= (int)$cot['comprobante_id'] ?>" style="width:100%; margin-bottom:4px;">
-                            👁 Ver comprobante
-                        </button>
-                        <button class="btn btn-outline btn-sm"
-                                data-action="emi-abrirComprobante"
-                                data-cot-id="<?= $cot['id'] ?>"
-                                data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
-                                data-asesor-id="<?= (int)$cot['asesor_id'] ?>" style="width:100%; margin-bottom:4px;">
-                            🔄 Cambiar cobro
-                        </button>
+                        <span style="font-size:11px;color:var(--text-muted); display:block; text-align:center; margin-bottom:8px;">
+                            Esperando asesor
+                        </span>
                     <?php endif; ?>
 
                     <a href="/admin?accion=emi_pdf_checklist&cotizacion_id=<?= $cot['id'] ?>"

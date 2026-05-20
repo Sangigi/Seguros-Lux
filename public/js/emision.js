@@ -208,14 +208,14 @@
     }
 
     function renderChecklist(docs, checklist, ramo, cotId) {
-        // docs: archivos subidos por el asesor
+        // docs: archivos subidos por el asesor + comprobante virtual del coordinador
         // checklist: estado marcado por el coordinador (puede estar vacío)
         const tipoLabel = {
             ine: 'INE', comprobante_dom: 'Comp. domicilio',
             tarjeta_circulacion: 'T. circulación', factura_auto: 'Factura auto',
             foto_coche_1: 'Foto 1', foto_coche_2: 'Foto 2', foto_coche_3: 'Foto 3',
             foto_coche_4: 'Foto 4', foto_coche_5: 'Foto 5',
-            comprobante_pago: 'Comp. pago', constancia_fiscal: 'Const. fiscal',
+            comprobante_pago: 'Comp. pago (Coordinador)', constancia_fiscal: 'Const. fiscal',
             poliza: 'Póliza actual', doc_cotizacion: 'Doc. cotización',
         };
 
@@ -225,6 +225,9 @@
             gastos_medicos: ['ine', 'comprobante_dom', 'comprobante_pago'],
         };
         const requeridos = REQS[ramo] || REQS['autos'];
+
+        // Docs que el ASESOR sube (no el coordinador)
+        const DOCS_ASESOR = requeridos.filter(t => t !== 'comprobante_pago');
 
         // Mapas rápidos
         const docsMap     = {};
@@ -254,11 +257,21 @@
             const ext      = tieneDoc && doc.nombre_archivo ? String(doc.nombre_archivo).split('.').pop().toLowerCase() : '';
             const esImg    = ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
 
+            // El comprobante_pago lo sube el COORDINADOR, no el asesor
+            const esDeCoordinador = tipo === 'comprobante_pago';
+
             let estIcon, estColor, estBg;
             if (!tieneDoc) {
-                estIcon  = requerido ? '❌' : '—';
-                estColor = requerido ? '#dc2626' : 'var(--text-muted)';
-                estBg    = requerido ? '#fee2e2' : 'var(--bg-secondary)';
+                if (esDeCoordinador) {
+                    // Pendiente de coordinador — no es error del asesor
+                    estIcon  = '🕐';
+                    estColor = '#2563eb';
+                    estBg    = '#eff6ff';
+                } else if (requerido) {
+                    estIcon  = '❌'; estColor = '#dc2626'; estBg = '#fee2e2';
+                } else {
+                    estIcon  = '—'; estColor = 'var(--text-muted)'; estBg = 'var(--bg-secondary)';
+                }
             } else if (ckEstado === 'ok') {
                 estIcon  = '✅'; estColor = '#16a34a'; estBg = '#f0fdf4';
                 completados++;
@@ -270,20 +283,21 @@
 
             let urlLocal = null;
             if (tieneDoc) {
-                // Construir ruta: primero archivo_relative (alias de `ruta` en BD),
-                // luego fallback a cotizaciones/{id}/{nombre_archivo}
                 let relRaw = '';
                 if (doc.archivo_relative && String(doc.archivo_relative).trim()) {
                     relRaw = String(doc.archivo_relative).trim().replace(/^\/+/, '');
                 } else if (doc.nombre_archivo) {
                     relRaw = `cotizaciones/${doc.cotizacion_id}/${doc.nombre_archivo}`;
                 }
-                // Quitar prefijo "uploads/" si lo incluye, porque /archivo ya lo gestiona
                 relRaw = relRaw.replace(/^uploads\//, '');
                 if (relRaw) {
                     urlLocal = `/archivo?file=${encodeURI(relRaw)}`;
                 }
             }
+
+            const notaTexto = esDeCoordinador && !tieneDoc
+                ? 'Pendiente — el coordinador lo subirá al registrar el pago'
+                : (requerido && !tieneDoc ? 'Requerido — no subido por asesor' : (tieneDoc ? '' : 'No subido'));
 
             html += `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;
@@ -293,16 +307,17 @@
                     <div style="font-size:13px;font-weight:600;color:${estColor};">
                         ${label}
                         ${requerido ? '<span style="font-size:10px;color:#dc2626;margin-left:4px;">*</span>' : ''}
+                        ${esDeCoordinador ? '<span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:99px;margin-left:6px;">Coord.</span>' : ''}
                     </div>
                     ${tieneDoc
-                        ? `<div style="font-size:11px;color:var(--text-muted);">${doc.nombre_original}</div>`
-                        : `<div style="font-size:11px;color:${estColor};">${requerido ? 'Requerido — no subido' : 'No subido'}</div>`}
+                        ? `<div style="font-size:11px;color:var(--text-muted);">${doc.nombre_original || doc.nombre_orig || ''}</div>`
+                        : `<div style="font-size:11px;color:${estColor};">${notaTexto}</div>`}
                     ${ck?.nota ? `<div style="font-size:11px;color:#d97706;margin-top:2px;">Nota: ${ck.nota}</div>` : ''}
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
                     ${urlLocal ? `<a href="${urlLocal}" target="_blank" class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 8px;">👁 Ver</a>` : ''}
-                    ${urlLocal ? `<a href="${urlLocal}" download="${doc.nombre_original}" class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 8px;">⬇</a>` : ''}
-                    ${tieneDoc ? `
+                    ${urlLocal ? `<a href="${urlLocal}" download="${doc.nombre_original || doc.nombre_orig || ''}" class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 8px;">⬇</a>` : ''}
+                    ${tieneDoc && !esDeCoordinador ? `
                     <button class="btn btn-sm btn-ghost"
                             style="font-size:11px;color:#16a34a;padding:3px 8px;"
                             data-action="emi-marcarDoc"
@@ -324,10 +339,10 @@
 
         document.getElementById('eckBody').innerHTML = html;
 
-        // Actualizar contador progreso
-        const totalReq = requeridos.filter(t => !!docsMap[t]).length;
+        // Actualizar contador progreso (excluir comprobante_pago del conteo de asesor)
+        const totalReq = DOCS_ASESOR.filter(t => !!docsMap[t]).length;
         document.getElementById('eckProgress').textContent =
-            `${totalReq}/${requeridos.length} requeridos presentes — ${completados} marcados OK`;
+            `${totalReq}/${DOCS_ASESOR.length} docs asesor presentes — ${completados} marcados OK`;
     }
 
     function marcarDoc(cotId, tipo, estado, btn) {
