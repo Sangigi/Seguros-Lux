@@ -279,13 +279,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                            ELSE 0
                        END AS pago_confirmado,
                        COALESCE(ccp.metodo_pago, cot.metodo_pago) AS metodo_pago,
-                       COALESCE(ccp.creado_en, cp.fecha_pago)     AS fecha_pago
+                       COALESCE(ccp.creado_en, cp.creado_en)      AS fecha_pago
                 FROM polizas p
                 JOIN clientes c   ON c.id  = p.cliente_id
                 JOIN agentes  a   ON a.id  = p.agente_id
                 LEFT JOIN cotizaciones                cot ON cot.id  = p.cotizacion_id
                 LEFT JOIN cotizacion_comprobantes_pago ccp ON ccp.cotizacion_id = p.cotizacion_id AND ccp.eliminado_en IS NULL
-                LEFT JOIN cotizacion_pagos             cp  ON cp.cotizacion_id  = p.cotizacion_id
+                LEFT JOIN (SELECT cotizacion_id, MAX(id) AS max_id FROM cotizacion_pagos GROUP BY cotizacion_id) cpmax
+                          ON cpmax.cotizacion_id = p.cotizacion_id
+                LEFT JOIN cotizacion_pagos cp ON cp.id = cpmax.max_id
                 WHERE p.eliminado_en IS NULL';
         $params = [];
         if ($filtroAsesor) { $sql .= ' AND p.agente_id = ?'; $params[] = $filtroAsesor; }

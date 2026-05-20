@@ -294,6 +294,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 
     // ── Editar datos del cliente ───────────────────────────────────────────────
     if ($_POST['accion'] === 'editar_cliente') {
+        $soloVehiculo = !empty($_POST['_solo_vehiculo']);
+
+        if ($soloVehiculo) {
+            // ── Guardar solo campos de vehículo ───────────────────────────────
+            $ramo = $cliente['ramo'] ?? 'autos';
+            if ($ramo !== 'autos') {
+                echo json_encode(['ok'=>false,'msg'=>'Solo disponible para ramo autos.']); exit;
+            }
+            $campos = [];
+            if (($_POST['marca'] ?? '') !== '') $campos['marca'] = trim($_POST['marca']);
+            if (($_POST['modelo'] ?? '') !== '') $campos['modelo'] = trim($_POST['modelo']);
+            if (($_POST['anio_vehiculo'] ?? '') !== '') $campos['anio_vehiculo'] = (int)$_POST['anio_vehiculo'] ?: null;
+            if (($_POST['tipo_vehiculo'] ?? '') !== '') $campos['tipo_vehiculo'] = trim($_POST['tipo_vehiculo']);
+            if (empty($campos)) { echo json_encode(['ok'=>true]); exit; }
+            try {
+                $db = \Database\Connection::getConnection();
+                $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($campos)));
+                $vals = array_values($campos);
+                $vals[] = $clienteId;
+                $vals[] = $agenteId;
+                $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")
+                   ->execute($vals);
+                echo json_encode(['ok'=>true]); exit;
+            } catch(\Throwable $e) {
+                echo json_encode(['ok'=>false,'msg'=>'Error: '.$e->getMessage()]); exit;
+            }
+        }
+
         $campos = [
             'nombre'           => trim($_POST['nombre']           ?? ''),
             'apellido_paterno' => trim($_POST['apellido_paterno'] ?? ''),
@@ -349,6 +377,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         } catch(\Throwable $e) {
             error_log('editar_cliente error: ' . $e->getMessage());
             echo json_encode(['ok'=>false,'msg'=>'Error al guardar.']); exit;
+        }
+    }
+
+    // ── Notificar al coordinador que el expediente está listo ─────────────────
+    if ($_POST['accion'] === 'enviar_coordinador') {
+        $cotId = (int)($_POST['cot_id'] ?? 0);
+        if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'Cotización inválida.']); exit; }
+        try {
+            $db = \Database\Connection::getConnection();
+            // Verificar que la cot pertenece al asesor
+            $stC = $db->prepare('SELECT c.id, c.folio, c.compania, c.cliente_id, cl.nombre, cl.apellido_paterno
+                                  FROM cotizaciones c JOIN clientes cl ON cl.id = c.cliente_id
+                                  WHERE c.id = ? AND c.agente_id = ? AND c.eliminado_en IS NULL');
+            $stC->execute([$cotId, $agenteId]);
+            $datCot = $stC->fetch(\PDO::FETCH_ASSOC);
+            if (!$datCot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
+            // Marcar cotización como "en_proceso" para que el coordinador la vea en emisión
+            $db->prepare("UPDATE cotizaciones SET emision_estado = 'en_proceso' WHERE id = ?")->execute([$cotId]);
+            // Notificar a todos los coordinadores/admins
+            $coords = $db->query("SELECT id FROM agentes WHERE rol IN ('coordinador','superadmin') AND activo = 1")->fetchAll(\PDO::FETCH_COLUMN);
+            $folio = $datCot['folio'] ?? '#'.$cotId;
+            $clienteNombre = trim(($datCot['nombre'] ?? '') . ' ' . ($datCot['apellido_paterno'] ?? ''));
+            $stmt = $db->prepare("INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
+                                   VALUES (?,?,?,?,1,'blue',?,0,NOW())");
+            foreach ($coords as $cid) {
+                $stmt->execute([
+                    $cid, 'emision',
+                    "📤 Expediente listo — {$folio}",
+                    "El asesor envió el expediente completo de {$clienteNombre} ({$datCot['compania']}) para emisión y cobro.",
+                    "/admin?tab=emision",
+                ]);
+            }
+            // Registrar en historial del cliente
+            $historialModel->registrar($clienteId, $agenteId, 'cotizacion',
+                "📤 Expediente enviado al coordinador — {$folio}",
+                "Todos los documentos requeridos están completos. Pendiente de cobro por coordinador."
+            );
+            echo json_encode(['ok'=>true,'msg'=>'Expediente enviado al coordinador. Se notificará cuando el pago sea confirmado.']); exit;
+        } catch(\Throwable $e) {
+            echo json_encode(['ok'=>false,'msg'=>'Error: '.$e->getMessage()]); exit;
         }
     }
 
@@ -1129,15 +1197,43 @@ $BADGE_PAGO_CL = [
                                 </div>
                             </div>
                             <!-- Acciones de cotizacion -->
+                            <?php
+                            $chk       = $checklistPorCot[(int)$cot['id']] ?? null;
+                            $cotListo  = $chk && $chk['listo'];
+                            $yaPagada  = ($cot['estado_pago'] ?? 'pendiente') === 'confirmado' || $cot['estado'] === 'pagado';
+                            ?>
                             <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                                <?php if (!$puedeGestionarPolizas): ?>
+                                <!-- Asesor: solo puede editar y enviar al coordinador cuando el checklist esté completo -->
                                 <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
                                    class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion">&#9999;&#65039; Editar</a>
-                                <?php if ($cot['estado'] !== 'pagado'): ?>
+                                <?php if ($yaPagada): ?>
+                                <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pago confirmado</span>
+                                <?php elseif ($cotListo): ?>
+                                <button class="btn btn-sm btn-primary" style="font-size:11px;padding:3px 12px;"
+                                        data-action="det-enviarCoordinador"
+                                        data-cot-id="<?php echo (int)$cot['id']; ?>"
+                                        data-folio="<?php echo htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES); ?>"
+                                        title="Enviar expediente completo al coordinador para cobro">
+                                    📤 Enviar al coordinador
+                                </button>
+                                <?php else: ?>
+                                <span style="font-size:11px;padding:3px 10px;background:#fef3c7;color:#92400e;border-radius:6px;"
+                                      title="Completa todos los documentos requeridos para habilitar el envío">
+                                    🔒 Completa los docs para enviar
+                                </span>
+                                <?php endif; ?>
+                                <?php else: ?>
+                                <!-- Coordinador: puede editar y registrar pago -->
+                                <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
+                                   class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion">&#9999;&#65039; Editar</a>
+                                <?php if ($yaPagada): ?>
+                                <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pagado</span>
+                                <?php else: ?>
                                 <button class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;color:var(--success-color,#22c55e);border-color:var(--success-color,#22c55e);"
                                         data-action="det-abrirPago" data-cot="<?php echo htmlspecialchars(json_encode(['id'=>(int)$cot['id'],'folio'=>$cot['folio']??'','compania'=>$cot['compania'],'precio'=>(float)$cot['precio'],'metodo_pago'=>$cot['metodo_pago']??''],JSON_UNESCAPED_UNICODE),ENT_QUOTES); ?>"
-                                        title="Confirmar pago">&#128176; Confirmar Pago</button>
-                                <?php else: ?>
-                                <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pagado</span>
+                                        title="Registrar pago">&#128176; Registrar pago</button>
+                                <?php endif; ?>
                                 <?php endif; ?>
                             </div>
                             <?php if (!empty($archs)): ?>
@@ -1814,6 +1910,67 @@ function guardarEdicionCliente() {
 </script>
 
 <script nonce="<?= $cspNonce ?>">
+// ── Vehículo: toggle edición ──────────────────────────────────────────────────
+(function(){
+    const btnEdit   = document.getElementById('btnEditarVehiculo');
+    const btnCancel = document.getElementById('btnCancelarVehiculo');
+    const btnSave   = document.getElementById('btnGuardarVehiculo');
+    const viewMode  = document.getElementById('vehiculoViewMode');
+    const editMode  = document.getElementById('vehiculoEditMode');
+    if (!btnEdit) return;
+    btnEdit.addEventListener('click', () => {
+        viewMode.style.display = 'none';
+        editMode.style.display = '';
+        btnEdit.style.display  = 'none';
+    });
+    if (btnCancel) btnCancel.addEventListener('click', () => {
+        viewMode.style.display = '';
+        editMode.style.display = 'none';
+        btnEdit.style.display  = '';
+    });
+    if (btnSave) btnSave.addEventListener('click', () => {
+        btnSave.disabled = true;
+        btnSave.textContent = 'Guardando…';
+        const fd = new FormData();
+        fd.append('accion', 'editar_cliente');
+        // Campos generales del cliente que están en el modal de edición principal
+        // Para vehículo: leer desde el formulario inline del card
+        const form = editMode;
+        const get = (name) => form.querySelector(`[name="${name}"]`)?.value ?? '';
+        fd.append('marca',           form.querySelector('[name="vehiculo_marca"]')?.value ?? '');
+        fd.append('modelo',          form.querySelector('[name="vehiculo_submarca"]')?.value ?? '');
+        fd.append('anio_vehiculo',   form.querySelector('[name="vehiculo_anio"]')?.value ?? '');
+        fd.append('tipo_vehiculo',   form.querySelector('[name="vehiculo_tipo"]')?.value ?? '');
+        fd.append('vehiculo_color',  form.querySelector('[name="vehiculo_color"]')?.value ?? '');
+        fd.append('vehiculo_placas', form.querySelector('[name="vehiculo_placas"]')?.value ?? '');
+        fd.append('vehiculo_vin',    form.querySelector('[name="vehiculo_vin"]')?.value ?? '');
+        fd.append('tiene_adaptaciones', form.querySelector('[name="vehiculo_tiene_adaptaciones"]')?.checked ? '1' : '0');
+        fd.append('detalle_adaptaciones', form.querySelector('[name="vehiculo_detalle_adaptaciones"]')?.value ?? '');
+        fd.append('info_adicional',  form.querySelector('[name="vehiculo_info_adicional"]')?.value ?? '');
+        // Preservar campos de cliente que NO queremos borrar
+        fd.append('_solo_vehiculo', '1');
+        fetch(`/cliente/<?= $clienteId ?>`, { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => {
+                btnSave.disabled = false;
+                btnSave.textContent = '💾 Guardar vehículo';
+                if (d.ok) {
+                    showToast('Vehículo actualizado', 'success');
+                    setTimeout(() => location.reload(), 900);
+                } else {
+                    showToast(d.msg || 'Error al guardar', 'error');
+                }
+            })
+            .catch(() => {
+                btnSave.disabled = false;
+                btnSave.textContent = '💾 Guardar vehículo';
+                showToast('Error de conexión', 'error');
+            });
+    });
+})();
+</script>
+
+<script nonce="<?= $cspNonce ?>">
 // ── Delegación de eventos detalle.php ────────────────────────────────────────
 document.addEventListener('click', function(e) {
     const el = e.target.closest('[data-action],[data-close]');
@@ -1871,6 +2028,34 @@ document.addEventListener('click', function(e) {
         case 'det-eliminarArchivo':
             if (typeof eliminarArchivoCot === 'function') eliminarArchivoCot(parseInt(el.dataset.id), el);
             break;
+        case 'det-enviarCoordinador': {
+            const cotId  = el.dataset.cotId;
+            const folio  = el.dataset.folio || '#' + cotId;
+            if (!confirm(`¿Enviar el expediente "${folio}" al coordinador para cobro?\n\nEsto notificará al coordinador de que está listo para procesar el pago.`)) break;
+            el.disabled = true;
+            el.textContent = 'Enviando…';
+            const fd = new FormData();
+            fd.append('accion', 'enviar_coordinador');
+            fd.append('cot_id', cotId);
+            fetch(`/cliente/${clienteId}`, { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(d => {
+                    el.disabled = false;
+                    el.textContent = '📤 Enviar al coordinador';
+                    if (d.ok) {
+                        showToast(d.msg || 'Expediente enviado al coordinador', 'success');
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        showToast(d.msg || 'Error al enviar', 'error');
+                    }
+                })
+                .catch(() => {
+                    el.disabled = false;
+                    el.textContent = '📤 Enviar al coordinador';
+                    showToast('Error de conexión', 'error');
+                });
+            break;
+        }
         case 'toast-close':
             el.closest('.toast')?.remove();
             break;
