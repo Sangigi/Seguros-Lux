@@ -93,8 +93,8 @@ $stCots = $db->prepare(
             (SELECT COUNT(*) FROM cotizacion_archivos ca
              WHERE ca.cotizacion_id = c.id AND ca.eliminado_en IS NULL) AS total_archivos,
             -- ¿Tiene póliza subida?
-            (SELECT COUNT(*) FROM cotizacion_archivos ca
-             WHERE ca.cotizacion_id = c.id AND ca.tipo_documento = 'poliza' AND ca.eliminado_en IS NULL) AS tiene_poliza,
+            (SELECT COUNT(*) FROM polizas p
+             WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL) AS tiene_poliza,
             -- Comprobante de pago del coordinador
             (SELECT id FROM cotizacion_comprobantes_pago cp
              WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
@@ -500,7 +500,16 @@ $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='
         const metodo = document.getElementById('emiCompMetodo').value;
         const monto  = document.getElementById('emiCompMonto').value;
 
-        if (!cotId || !metodo) { if(typeof toast==='function') toast('Completa los campos requeridos', 'error'); return; }
+        if (!cotId || !metodo || !monto || parseFloat(monto) <= 0) { 
+            if(typeof toast==='function') toast('Debes ingresar un monto válido mayor a 0.', 'error'); 
+            return; 
+        }
+        const necesitaBanco = ['tarjeta_credito','tarjeta_debito','transferencia','msi_3','msi_6','msi_12','msi_18','deposito_banco'].includes(metodo);
+        const archivoValido = document.getElementById('emiCompArchivo').files[0];
+        if (necesitaBanco && !archivoValido) {
+            if(typeof toast==='function') toast('Debes adjuntar el comprobante para este método de pago.', 'error'); 
+            return;
+        }
 
         btn.disabled = true; btn.textContent = 'Guardando…';
         document.getElementById('emiCompProgress').style.display = '';

@@ -567,7 +567,8 @@ $pagosPorCot=[];
 try {
     $db=\Database\Connection::getConnection();
     foreach ($cotizaciones as $cot) {
-        $st=$db->prepare('SELECT * FROM cotizacion_pagos WHERE cotizacion_id=? ORDER BY creado_en DESC');
+        // Leemos de la tabla correcta donde el coordinador registra el cobro
+        $st=$db->prepare('SELECT metodo_pago, monto, comentarios AS notas, nombre_archivo, nombre_original, creado_en AS fecha_pago, NULL AS ruta FROM cotizacion_comprobantes_pago WHERE cotizacion_id=? AND eliminado_en IS NULL ORDER BY creado_en DESC');
         $st->execute([(int)$cot['id']]);
         $p=$st->fetchAll(\PDO::FETCH_ASSOC);
         if ($p) $pagosPorCot[(int)$cot['id']]=$p;
@@ -1042,7 +1043,9 @@ $pageTitle=$nombreCompleto;
                             $cCss  =$pol['estado']==='vencida'?'vencida':($pol['estado']==='por_vencer'?'por_vencer':'');
                             $rutaF =dirname(__DIR__,3).'/uploads/polizas/'.$clienteId.'/'.$pol['nombre_archivo'];
                             $urlP  =file_exists($rutaF)?'/archivo?file=polizas/'.$clienteId.'/'.$pol['nombre_archivo']:null;
-                            $pagada=(bool)($pol['pago_confirmado']??false);
+                            $estadoCotPol = '';
+                            foreach ($cotizaciones as $_c) { if ($_c['id'] == $pol['cotizacion_id']) { $estadoCotPol = $_c['estado']; break; } }
+                            $pagada = ((bool)($pol['pago_confirmado']??false)) || ($estadoCotPol === 'pagado');
                         ?>
                         <div class="poliza-card <?php echo $cCss; ?>">
                             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;">

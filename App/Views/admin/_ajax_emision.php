@@ -77,6 +77,12 @@ switch ($accion) {
         if (!$cotId || !in_array($metodo, $metodosValidos, true)) {
             echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit;
         }
+        if ($monto === '' || !is_numeric($monto) || (float)$monto <= 0) {
+            echo json_encode(['ok'=>false,'msg'=>'El monto es obligatorio y debe ser mayor a $0.']); exit;
+        }
+        if ($metodo !== 'efectivo' && empty($_FILES['comprobante']['name'])) {
+            echo json_encode(['ok'=>false,'msg'=>'Debes adjuntar el PDF o imagen del comprobante.']); exit;
+        }
 
         // Manejar archivo adjunto
         $nombreArch  = null;
