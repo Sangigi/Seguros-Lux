@@ -993,23 +993,59 @@ $pageTitle=$nombreCompleto;
                     </div>
                     <div class="card-body">
                         <?php if ($rolAgente === 'asesor'): ?>
-                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.45;">
-                            Resumen informativo: sube tu primera poliza.
-                        </p>
-                        <?php endif; ?>
-                        <?php
-                        // Recopilar documentos de póliza del coordinador para todas las cotizaciones del cliente
-                        $allDocPoliza = [];
-                        foreach ($cotizaciones as $_cot) {
-                            if (!empty($docPolizaPorCot[(int)$_cot['id']])) {
-                                foreach ($docPolizaPorCot[(int)$_cot['id']] as $_doc) {
-                                    $_doc['_folio']   = $_cot['folio'] ?? '#'.$_cot['id'];
-                                    $_doc['_compania'] = $_cot['compania'] ?? '';
-                                    $allDocPoliza[] = $_doc;
+                                <?php
+                                // 1. Definir los documentos estrictamente obligatorios del ASESOR
+                                $docs_obligatorios_asesor = [];
+                                $ramo_cot = $cot['ramo'] ?? 'autos';
+                                if ($ramo_cot === 'autos') {
+                                    $docs_obligatorios_asesor = ['doc_cotizacion', 'ine', 'comprobante_dom', 'tarjeta_circulacion', 'foto_coche_1', 'foto_coche_2'];
+                                } else {
+                                    $docs_obligatorios_asesor = ['doc_cotizacion', 'ine', 'comprobante_dom'];
                                 }
-                            }
-                        }
-                        ?>
+
+                                // 2. Mapeo de nombres limpios para la interfaz
+                                $nombres_documentos = [
+                                    'doc_cotizacion'      => 'Cotización',
+                                    'ine'                 => 'INE',
+                                    'comprobante_dom'     => 'Comprobante de Domicilio',
+                                    'tarjeta_circulacion' => 'Tarjeta de Circulación',
+                                    'foto_coche_1'        => 'Foto de Coche 1',
+                                    'foto_coche_2'        => 'Foto de Coche 2'
+                                ];
+
+                                // 3. Obtener los documentos que el asesor ya subió en esta cotización
+                                $tipos_subidos = array_column($archs, 'tipo_documento');
+
+                                // 4. Calcular cuáles le faltan
+                                $documentos_faltantes = [];
+                                foreach ($docs_obligatorios_asesor as $doc_req) {
+                                    if (!in_array($doc_req, $tipos_subidos)) {
+                                        $documentos_faltantes[] = $nombres_documentos[$doc_req] ?? $doc_req;
+                                    }
+                                }
+                                $bloquear_boton_emision = !empty($documentos_faltantes);
+                                ?>
+
+                                <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
+                                   class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion">&#9999;&#65039; Editar</a>
+                                
+                                <?php if ($yaPagada): ?>
+                                    <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pago confirmado</span>
+                                <?php else: ?>
+                                    <button type="button" 
+                                            class="btn btn-sm btn-primary" 
+                                            style="font-size:11px;padding:3px 12px; <?php echo $bloquear_boton_emision ? 'opacity:0.5; cursor:not-allowed;' : ''; ?>" 
+                                            <?php echo $bloquear_boton_emision ? 'disabled' : ''; ?>
+                                            onclick="document.getElementById('polizaCotizacion').value='<?php echo $cot['id']; ?>'; openModal('modalSubirPoliza');">
+                                        📝 Emitir y Subir Póliza
+                                    </button>
+                                <?php endif; ?>
+
+                                <?php if ($bloquear_boton_emision && !$yaPagada): ?>
+                                    <div style="flex-basis: 100%; background-color: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; padding: 6px 10px; border-radius: 6px; margin-top: 4px; font-size: 11px;">
+                                        <strong>⚠️ Faltan:</strong> <?php echo htmlspecialchars(implode(', ', $documentos_faltantes)); ?>
+                                    </div>
+                                <?php endif; ?>
                         <?php if (empty($polizas) && empty($allDocPoliza)): ?>
                         <div style="text-align:center;padding:28px 0;color:var(--text-muted);">
                             <div style="font-size:36px;margin-bottom:8px;">📄</div>
