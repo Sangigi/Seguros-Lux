@@ -173,10 +173,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         
         // --- INICIO DE FUSIÓN: ENVIAR AUTOMÁTICAMENTE AL COORDINADOR ---
         if ($cotId) {
-            $db = \Database\Connection::getConnection();
-            if (!class_exists(\Database\Connection::class)) {
-    require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
-}
             // Marcar cotización como "en_proceso" para que aparezca en el panel del coordinador
             $db->prepare("UPDATE cotizaciones SET emision_estado = 'en_proceso' WHERE id = ?")->execute([$cotId]);
             
