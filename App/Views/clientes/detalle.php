@@ -1021,9 +1021,9 @@ $pageTitle=$nombreCompleto;
                 <div class="card mb-24">
                     <div class="card-header">
                         <h3 class="card-title">Pólizas <span class="badge badge-neutral"><?php echo count($polizas); ?></span></h3>
-                        <?php if ($puedeGestionarPolizas): ?>
+                        <!-- <?php if ($puedeGestionarPolizas): ?>
                         <button class="btn btn-sm btn-primary" data-action="det-open" data-modal="modalSubirPoliza">+ Subir Póliza</button>
-                        <?php endif; ?>
+                        <?php endif; ?> -->
                     </div>
                     <div class="card-body">
                         <?php if ($rolAgente === 'asesor'): ?>
@@ -1048,9 +1048,9 @@ $pageTitle=$nombreCompleto;
                         <div style="text-align:center;padding:28px 0;color:var(--text-muted);">
                             <div style="font-size:36px;margin-bottom:8px;">📄</div>
                             <p style="font-size:13px;margin-bottom:10px;">Sin pólizas registradas.</p>
-                            <?php if ($puedeGestionarPolizas): ?>
+                            <!-- <?php if ($puedeGestionarPolizas): ?>
                             <button class="btn btn-primary btn-sm" data-action="det-open" data-modal="modalSubirPoliza">Subir primera póliza</button>
-                            <?php endif; ?>
+                            <?php endif; ?> -->
                         </div>
                         <?php elseif (empty($polizas) && !empty($allDocPoliza)): ?>
                         <!-- El coordinador subió documentos de póliza pero no hay póliza en la tabla polizas -->
@@ -1255,9 +1255,9 @@ $pageTitle=$nombreCompleto;
                         <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="quick-action-btn">📋 Nueva Cotización</a>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalCita">📅 Programar Cita</button>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalNota">📝 Agregar Nota</button>
-                        <?php if ($puedeGestionarPolizas): ?>
+                        <!-- <?php if ($puedeGestionarPolizas): ?>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalSubirPoliza">📄 Subir Póliza</button>
-                        <?php endif; ?>
+                        <?php endif; ?> -->
                     </div>
                 </div>
 
