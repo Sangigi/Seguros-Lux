@@ -1350,12 +1350,13 @@ $BADGE_PAGO_CL = [
         <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pago confirmado</span>
     <?php else: ?>
         <button type="button" 
-                class="btn btn-sm btn-primary" 
-                style="font-size:11px;padding:3px 12px; <?php echo $bloquear_boton_emision ? 'opacity:0.5; cursor:not-allowed;' : ''; ?>" 
-                <?php echo $bloquear_boton_emision ? 'disabled' : ''; ?>
-                onclick="document.getElementById('polizaCotizacion').value='<?php echo $cot['id']; ?>'; openModal('modalSubirPoliza');">
-            📝 Emitir y Subir Póliza
-        </button>
+        class="btn btn-sm btn-primary" 
+        style="font-size:11px;padding:3px 12px; <?php echo $bloquear_boton_emision ? 'opacity:0.5; cursor:not-allowed;' : ''; ?>" 
+        <?php echo $bloquear_boton_emision ? 'disabled' : ''; ?>
+        data-cot-id="<?php echo $cot['id']; ?>"
+        data-action="abrir-emision">
+    📝 Emitir y Subir Póliza
+</button>
     <?php endif; ?>
 
     <?php if ($bloquear_boton_emision && !$yaPagada): ?>
@@ -2039,6 +2040,19 @@ function guardarEdicionCliente() {
 </script>
 
 <script nonce="<?= $cspNonce ?>">
+    // Añade esto donde manejas tus eventos (probablemente ya tienes un addEventListener en detalle.php)
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-action="abrir-emision"]');
+    if (btn) {
+        const cotId = btn.getAttribute('data-cot-id');
+        // Asignamos el valor al campo oculto
+        const campo = document.getElementById('polizaCotizacion');
+        if (campo) campo.value = cotId;
+        
+        // Llamamos a tu función modal
+        openModal('modalSubirPoliza');
+    }
+});
 // ── Vehículo: toggle edición ──────────────────────────────────────────────────
 (function(){
     const btnEdit   = document.getElementById('btnEditarVehiculo');
