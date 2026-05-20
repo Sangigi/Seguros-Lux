@@ -250,6 +250,7 @@ class CotizacionModel extends BaseModel
                     COALESCE(co.comentarios,'')   AS comentarios,
                     COALESCE(co.folio,'')          AS folio,
                     COALESCE(co.ramo,'autos')      AS ramo,
+                    COALESCE(co.emision_estado,'pendiente') AS emision_estado,
                     COALESCE(
                         co.fecha_fin_vigencia,
                         CASE co.vigencia

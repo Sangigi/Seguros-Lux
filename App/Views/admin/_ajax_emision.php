@@ -277,6 +277,14 @@ switch ($accion) {
         $cot = $st->fetch(\PDO::FETCH_ASSOC);
         if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
 
+        // Verificar que el asesor ya envió esta cotización al coordinador
+        $stEst = $db->prepare("SELECT emision_estado FROM cotizaciones WHERE id=?");
+        $stEst->execute([$cotId]);
+        $emisEst = $stEst->fetchColumn();
+        if ($emisEst === 'pendiente') {
+            echo json_encode(['ok'=>false,'msg'=>'El asesor aún no ha enviado esta cotización al coordinador. Pídele que la envíe primero.']); exit;
+        }
+
         // Subir archivo si viene
         $nombreArch = null;
         $nombreOrig = null;
@@ -395,6 +403,13 @@ switch ($accion) {
                            'msi_3','msi_6','msi_12','msi_18','deposito_banco'];
         if (!$cotId || !in_array($metodo, $metodosValidos, true)) {
             echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit;
+        }
+        // Verificar que el asesor ya envió esta cotización
+        $stEst2 = $db->prepare("SELECT emision_estado FROM cotizaciones WHERE id=?");
+        $stEst2->execute([$cotId]);
+        $emisEst2 = $stEst2->fetchColumn();
+        if ($emisEst2 === 'pendiente') {
+            echo json_encode(['ok'=>false,'msg'=>'El asesor aún no ha enviado esta cotización al coordinador.']); exit;
         }
         if ($monto === '' || !is_numeric($monto) || (float)$monto <= 0) {
             echo json_encode(['ok'=>false,'msg'=>'El monto es obligatorio y debe ser mayor a $0.']); exit;
