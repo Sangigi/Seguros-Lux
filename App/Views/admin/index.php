@@ -345,14 +345,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         try {
             $st = $db->prepare(
                 "SELECT h.tipo, h.titulo, h.descripcion,
-                        COALESCE(h.creado_en, h.fecha, NOW()) AS fecha_registro,
+                        COALESCE(h.fecha, NOW()) AS fecha_registro,
                         c.folio,
                         CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
                  FROM historial_coordinador h
                  LEFT JOIN cotizaciones c  ON c.id  = h.cotizacion_id
                  LEFT JOIN clientes    cl ON cl.id = h.cliente_id
                  WHERE h.coordinador_id = ?
-                 ORDER BY COALESCE(h.creado_en, h.fecha) DESC
+                 ORDER BY h.fecha DESC
                  LIMIT ?"
             );
             $st->execute([$tid, $limit]);
@@ -459,7 +459,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $file = $_FILES['nueva_poliza_archivo'];
             $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
             if (in_array($ext, ['pdf','jpg','jpeg','png','webp'], true) && $file['error'] === UPLOAD_ERR_OK) {
-                $dir = dirname(__DIR__, 2) . '/uploads/polizas/' . $polizaId . '/';
+                // BUG #4 FIX: usar cotizacion_id para la ruta (coherente con emi_subir_poliza)
+                $stPolCot = $db->prepare("SELECT cotizacion_id FROM polizas WHERE id=? LIMIT 1");
+                $stPolCot->execute([$polizaId]);
+                $cotIdForDir = (int)($stPolCot->fetchColumn() ?: $polizaId);
+                $dir = dirname(__DIR__, 2) . '/uploads/polizas/' . $cotIdForDir . '/';
                 if (!is_dir($dir)) mkdir($dir, 0755, true);
                 $nomArch = 'renovacion_' . date('Ymd_His') . '.' . $ext;
                 if (move_uploaded_file($file['tmp_name'], $dir . $nomArch)) {

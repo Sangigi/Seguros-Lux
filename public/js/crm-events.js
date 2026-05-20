@@ -96,6 +96,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (typeof closeModal        === 'function') closeModal('modalVerCotizacion');
                 if (typeof enviarCotizacion  === 'function') enviarCotizacion(id);
                 break;
+            case 'enviarCoordinador':
+                e.stopPropagation();
+                if (typeof enviarCoordinador === 'function') enviarCoordinador(id);
+                break;
             case 'docs':
                 if (typeof abrirModalDocumentos === 'function') abrirModalDocumentos(id);
                 break;

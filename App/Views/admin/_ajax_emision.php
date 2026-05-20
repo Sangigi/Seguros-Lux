@@ -468,7 +468,8 @@ switch ($accion) {
         $polizaRow = $stPol->fetch(\PDO::FETCH_ASSOC);
         if ($polizaRow) {
             $db->prepare(
-                "UPDATE polizas SET notas=CONCAT(IFNULL(notas,''),?) WHERE id=?"
+                "UPDATE polizas SET estado_pago='confirmado', pago_confirmado_en=NOW(),
+                 notas=CONCAT(IFNULL(notas,''),?) WHERE id=?"
             )->execute([
                 "\n[" . date('Y-m-d H:i') . "] Pago confirmado por coordinador — Método: " . _emi_metodoLabel($metodo) . ".",
                 $polizaRow['id']
@@ -627,6 +628,33 @@ switch ($accion) {
     // ── PDF Checklist (se procesa por GET en admin/index.php) ─────────────────
     case 'emi_pdf_checklist': {
         echo json_encode(['ok'=>false,'msg'=>'Usa el método GET para el checklist PDF.']); exit;
+    }
+
+    // ── Reiniciar temporizador de edición (solo SA) ───────────────────────────
+    case 'emi_reset_edit_timer': {
+        if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Solo superadmin.']); exit; }
+        $cotId = (int)($_POST['cotizacion_id'] ?? 0);
+        if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        // Actualizar creado_en del comprobante más reciente a NOW() para reiniciar la ventana
+        $db->prepare(
+            "UPDATE cotizacion_comprobantes_pago SET creado_en=NOW()
+             WHERE cotizacion_id=? AND eliminado_en IS NULL
+             ORDER BY id DESC LIMIT 1"
+        )->execute([$cotId]);
+        // Registrar en historial
+        try {
+            $db->prepare(
+                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id)
+                 VALUES (?,?,?,?,?)"
+            )->execute([
+                $agenteId, 'nota',
+                '⏱ Temporizador de edición reiniciado',
+                'El superadmin reinició la ventana de edición para esta cotización.',
+                $cotId
+            ]);
+        } catch (\Throwable $e) {}
+        echo json_encode(['ok'=>true]);
+        exit;
     }
 
     default: {

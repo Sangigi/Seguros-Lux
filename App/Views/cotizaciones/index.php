@@ -296,6 +296,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         exit;
     }
 
+    // === NUEVA ACCIÓN: enviar_a_coordinador ===
+    if ($_POST['accion'] === 'enviar_a_coordinador') {
+        $cotId = (int)($_POST['cotizacion_id'] ?? 0);
+        if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido']); exit; }
+        $cot = $cotizacionModel->getByIdYAgente($cotId, $agenteId);
+        if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'No encontrada']); exit; }
+        // Verificar que no esté ya enviada
+        if ($cot['emision_estado'] === 'en_proceso' || $cot['emision_estado'] === 'emitida') {
+            echo json_encode(['ok'=>false,'msg'=>'Ya fue enviada al coordinador']); exit;
+        }
+        $db = Connection::getConnection();
+        // Actualizar emision_estado y estado
+        $db->prepare("UPDATE cotizaciones SET emision_estado='en_proceso', estado='enviada' WHERE id=?")->execute([$cotId]);
+        // Notificar a todos los coordinadores y superadmins
+        $coords = $db->query("SELECT id FROM agentes WHERE rol IN ('coordinador','superadmin') AND activo=1")->fetchAll(\PDO::FETCH_COLUMN);
+        foreach ($coords as $coordId) {
+            $db->prepare(
+                "INSERT INTO notificaciones (agente_id,tipo,titulo,mensaje,urgente,color,url_accion,leida,creada_en)
+                 VALUES (?,?,?,?,1,'blue',?,0,NOW())"
+            )->execute([
+                $coordId, 'emision',
+                '📋 Nueva cotización para emisión — ' . ($cot['folio'] ?? '#'.$cotId),
+                'El asesor envió la cotización de ' . ($cot['cliente_nombre'] ?? '') . ' para gestión de cobro.',
+                '/admin?tab=emision',
+            ]);
+        }
+        // Historial
+        $historialModel->registrar(
+            (int)$cot['cliente_id'], $agenteId, 'cotizacion',
+            'Cotización enviada al coordinador para cobro',
+            'Folio: ' . ($cot['folio'] ?? '#'.$cotId)
+        );
+        echo json_encode(['ok'=>true]);
+        exit;
+    }
+
     // Eliminar archivo de cotización (soft-delete)
     if ($_POST['accion'] === 'eliminar_archivo') {
         $archivoId = (int)($_POST['archivo_id'] ?? 0);
@@ -667,7 +703,16 @@ $pageTitle = 'Cotizaciones';
                                         <button class="btn btn-sm btn-outline" data-action="estado" data-id="<?php echo $cot['id']; ?>" title="Cambiar estado">✏️</button>
                                         <button class="btn btn-sm btn-outline" data-action="editar" data-id="<?php echo $cot['id']; ?>" title="Editar">📝</button>
                                         <?php if ($cot['estado']==='pendiente'): ?>
-                                        <button class="btn btn-sm btn-primary" data-action="enviar" data-id="<?php echo $cot['id']; ?>" title="Enviar">📤</button>
+                                        <button class="btn btn-sm btn-primary" data-action="enviar" data-id="<?php echo $cot['id']; ?>" title="Enviar al cliente">📤</button>
+                                        <?php endif; ?>
+                                        <?php
+                                        $emisEst = $cot['emision_estado'] ?? '';
+                                        if ($emisEst === '' || $emisEst === 'pendiente'): ?>
+                                        <button class="btn btn-sm btn-outline" data-action="enviarCoordinador" data-id="<?php echo $cot['id']; ?>" title="Enviar al coordinador para cobro" style="font-size:11px;">📋 Coord.</button>
+                                        <?php elseif ($emisEst === 'en_proceso'): ?>
+                                        <span class="badge badge-info" title="En proceso de cobro" style="font-size:10px;">⏳ Cobro</span>
+                                        <?php elseif ($emisEst === 'emitida'): ?>
+                                        <span class="badge badge-success" title="Póliza emitida" style="font-size:10px;">✅ Emitida</span>
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -1173,6 +1218,21 @@ function enviarCotizacion(id) {
         if (d.ok) { if(cot) cot.estado='enviada'; actualizarBadgeEnTabla(id,'enviada'); showToast('Marcada como enviada','success'); }
         else showToast(d.msg||'Error','error');
     });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENVIAR AL COORDINADOR PARA COBRO
+// ─────────────────────────────────────────────────────────────────────────────
+function enviarCoordinador(id) {
+    const cot = cotizacionesData.find(c => c.id === id);
+    if (!cot || !confirm(`¿Enviar al coordinador para gestión de cobro?\nCliente: ${cot.cliente_nombre || ''}`)) return;
+    const fd = new FormData();
+    fd.append('accion', 'enviar_a_coordinador');
+    fd.append('cotizacion_id', id);
+    fetch('/cotizaciones', {method:'POST', body:fd}).then(r=>r.json()).then(d => {
+        if (d.ok) { showToast('✅ Cotización enviada al coordinador', 'success'); setTimeout(() => location.reload(), 1200); }
+        else showToast(d.msg || 'Error', 'error');
+    }).catch(() => showToast('Error de conexión', 'error'));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
