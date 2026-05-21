@@ -1593,6 +1593,12 @@ $BADGE_PAGO_CL = [
     style="font-size:11px;padding:3px 12px; <?php echo $bloquear_boton_emision ? 'opacity:0.5; cursor:not-allowed;' : ''; ?>" 
     <?php echo $bloquear_boton_emision ? 'disabled' : ''; ?>
     data-cot-id="<?php echo $cot['id']; ?>"
+    data-cot-compania="<?php echo htmlspecialchars($cot['compania'] ?? '', ENT_QUOTES); ?>"
+    data-cot-fecha-inicio="<?php echo htmlspecialchars($cot['fecha'] ?? '', ENT_QUOTES); ?>"
+    data-cot-fecha-fin="<?php echo htmlspecialchars($cot['fecha_fin_vigencia'] ?? '', ENT_QUOTES); ?>"
+    data-cot-folio="<?php echo htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES); ?>"
+    data-es-renovacion="<?php echo $es_renovacion_cot ? '1' : '0'; ?>"
+    data-cot-num-poliza="<?php echo htmlspecialchars(str_replace('Renovación - ', '', $cot['tipo_cobertura'] ?? ''), ENT_QUOTES); ?>"
     data-action="abrir-emision">
     📝 Emitir y Subir Póliza
 </button>
@@ -1889,18 +1895,69 @@ function showToast(msg,type='success'){const c=document.getElementById('toastCon
 <script nonce="<?= $cspNonce ?>">
     document.addEventListener('click', function(e) {
     const btn = e.target.closest('[data-action="abrir-emision"]');
-    if (btn) {
-        const cotId = btn.getAttribute('data-cot-id');
-        const campo = document.getElementById('polizaCotizacion');
-        if (campo) campo.value = cotId;
-        
-        // Hacer que el input de archivo del modal sea estrictamente obligatorio
-        const inputArchivo = document.querySelector('#modalSubirPoliza input[type="file"]');
-        if (inputArchivo) inputArchivo.required = true;
+    if (!btn) return;
 
-        // Abrir la ventana
-        if (typeof openModal === 'function') openModal('modalSubirPoliza');
+    const cotId        = btn.getAttribute('data-cot-id');
+    const esRenovacion = btn.getAttribute('data-es-renovacion') === '1';
+    const compania     = btn.getAttribute('data-cot-compania') || '';
+    const fechaInicio  = btn.getAttribute('data-cot-fecha-inicio') || '';
+    const fechaFin     = btn.getAttribute('data-cot-fecha-fin') || '';
+    const numPoliza    = btn.getAttribute('data-cot-num-poliza') || '';
+    const folio        = btn.getAttribute('data-cot-folio') || ('#' + cotId);
+
+    // Pre-seleccionar y bloquear cotización si es renovación
+    const campoCot = document.getElementById('polizaCotizacion');
+    if (campoCot) {
+        campoCot.value    = cotId;
+        campoCot.disabled = esRenovacion;
+        campoCot.style.opacity = esRenovacion ? '0.6' : '';
+        campoCot.title    = esRenovacion ? 'Vinculado automáticamente a esta renovación' : '';
+        const rowCot = campoCot.closest('.form-group');
+        if (rowCot) rowCot.style.display = esRenovacion ? 'none' : '';
     }
+
+    // Pre-llenar campos si es renovación
+    if (esRenovacion) {
+        const selComp = document.getElementById('polizaCompania');
+        if (selComp && compania) {
+            const opt = [...selComp.options].find(o => o.value === compania || o.text === compania);
+            if (opt) selComp.value = opt.value;
+        }
+        const inpNum = document.getElementById('polizaNumero');
+        if (inpNum && numPoliza && numPoliza !== 'undefined') inpNum.value = numPoliza;
+        const inpInicio = document.getElementById('polizaFechaInicio');
+        if (inpInicio && fechaInicio) inpInicio.value = fechaInicio;
+        const inpFin = document.getElementById('polizaFechaFin');
+        if (inpFin && fechaFin) inpFin.value = fechaFin;
+
+        // Cambiar título del modal
+        const titulo = document.querySelector('#modalSubirPoliza .modal-title');
+        if (titulo) titulo.textContent = '🔁 Subir Póliza Renovada — ' + folio;
+
+        // Aviso informativo
+        let aviso = document.getElementById('_renovAviso');
+        if (!aviso) {
+            aviso = document.createElement('div');
+            aviso.id = '_renovAviso';
+            aviso.style.cssText = 'background:#eff6ff;border:1px solid #3b82f6;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#1e40af;line-height:1.5;';
+            const body = document.querySelector('#modalSubirPoliza .modal-body');
+            if (body) body.prepend(aviso);
+        }
+        aviso.innerHTML = '🔁 <strong>Renovación</strong> — Cotización <strong>' + folio + '</strong> vinculada automáticamente. Los documentos del cliente se heredan de la emisión anterior, solo sube el nuevo archivo de póliza.';
+        aviso.style.display = '';
+    } else {
+        // Modo normal: restaurar
+        const titulo = document.querySelector('#modalSubirPoliza .modal-title');
+        if (titulo) titulo.textContent = '📄 Subir Póliza';
+        const aviso = document.getElementById('_renovAviso');
+        if (aviso) aviso.style.display = 'none';
+    }
+
+    // Archivo obligatorio
+    const inputArchivo = document.querySelector('#modalSubirPoliza input[type="file"]');
+    if (inputArchivo) inputArchivo.required = true;
+
+    if (typeof openModal === 'function') openModal('modalSubirPoliza');
 });
 // ── Historial paginación (10 por página) — botones sin inline handlers (CSP) ──
 (function(){
