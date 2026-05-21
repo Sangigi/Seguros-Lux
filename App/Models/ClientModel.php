@@ -457,7 +457,7 @@ class ClientModel extends BaseModel
                        WHERE fecha = ? AND hora = ?
                          AND estado IN ('programada','pendiente')
                    )
-                 GROUP BY a.id ORDER BY citas_dia ASC LIMIT 1"
+                 GROUP BY a.id ORDER BY citas_dia ASC, RAND() LIMIT 1"
             );
             $stmt->execute([$fecha, $fecha, $hora]);
             $row = $stmt->fetch();
@@ -469,7 +469,7 @@ class ClientModel extends BaseModel
                      LEFT JOIN citas ci ON ci.agente_id = a.id AND ci.fecha = ?
                          AND ci.estado IN ('programada','pendiente')
                      WHERE {$rolCond}
-                     GROUP BY a.id ORDER BY citas_dia ASC LIMIT 1"
+                     GROUP BY a.id ORDER BY citas_dia ASC, RAND() LIMIT 1"
                 );
                 $stmt->execute([$fecha]);
                 $row = $stmt->fetch();
@@ -480,7 +480,7 @@ class ClientModel extends BaseModel
                  FROM agentes a
                  LEFT JOIN clientes c ON a.id = c.agente_id
                  WHERE {$rolCond}
-                 GROUP BY a.id ORDER BY total_clientes ASC LIMIT 1"
+                 GROUP BY a.id ORDER BY total_clientes ASC, RAND() LIMIT 1"
             );
             $stmt->execute();
             $row = $stmt->fetch();
