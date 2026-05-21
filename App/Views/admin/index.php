@@ -415,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     } elseif ($a === 'eliminar_cotizacion') {
         $cid=(int)($_POST['cotizacion_id']??0);
         if (!$cid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
-        $cotModel->eliminar($cid,$agenteId);
+        $cotModel->eliminar($cid, 0); // 0 = coordinador puede borrar cualquier cotización
         echo json_encode(['ok'=>true]);
 
     } elseif ($a === 'get_documentos_admin') {
