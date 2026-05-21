@@ -1584,7 +1584,7 @@ $BADGE_PAGO_CL = [
             <div class="form-row">
                 <div class="form-group"><label class="form-label">Compañía</label>
                     <select class="form-select" id="editPolizaCompania">
-                        <?php foreach(['GNP','Qualitas','AXA','HDI','Mapfre','Zurich','Banorte','Chubb','Ana Seguros','Inbursa','Otra'] as $c): ?>
+                        <?php foreach(['GNP','Qualitas','Chubb','Inbursa'] as $c): ?>
                         <option><?php echo $c; ?></option><?php endforeach; ?>
                     </select>
                 </div>
