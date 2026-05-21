@@ -781,6 +781,30 @@ class CotizacionModel extends BaseModel
         ], $stmt->fetchAll());
     }
 
+    /**
+     * Elimina (soft-delete) una cotización.
+     * Marca eliminado_en en lugar de borrar el registro para preservar el historial.
+     * Si la tabla no tiene esa columna, hace DELETE físico como fallback.
+     */
+    public function eliminar(int $id, int $agenteId): bool
+    {
+        try {
+            $stmt = $this->db()->prepare(
+                "UPDATE cotizaciones SET eliminado_en = NOW()
+                 WHERE id = ? AND agente_id = ? AND eliminado_en IS NULL"
+            );
+            $stmt->execute([$id, $agenteId]);
+            return $stmt->rowCount() > 0;
+        } catch (\Throwable $e) {
+            // Fallback: la columna eliminado_en no existe — borrado físico
+            $stmt = $this->db()->prepare(
+                'DELETE FROM cotizaciones WHERE id = ? AND agente_id = ?'
+            );
+            $stmt->execute([$id, $agenteId]);
+            return $stmt->rowCount() > 0;
+        }
+    }
+
     /** Cotizaciones próximas a vencer */
     public function getPorVencer(int $agenteId, int $dias = 30): array
     {
