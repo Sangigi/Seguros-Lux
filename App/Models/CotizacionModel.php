@@ -790,9 +790,14 @@ class CotizacionModel extends BaseModel
     {
         $db = $this->db();
 
-        // Verificar que pertenece al agente antes de borrar
-        $st = $db->prepare('SELECT id FROM cotizaciones WHERE id = ? AND agente_id = ?');
-        $st->execute([$id, $agenteId]);
+        // Verificar existencia (el coordinador puede borrar cualquier cotización, 
+        // el asesor solo las suyas; si agente_id = 0 se omite el filtro)
+        $checkSql = $agenteId > 0
+            ? 'SELECT agente_id FROM cotizaciones WHERE id = ? AND agente_id = ?'
+            : 'SELECT agente_id FROM cotizaciones WHERE id = ?';
+        $checkParams = $agenteId > 0 ? [$id, $agenteId] : [$id];
+        $st = $db->prepare($checkSql);
+        $st->execute($checkParams);
         if (!$st->fetch()) {
             return false;
         }
@@ -808,9 +813,9 @@ class CotizacionModel extends BaseModel
             try { $db->prepare("DELETE FROM {$tabla} WHERE cotizacion_id = ?")->execute([$id]); } catch (\Throwable $e) {}
         }
 
-        // Borrar la cotización
-        $stmt = $db->prepare('DELETE FROM cotizaciones WHERE id = ? AND agente_id = ?');
-        $stmt->execute([$id, $agenteId]);
+        // Borrar la cotización (sin filtro de agente para que coordinador pueda borrar cualquiera)
+        $stmt = $db->prepare('DELETE FROM cotizaciones WHERE id = ?');
+        $stmt->execute([$id]);
         return $stmt->rowCount() > 0;
     }
 
