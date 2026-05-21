@@ -46,11 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
         "SELECT c.id, c.folio, c.ramo, c.compania, c.tipo_cobertura,
                 c.periodicidad,
                 CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',COALESCE(cl.apellido_materno,'')) AS cliente_nombre,
-                CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre,
-                -- Detectar si es renovación por folio terminado en -R o tipo_cobertura que empiece con Renovación
-                (CASE WHEN c.folio LIKE '%-R' OR c.tipo_cobertura LIKE 'Renovación%' THEN 1 ELSE 0 END) AS es_renovacion,
-                -- Número de póliza anterior (extraído del tipo_cobertura \"Renovación - XXXXX\")
-                TRIM(REPLACE(c.tipo_cobertura, 'Renovación - ', '')) AS num_poliza_anterior
+                CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre
          FROM cotizaciones c
          JOIN clientes cl ON cl.id = c.cliente_id
          JOIN agentes  a  ON a.id  = c.agente_id
@@ -103,21 +99,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
     $ckMap = [];
     foreach ($ck as $c) $ckMap[$c['doc_tipo']] = $c;
 
-    $esRenovacion = !empty($cot['es_renovacion']);
-    $numPolizaAnterior = $cot['num_poliza_anterior'] ?? '';
-    // Si es renovación, el cliente ya tiene sus documentos personales de la emisión anterior
-    // Solo se requiere la póliza nueva y el comprobante de pago
-    $REQS_NUEVA = [
+    $REQS = [
         'autos'          => ['ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2','comprobante_pago'],
         'vida'           => ['ine','comprobante_dom','comprobante_pago'],
         'gastos_medicos' => ['ine','comprobante_dom','comprobante_pago'],
     ];
-    $REQS_RENOVACION = [
-        'autos'          => ['comprobante_pago'],
-        'vida'           => ['comprobante_pago'],
-        'gastos_medicos' => ['comprobante_pago'],
-    ];
-    $REQS = $esRenovacion ? $REQS_RENOVACION : $REQS_NUEVA;
     $tipoLabel = [
         'ine'=>'INE','comprobante_dom'=>'Comprobante de domicilio','tarjeta_circulacion'=>'Tarjeta de circulación',
         'foto_coche_1'=>'Foto vehículo 1','foto_coche_2'=>'Foto vehículo 2','foto_coche_3'=>'Foto vehículo 3',
@@ -136,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <link rel="icon" type="image/png" sizes="32x32" href="/images/logo.png">
-    <title>Checklist <?= $esRenovacion ? 'Renovación' : 'de Emisión' ?> — <?= htmlspecialchars($cot['folio'] ?? ('#'.$cotId)) ?></title>
+    <title>Checklist de Emisión — <?= htmlspecialchars($cot['folio'] ?? ('#'.$cotId)) ?></title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1e293b; background: #f8fafc; }
@@ -203,41 +189,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
     </div>
     <div class="doc-meta">
         <div class="folio-badge"><?= htmlspecialchars($cot['folio'] ?? ('#'.$cotId)) ?></div>
-        <p><?= $esRenovacion ? '🔄 Checklist de Renovación' : 'Checklist de Emisión' ?></p>
+        <p>Checklist de Emisión</p>
         <p>Generado: <?= date('d/m/Y H:i') ?></p>
         <p>Coordinador: <?= htmlspecialchars(($agente['nombre'] ?? '') . ' ' . ($agente['apellido'] ?? '')) ?></p>
     </div>
 </div>
-<?php if ($esRenovacion): ?>
-<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 40px;display:flex;align-items:center;gap:12px;font-size:13px;color:#92400e;">
-    <span style="font-size:18px;">🔄</span>
-    <div>
-        <strong>Renovación de póliza</strong> — Esta emisión es una renovación.
-        <?php if ($numPolizaAnterior && strpos($numPolizaAnterior, 'Renovación') === false): ?>
-        Póliza anterior: <span style="font-family:'Courier New',monospace;font-weight:800;background:rgba(0,0,0,.08);padding:2px 8px;border-radius:4px;"><?= htmlspecialchars($numPolizaAnterior) ?></span>.
-        <?php endif; ?>
-        Los documentos del cliente (INE, domicilio, etc.) ya obran en el expediente de la emisión original.
-    </div>
-</div>
-<?php endif; ?>
 <div class="info-strip">
     <div class="item"><span class="label">Cliente</span><span class="value"><?= htmlspecialchars($cot['cliente_nombre']) ?></span></div>
     <div class="item"><span class="label">Asesor</span><span class="value"><?= htmlspecialchars($cot['asesor_nombre']) ?></span></div>
     <div class="item"><span class="label">Ramo</span><span class="value"><?= ucfirst(str_replace('_',' ', htmlspecialchars($ramo))) ?></span></div>
     <div class="item"><span class="label">Compañía</span><span class="value"><?= htmlspecialchars($cot['compania'] ?? '—') ?></span></div>
-    <div class="item">
-        <span class="label"><?= $esRenovacion ? 'Tipo' : 'Tipo de cobertura' ?></span>
-        <span class="value" style="<?= $esRenovacion ? 'color:#d97706;font-weight:800;' : '' ?>">
-            <?php if ($esRenovacion): ?>
-                🔄 Renovación
-                <?php if ($numPolizaAnterior && strpos($numPolizaAnterior, 'Renovación') === false): ?>
-                <br><span style="font-size:11px;font-weight:600;font-family:'Courier New',monospace;color:#92400e;">Póliza ant.: <?= htmlspecialchars($numPolizaAnterior) ?></span>
-                <?php endif; ?>
-            <?php else: ?>
-                <?= htmlspecialchars($cot['tipo_cobertura'] ?? '—') ?>
-            <?php endif; ?>
-        </span>
-    </div>
+    <div class="item"><span class="label">Tipo de cobertura</span><span class="value"><?= htmlspecialchars($cot['tipo_cobertura'] ?? '—') ?></span></div>
     <div class="item"><span class="label">Periodicidad</span><span class="value"><?= ucfirst(htmlspecialchars($cot['periodicidad'] ?? '—')) ?></span></div>
 </div>
 <div class="content">
