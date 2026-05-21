@@ -443,7 +443,7 @@ HTML;
         $stmt = $db->query(
             "SELECT a.id FROM agentes a
              WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
-             ORDER BY (SELECT COUNT(*) FROM clientes WHERE agente_id = a.id) ASC LIMIT 1"
+             ORDER BY (SELECT COUNT(*) FROM clientes WHERE agente_id = a.id) ASC, RAND() LIMIT 1"
         );
         $row = $stmt->fetch();
         if (!$row) throw new RuntimeException('No hay asesores activos.');
