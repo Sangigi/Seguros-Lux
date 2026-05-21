@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $db->prepare(
             "INSERT INTO cotizaciones 
             (cliente_id, agente_id, compania, tipo_cobertura,
-             precio, fecha_inicio, fecha_fin, estado_pago, creada_en)
+             precio, fecha, fecha_fin_vigencia, estado_pago, creada_en)
              VALUES (?,?,?,?,?,?,?,'pendiente',NOW())"
         )->execute([
             $clienteId,
@@ -616,7 +616,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $ins = $db->prepare(
                 "INSERT INTO cotizaciones
                  (cliente_id, agente_id, ramo, compania, tipo_cobertura,
-                  precio, fecha_inicio, fecha_fin, estado, estado_pago,
+                  precio, fecha, fecha_fin_vigencia, estado, estado_pago,
                   emision_estado, creada_en)
                  VALUES (?,?,?,?,?,?,?,?,'enviada','pendiente','en_proceso',NOW())"
             );
