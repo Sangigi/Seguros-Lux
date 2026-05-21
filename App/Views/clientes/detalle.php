@@ -188,20 +188,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         // Crear cotización de renovación
         $db->prepare(
             "INSERT INTO cotizaciones 
-            (cliente_id, agente_id, compania, tipo_cobertura, num_poliza,
-             prima, fecha_inicio, fecha_fin, pdf_path, estado_pago, creada_en)
-             VALUES (?,?,?,?,?,?,?,?,?,'pendiente',NOW())"
+            (cliente_id, agente_id, compania, tipo_cobertura,
+             precio, fecha_inicio, fecha_fin, estado_pago, creada_en)
+             VALUES (?,?,?,?,?,?,?,'pendiente',NOW())"
         )->execute([
             $clienteId,
             $agenteId,
             $pol['compania'],
-            'Renovación',
-            $_POST['num_poliza']   ?? $pol['numero_poliza'],
-            $_POST['prima']        ?? null,
+            'Renovación - ' . ($_POST['num_poliza'] ?? $pol['numero_poliza']),
+            $_POST['prima']        ?? 0,
             $_POST['fecha_inicio'] ?? null,
-            $_POST['fecha_fin']    ?? null,
-            $rutaRelativa
+            $_POST['fecha_fin']    ?? null
         ]);
+        $nuevaCotId = (int)$db->lastInsertId();
+
+        // Guardar el documento en la tabla correcta para que el coordinador lo vea
+        $db->prepare(
+            "INSERT INTO cotizacion_archivos (cotizacion_id, agente_id, tipo_documento, nombre_archivo, nombre_original, ruta, subido_en) 
+             VALUES (?, ?, 'poliza', ?, ?, ?, NOW())"
+        )->execute([$nuevaCotId, $agenteId, $nombreArchivo, $_FILES['archivo']['name'], $rutaRelativa]);
 
         $historialModel->registrar(
             $clienteId,
@@ -610,10 +615,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             // Crear cotización de renovación (pendiente de pago para coordinador)
             $ins = $db->prepare(
                 "INSERT INTO cotizaciones
-                 (cliente_id, agente_id, ramo, compania, tipo_cobertura, num_poliza,
-                  precio, fecha_inicio, fecha_fin, pdf_path, estado, estado_pago,
+                 (cliente_id, agente_id, ramo, compania, tipo_cobertura,
+                  precio, fecha_inicio, fecha_fin, estado, estado_pago,
                   emision_estado, creada_en)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,'enviada','pendiente','en_proceso',NOW())"
+                 VALUES (?,?,?,?,?,?,?,?,'enviada','pendiente','en_proceso',NOW())"
             );
             $ramo = $cliente['ramo'] ?? 'autos';
             $ins->execute([
@@ -621,13 +626,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 $agenteId,
                 $ramo,
                 $pol['compania'],
-                'Renovación',
-                $numPoliza ?: $pol['numero_poliza'],
-                $prima ?: null,
+                'Renovación - ' . ($numPoliza ?: $pol['numero_poliza']),
+                $prima ?: 0,
                 $fechaInicio ?: null,
-                $fechaFin    ?: null,
-                $rutaRelativa,
+                $fechaFin    ?: null
             ]);
+            $nuevaCotId = (int)$db->lastInsertId();
+
+            // Insertar el archivo en la tabla de archivos
+            $db->prepare(
+                "INSERT INTO cotizacion_archivos (cotizacion_id, agente_id, tipo_documento, nombre_archivo, nombre_original, ruta, subido_en) 
+                 VALUES (?, ?, 'poliza', ?, ?, ?, NOW())"
+            )->execute([$nuevaCotId, $agenteId, $nombreArchivo, $_FILES['archivo']['name'], $rutaRelativa]);
             $nuevaCotId = (int)$db->lastInsertId();
 
             // Marcar póliza original como renovada
