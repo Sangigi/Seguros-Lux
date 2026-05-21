@@ -294,7 +294,7 @@ switch ($accion) {
             if (!in_array($ext, ['pdf','jpg','jpeg','png','webp'], true)) {
                 echo json_encode(['ok'=>false,'msg'=>'Tipo de archivo no permitido.']); exit;
             }
-            $dir = dirname(__DIR__, 3) . '/uploads/polizas/' . $cotId . '/';
+            $dir = dirname(__DIR__, 3) . '/uploads/polizas/' . $cot['cliente_id'] . '/';
             if (!is_dir($dir)) mkdir($dir, 0755, true);
             $nombreArch = 'poliza_' . time() . '.' . $ext;
             $nombreOrig = basename($file['name']);

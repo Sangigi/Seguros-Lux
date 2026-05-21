@@ -459,11 +459,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $file = $_FILES['nueva_poliza_archivo'];
             $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
             if (in_array($ext, ['pdf','jpg','jpeg','png','webp'], true) && $file['error'] === UPLOAD_ERR_OK) {
-                // BUG #4 FIX: usar cotizacion_id para la ruta (coherente con emi_subir_poliza)
-                $stPolCot = $db->prepare("SELECT cotizacion_id FROM polizas WHERE id=? LIMIT 1");
+                // Usar cliente_id como directorio (consistente con detalle.php)
+                $stPolCot = $db->prepare("SELECT cliente_id FROM polizas WHERE id=? LIMIT 1");
                 $stPolCot->execute([$polizaId]);
-                $cotIdForDir = (int)($stPolCot->fetchColumn() ?: $polizaId);
-                $dir = dirname(__DIR__, 2) . '/uploads/polizas/' . $cotIdForDir . '/';
+                $clienteIdForDir = (int)($stPolCot->fetchColumn() ?: 0);
+                if (!$clienteIdForDir) $clienteIdForDir = $clienteId ?: $polizaId;
+                $dir = dirname(__DIR__, 2) . '/uploads/polizas/' . $clienteIdForDir . '/';
                 if (!is_dir($dir)) mkdir($dir, 0755, true);
                 $nomArch = 'renovacion_' . date('Ymd_His') . '.' . $ext;
                 if (move_uploaded_file($file['tmp_name'], $dir . $nomArch)) {
