@@ -471,7 +471,7 @@ class CitaModel extends BaseModel
                  SELECT COUNT(*) FROM citas c2
                  WHERE c2.agente_id = a.id
                    AND c2.estado IN ('programada','pendiente')
-             ) ASC LIMIT 1"
+             ) ASC, RAND() LIMIT 1"
         );
         $stmt->execute([$fecha, $hora]);
         return ($row = $stmt->fetch()) ? (int)$row['id'] : null;
