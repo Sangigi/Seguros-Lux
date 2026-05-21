@@ -571,30 +571,29 @@ if(in_array($text,['/agendar'],true)||str_contains($textNorm,'agendar')||str_con
     return;
 }
 
-// ── NUEVO CÓDIGO: VINCULACIÓN DE CITA VÍA TOKEN ──
+// ── CITA:token — vinculación desde link de WhatsApp ──────────────────────────
+// El link generado por ClientController tiene la forma wa.me/...?text=CITA:abc123
+// Cuando el cliente lo envía, vinculamos su número con la cita y mostramos el resumen.
 if (str_starts_with($text, 'CITA:')) {
-    $token = substr($text, 5);
-    $cita = $citaModel->getByTelegramToken($token); // ya existe este método
+    $token = trim(substr($text, 5));
+    $cita  = $citaModel->getByTelegramToken($token);
     if ($cita) {
         $_waDb->prepare("UPDATE clientes SET whatsapp_chat_id = ? WHERE id = ?")
-               ->execute([$phone, $cita['cliente_id']]);
-        waSend($phone, "✅ *¡Cita vinculada!*\n\n" . waResumen($cita) . "\n\n¿Qué deseas hacer?",
-               $WA_PHONE_ID, $WA_TOKEN, ['🔄 Reprogramar', '❌ Cancelar cita', '🏠 Menú principal']);
+              ->execute([$phone, $cita['cliente_id_real'] ?? $cita['cliente_id']]);
+        waSend($phone,
+            "✅ *¡Cita confirmada!*\n\n" . waResumen($cita) . "\n\n¿Qué deseas hacer?",
+            $WA_PHONE_ID, $WA_TOKEN,
+            ['🔄 Reprogramar', '❌ Cancelar cita', '🏠 Menú principal']
+        );
     } else {
-        waSend($phone, "⚠️ No encontré esa cita. ¿Registraste con otro número?",
-               $WA_PHONE_ID, $WA_TOKEN, ['📋 Ver mis citas', '🏠 Menú principal']);
+        waSend($phone,
+            "⚠️ No encontré esa cita. ¿Registraste con otro número?\n\n"
+            . "Escribe *mi cita* para buscar por tu número actual.",
+            $WA_PHONE_ID, $WA_TOKEN,
+            ['📋 Ver mis citas', '🏠 Menú principal']
+        );
     }
     return;
-}
-
-// Fallback
-waSetState($phone,[]);
-waMenuPrincipal($phone,$from,$WA_PHONE_ID,$WA_TOKEN,$_waDb);
-
-} catch (\Throwable $e) {
-    error_log('WhatsAppBot: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
-    wa_bot_debug_log('EXC: ' . $e->getMessage() . ' ' . $e->getFile() . ':' . $e->getLine());
-}
 }
 
 // Fallback

@@ -28,7 +28,6 @@ class ClientController
         };
     }
 
-    /** Normaliza una fila de cita para email / JSON (fecha, hora, tipo, ramo). */
     private static function citaActivaToFrontendData(array $row): array
     {
         return [
@@ -39,12 +38,10 @@ class ClientController
         ];
     }
 
-    /** "email,whatsapp" o canal único → lista de tokens. */
     private static function parseCanalesNotificacion(string $raw): array
     {
         $parts = array_map('trim', explode(',', $raw));
         $parts = array_filter($parts, static fn(string $p): bool => $p !== '');
-
         return array_values(array_unique($parts ?: ['email']));
     }
 
@@ -59,7 +56,6 @@ class ClientController
         foreach ($tokens as $t) {
             $out[] = $map[$t] ?? ucfirst((string) $t);
         }
-
         return implode(', ', $out);
     }
 
@@ -98,12 +94,11 @@ class ClientController
             $clientModel      = new ClientModel();
             $citaModel        = new CitaModel();
 
-            $correo           = trim($input['correo']           ?? '');
-            $fechaCita        = $input['fechaCita']             ?? null;
-            $horaCita         = $input['horaCita']              ?? null;
+            $correo            = trim($input['correo']           ?? '');
+            $fechaCita         = $input['fechaCita']             ?? null;
+            $horaCita          = $input['horaCita']              ?? null;
             $canalNotificacion = trim((string)($input['canalNotificacion'] ?? 'email'));
 
-            // Ramo vehicular público: el formulario manda tipoVehiculo pero no siempre "ramo"
             if (($input['ramo'] ?? '') === '' && !empty($input['tipoVehiculo'])) {
                 $mapTipoARamo = [
                     'auto' => 'autos', 'moto' => 'moto', 'camioneta' => 'camioneta', 'pickup' => 'pickup',
@@ -158,13 +153,13 @@ class ClientController
         $citaActiva = $citaModel->getCitaActivaByClienteId($clienteId);
 
         if ($citaActiva) {
-                self::respondSuccess(
-                    $agenteId, (int)$citaActiva['id'], $botUsername, $waNumero,
-                    $nombreCompleto, $correo,
-                    self::citaActivaToFrontendData($citaActiva),
-                    $canalNotificacion,
-                    $citaModel, true, true, 'Ya tienes una cita activa.'
-                );
+            self::respondSuccess(
+                $agenteId, (int)$citaActiva['id'], $botUsername, $waNumero,
+                $nombreCompleto, $correo,
+                self::citaActivaToFrontendData($citaActiva),
+                $canalNotificacion,
+                $citaModel, true, true, 'Ya tienes una cita activa.'
+            );
             return;
         }
 
@@ -185,10 +180,10 @@ class ClientController
             );
 
             $citaData = [
-                'fecha'    => $fechaCita,
-                'hora'     => $horaCita,
-                'tipo'     => $input['tipoCita'] ?? 'llamada',
-                'ramo'     => $input['ramo'] ?? 'autos',
+                'fecha' => $fechaCita,
+                'hora'  => $horaCita,
+                'tipo'  => $input['tipoCita'] ?? 'llamada',
+                'ramo'  => $input['ramo'] ?? 'autos',
             ];
         }
 
@@ -258,6 +253,9 @@ class ClientController
             self::enviarConfirmacionEmail($nombreCompleto, $correo, $citaData, $canales);
         }
 
+        // Generar token de WhatsApp (reutiliza la misma columna telegram_token)
+        $waToken = ($citaId && $waNumero) ? $citaModel->generarTelegramToken($citaId) : null;
+
         $response = [
             'success'           => true,
             'agente_id'         => $agenteId,
@@ -266,8 +264,8 @@ class ClientController
             'telegram_link'     => $citaId
                 ? "https://t.me/{$botUsername}?start=" . $citaModel->generarTelegramToken($citaId)
                 : null,
-            'whatsapp_link'     => $citaId
-                ? self::buildWhatsAppLink($waNumero, $nombreCompleto)
+            'whatsapp_link'     => ($citaId && $waToken)
+                ? self::buildWhatsAppLink($waNumero, $waToken)
                 : null,
             'cliente_existente' => $existente,
             'tiene_cita_activa' => $tieneActiva,
@@ -295,8 +293,8 @@ class ClientController
             $tipoCita   = $citaData['tipo']  ?? 'llamada';
             $ramo       = $citaData['ramo']  ?? 'autos';
 
-            $fechaFmt   = self::formatFecha($fecha);
-            $tipoLabel  = $tipoCita === 'videollamada' ? '💻 Videollamada' : '📞 Llamada telefónica';
+            $fechaFmt  = self::formatFecha($fecha);
+            $tipoLabel = $tipoCita === 'videollamada' ? '💻 Videollamada' : '📞 Llamada telefónica';
 
             $ramoLabels = [
                 'autos'    => '🚗 Seguro de Auto',
@@ -306,12 +304,10 @@ class ClientController
                 'moto'     => '🏍️ Seguro de Moto',
                 'pickup'   => '🛻 Seguro de Pickup',
             ];
-            $ramoLabel = $ramoLabels[$ramo] ?? ucfirst($ramo);
-
+            $ramoLabel  = $ramoLabels[$ramo] ?? ucfirst($ramo);
             $nombreHtml = htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8');
             $canalesTxt = self::canalesToLabelString($canalesElegidos);
-
-            $asunto = '✅ Confirmación de cita — ' . self::EMPRESA_NOMBRE;
+            $asunto     = '✅ Confirmación de cita — ' . self::EMPRESA_NOMBRE;
 
             $cuerpo = <<<HTML
 <html>
@@ -321,8 +317,6 @@ class ClientController
   <tr>
     <td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">
-
-        <!-- Header -->
         <tr>
           <td style="background:linear-gradient(135deg,#0ea5e9,#0284c7);padding:32px 36px;text-align:center;">
             <div style="font-size:48px;margin-bottom:8px;">📅</div>
@@ -330,73 +324,53 @@ class ClientController
             <p style="color:rgba(255,255,255,.85);margin:8px 0 0;font-size:15px;">{$ramoLabel}</p>
           </td>
         </tr>
-
-        <!-- Saludo -->
         <tr>
           <td style="padding:32px 36px 16px;">
             <p style="font-size:17px;color:#1a202c;margin:0;">Hola, <strong>{$nombreHtml}</strong> 👋</p>
             <p style="font-size:15px;color:#4a5568;margin:12px 0 0;line-height:1.6;">
               Tu solicitud de cita con un asesor de <strong>{$empresaNombre}</strong> ha sido registrada exitosamente.
-              Aquí tienes el resumen:
             </p>
           </td>
         </tr>
-
-        <!-- Detalles de la cita -->
         <tr>
           <td style="padding:0 36px 24px;">
             <table width="100%" cellpadding="0" cellspacing="0"
                    style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:20px;margin-top:8px;">
-              <tr>
-                <td style="padding:10px 0;border-bottom:1px solid #e0f2fe;">
-                  <span style="color:#64748b;font-size:13px;display:block;margin-bottom:2px;">📅 Fecha de la cita</span>
-                  <strong style="color:#0f172a;font-size:16px;">{$fechaFmt}</strong>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:10px 0;border-bottom:1px solid #e0f2fe;">
-                  <span style="color:#64748b;font-size:13px;display:block;margin-bottom:2px;">🕐 Hora</span>
-                  <strong style="color:#0f172a;font-size:16px;">{$hora} hrs</strong>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:10px 0;border-bottom:1px solid #e0f2fe;">
-                  <span style="color:#64748b;font-size:13px;display:block;margin-bottom:2px;">📞 Modalidad</span>
-                  <strong style="color:#0f172a;font-size:16px;">{$tipoLabel}</strong>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:10px 0;">
-                  <span style="color:#64748b;font-size:13px;display:block;margin-bottom:2px;">🛡️ Tipo de seguro</span>
-                  <strong style="color:#0f172a;font-size:16px;">{$ramoLabel}</strong>
-                </td>
-              </tr>
+              <tr><td style="padding:10px 0;border-bottom:1px solid #e0f2fe;">
+                <span style="color:#64748b;font-size:13px;display:block;margin-bottom:2px;">📅 Fecha</span>
+                <strong style="color:#0f172a;font-size:16px;">{$fechaFmt}</strong>
+              </td></tr>
+              <tr><td style="padding:10px 0;border-bottom:1px solid #e0f2fe;">
+                <span style="color:#64748b;font-size:13px;display:block;margin-bottom:2px;">🕐 Hora</span>
+                <strong style="color:#0f172a;font-size:16px;">{$hora} hrs</strong>
+              </td></tr>
+              <tr><td style="padding:10px 0;border-bottom:1px solid #e0f2fe;">
+                <span style="color:#64748b;font-size:13px;display:block;margin-bottom:2px;">📞 Modalidad</span>
+                <strong style="color:#0f172a;font-size:16px;">{$tipoLabel}</strong>
+              </td></tr>
+              <tr><td style="padding:10px 0;">
+                <span style="color:#64748b;font-size:13px;display:block;margin-bottom:2px;">🛡️ Tipo de seguro</span>
+                <strong style="color:#0f172a;font-size:16px;">{$ramoLabel}</strong>
+              </td></tr>
             </table>
           </td>
         </tr>
-
-        <!-- Aviso -->
         <tr>
           <td style="padding:0 36px 32px;">
             <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px 18px;">
               <p style="margin:0;font-size:14px;color:#92400e;line-height:1.6;">
-                ⏰ <strong>Importante:</strong> Un asesor de {$empresaNombre} se comunicará contigo en la fecha y hora indicadas.
-                Si necesitas reprogramar, contáctanos con anticipación.
+                ⏰ <strong>Importante:</strong> Un asesor se comunicará contigo en la fecha y hora indicadas.
               </p>
             </div>
           </td>
         </tr>
-
-        <!-- Footer -->
         <tr>
           <td style="background:#f8fafc;padding:20px 36px;text-align:center;border-top:1px solid #e2e8f0;">
             <p style="margin:0;font-size:13px;color:#94a3b8;">
-              © 2026 {$empresaNombre} · Todos los derechos reservados<br>
-              <span style="font-size:12px;">Este es un correo automático, por favor no respondas directamente a este mensaje.</span>
+              © 2026 {$empresaNombre} · Todos los derechos reservados
             </p>
           </td>
         </tr>
-
       </table>
     </td>
   </tr>
@@ -405,7 +379,6 @@ class ClientController
 </html>
 HTML;
 
-            // También notificar al asesor
             $asuntoAsesor = "[" . self::EMPRESA_NOMBRE . "] Nueva cita agendada — {$nombre}";
             $cuerpoAsesor = <<<HTML
 <html>
@@ -422,7 +395,7 @@ HTML;
       <tr><td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>📞 Modalidad:</strong></td><td style="padding:8px 0;border-bottom:1px solid #eee;">{$tipoLabel}</td></tr>
       <tr><td style="padding:8px 0;"><strong>🛡️ Ramo:</strong></td><td style="padding:8px 0;">{$ramoLabel}</td></tr>
     </table>
-    <p style="margin:16px 0 0;font-size:13px;color:#888;">Canales elegidos por el cliente: <strong>{$canalesTxt}</strong></p>
+    <p style="margin:16px 0 0;font-size:13px;color:#888;">Canales: <strong>{$canalesTxt}</strong></p>
   </div>
 </body>
 </html>
@@ -433,7 +406,7 @@ HTML;
             $headers .= "From: " . self::EMPRESA_NOMBRE . " <" . self::EMPRESA_EMAIL . ">\r\n";
             $headers .= "Reply-To: " . self::ASESOR_EMAIL . "\r\n";
 
-            mail($correo,          $asunto,       $cuerpo,       $headers);
+            mail($correo,            $asunto,       $cuerpo,       $headers);
             mail(self::ASESOR_EMAIL, $asuntoAsesor, $cuerpoAsesor, $headers);
 
         } catch (\Throwable $e) {
@@ -450,12 +423,13 @@ HTML;
         return (int)$d . ' de ' . ($meses[(int)$m] ?? '') . ' de ' . $y;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private static function buildWhatsAppLink(string $waNumero, string $nombre): ?string
+    /**
+     * Genera el link de WhatsApp con el token de la cita.
+     * El bot detecta el prefijo CITA: y vincula automáticamente el número.
+     */
+    private static function buildWhatsAppLink(string $waNumero, string $token): ?string
     {
         if (!$waNumero) return null;
-        $nombre = trim($nombre) ?: 'cliente';
         return 'https://wa.me/' . $waNumero . '?text=' . rawurlencode("CITA:{$token}");
     }
 
