@@ -388,7 +388,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     } elseif ($a === 'eliminar_agente') {
         $tid=(int)($_POST['agente_id']??0);
         if (!$tid||$tid===$agenteId) { echo json_encode(['ok'=>false,'msg'=>'No puedes desactivarte a ti mismo.']); exit; }
-        $agentModel->desactivar($tid);
+        // Se reemplaza desactivar() por eliminar() para coincidir con AgentModel
+        $agentModel->eliminar($tid);
         echo json_encode(['ok'=>true,'msg'=>'Asesor desactivado.']);
 
     } elseif ($a === 'reactivar_agente') {
