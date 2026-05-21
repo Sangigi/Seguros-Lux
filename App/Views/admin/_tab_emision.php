@@ -99,6 +99,9 @@ $stCots = $db->prepare(
             cl.id AS cliente_id,
             CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre,
             a.id AS asesor_id,
+            -- Detectar renovación
+            (CASE WHEN c.folio LIKE '%-R' OR c.tipo_cobertura LIKE 'Renovación%' THEN 1 ELSE 0 END) AS es_renovacion,
+            TRIM(REPLACE(c.tipo_cobertura, 'Renovación - ', '')) AS num_poliza_anterior,
             -- Cuenta archivos subidos (incluyendo póliza)
             (SELECT COUNT(*) FROM cotizacion_archivos ca
              WHERE ca.cotizacion_id = c.id AND ca.eliminado_en IS NULL) AS total_archivos,
@@ -126,8 +129,10 @@ $stCots = $db->prepare(
 $stCots->execute($params);
 $emiCots = $stCots->fetchAll(\PDO::FETCH_ASSOC);
 
-// KPIs rápidos (solo sobre el universo de "en emisión")
-$kpiCots    = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE emision_estado IN ('en_proceso','emitida')")->fetchColumn();
+// KPIs rápidos (solo sobre el universo de «en emisión»)
+// Las renovaciones (folio terminado en -R o tipo_cobertura LIKE 'Renovación%') se cuentan separado
+$kpiCots    = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE emision_estado IN ('en_proceso','emitida') AND folio NOT LIKE '%-R' AND tipo_cobertura NOT LIKE 'Renovación%'")->fetchColumn();
+$kpiRenov   = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE emision_estado IN ('en_proceso','emitida') AND (folio LIKE '%-R' OR tipo_cobertura LIKE 'Renovación%')")->fetchColumn();
 $kpiConPol  = $db->query("SELECT COUNT(DISTINCT p.cotizacion_id) FROM polizas p JOIN cotizaciones c ON c.id=p.cotizacion_id WHERE p.eliminado_en IS NULL AND c.emision_estado IN ('en_proceso','emitida')")->fetchColumn();
 $kpiPagConf = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='confirmado' AND emision_estado IN ('en_proceso','emitida')")->fetchColumn();
 $kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='pendiente' AND emision_estado='en_proceso'")->fetchColumn();
@@ -144,15 +149,15 @@ try {
 <div class="kpi4" style="margin-bottom:20px;">
     <div class="stat-card info">
         <div class="stat-card-value"><?= $kpiCots ?></div>
-        <div class="stat-card-label">📋 Total cotizaciones</div>
+        <div class="stat-card-label">📋 Nuevas en emisión</div>
+    </div>
+    <div class="stat-card info" style="border-color:#d97706;">
+        <div class="stat-card-value" style="color:#d97706;"><?= $kpiRenov ?></div>
+        <div class="stat-card-label">🔄 Renovaciones en emisión</div>
     </div>
     <div class="stat-card success">
         <div class="stat-card-value"><?= $kpiConPol ?></div>
         <div class="stat-card-label">📄 Con póliza subida</div>
-    </div>
-    <div class="stat-card success">
-        <div class="stat-card-value"><?= $kpiPagConf ?></div>
-        <div class="stat-card-label">✅ Pago confirmado</div>
     </div>
     <div class="stat-card warning">
         <div class="stat-card-value"><?= $kpiPendPago ?></div>
@@ -238,6 +243,10 @@ try {
                 [$bPago, $lPago] = $BADGE_PAGO[$cot['estado_pago'] ?? 'pendiente'] ?? ['badge-neutral','—'];
                 $tienePoliza = (int)$cot['tiene_poliza'] > 0;
                 $enProceso   = ($cot['emision_estado'] ?? '') === 'en_proceso';
+                $esRenovacion = !empty($cot['es_renovacion']);
+                $numPolizaAnterior = $cot['num_poliza_anterior'] ?? '';
+                // Si el num_poliza_anterior aún contiene "Renovación" (campo sin limpiar) dejarlo vacío
+                if (strpos($numPolizaAnterior, 'Renovación') !== false) $numPolizaAnterior = '';
 
                 // Ventana de edición del comprobante
                 $puedeEditar = false;
@@ -259,6 +268,18 @@ try {
                     <?php if (!empty($cot['folio'])): ?>
                     <span class="fmono"><?= htmlspecialchars($cot['folio']) ?></span>
                     <?php else: ?><span style="color:var(--text-muted);">#<?= $cot['id'] ?></span><?php endif; ?>
+                    <?php if ($esRenovacion): ?>
+                    <div style="margin-top:3px;">
+                        <span style="display:inline-flex;align-items:center;gap:3px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:4px;font-size:10px;font-weight:700;padding:1px 6px;white-space:nowrap;">
+                            🔄 Renovación
+                        </span>
+                        <?php if ($numPolizaAnterior): ?>
+                        <div style="font-size:10px;color:var(--text-muted);margin-top:2px;font-family:monospace;" title="Póliza anterior">
+                            Ant: <?= htmlspecialchars($numPolizaAnterior) ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
                 </td>
                 <td>
                     <div style="font-weight:600;font-size:13px;"><?= htmlspecialchars($cot['cliente_nombre']) ?></div>
@@ -374,7 +395,11 @@ try {
 
                     <a href="/admin?accion=emi_pdf_checklist&cotizacion_id=<?= $cot['id'] ?>"
                        target="_blank" class="btn btn-outline btn-sm" style="display:block;text-align:center;">
-                        📋 Checklist
+                        <?php if ($esRenovacion): ?>
+                            🔄 Checklist Renovación<?= $numPolizaAnterior ? '<br><span style="font-size:10px;font-family:monospace;opacity:.75;">'.htmlspecialchars($numPolizaAnterior).'</span>' : '' ?>
+                        <?php else: ?>
+                            📋 Checklist
+                        <?php endif; ?>
                     </a>
                 </td>
             </tr>
