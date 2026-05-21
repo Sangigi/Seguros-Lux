@@ -104,8 +104,10 @@ $stCots = $db->prepare(
              WHERE ca.cotizacion_id = c.id AND ca.eliminado_en IS NULL) AS total_archivos,
             -- ¿Tiene póliza subida? Susituir por la tabla polizas corregida antes
             (SELECT COUNT(*) FROM polizas p WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL) AS tiene_poliza,
-            -- NUEVO: Traer el archivo real de la póliza
+            -- NUEVO: Traer el archivo real de la póliza principal
             (SELECT p.nombre_archivo FROM polizas p WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL LIMIT 1) AS archivo_poliza,
+            -- NUEVO: Respaldo por si el coordinador la subió en los documentos de la cotización
+            (SELECT ca.nombre_archivo FROM cotizacion_archivos ca WHERE ca.cotizacion_id = c.id AND ca.tipo_documento = 'poliza' AND ca.eliminado_en IS NULL LIMIT 1) AS archivo_poliza_cot,
             -- Comprobante de pago del coordinador
             (SELECT id FROM cotizacion_comprobantes_pago cp
              WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
@@ -270,11 +272,25 @@ try {
                 <td><span class="badge <?= $bEst ?>"><?= ucfirst($cot['estado']) ?></span></td>
                 <td><span class="badge <?= $bPago ?>"><?= $lPago ?></span></td>
                 <td style="text-align:center;">
-    <?php if ($cot['tiene_poliza'] > 0): ?>
+    <?php 
+    $tienePolizaTabla = (int)$cot['tiene_poliza'] > 0;
+    $tienePolizaCot = !empty($cot['archivo_poliza_cot']);
+    
+    if ($tienePolizaTabla || $tienePolizaCot): 
+        $urlPoliza = '';
+        // 1. Revisar si está en la tabla polizas (Ruta: polizas/ID_CLIENTE/archivo)
+        if ($tienePolizaTabla && !empty($cot['archivo_poliza'])) {
+            $urlPoliza = '/archivo?file=polizas/' . $cot['cliente_id'] . '/' . $cot['archivo_poliza'];
+        } 
+        // 2. Revisar si está en cotizacion_archivos (Ruta: cotizaciones/ID_COT/archivo)
+        elseif ($tienePolizaCot) {
+            $urlPoliza = '/archivo?file=cotizaciones/' . $cot['id'] . '/' . $cot['archivo_poliza_cot'];
+        }
+    ?>
         <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
             <span class="emi-pill pill-ok" title="Póliza cargada y emitida">✓ Subida</span>
-            <?php if (!empty($cot['archivo_poliza'])): ?>
-                <a href="/archivo?file=<?php echo urlencode('polizas/' . $cot['id'] . '/' . $cot['archivo_poliza']); ?>" 
+            <?php if ($urlPoliza): ?>
+                <a href="<?php echo $urlPoliza; ?>" 
                    target="_blank" 
                    class="emi-btn-view" 
                    style="padding:2px 6px; font-size:11px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; background:#0f172a; color:#fff; border-radius:4px;"
