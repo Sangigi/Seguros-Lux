@@ -1547,7 +1547,12 @@ $BADGE_PAGO_CL = [
     // 1. Definir los documentos estrictamente obligatorios del ASESOR
     $docs_obligatorios_asesor = [];
     $ramo_cot = $cot['ramo'] ?? 'autos';
-    if ($ramo_cot === 'autos') {
+    // Si es renovación (tipo_cobertura empieza con "Renovación"), solo se requiere
+    // la nueva póliza; los documentos del cliente ya existen de la emisión anterior.
+    $es_renovacion_cot = (strpos($cot['tipo_cobertura'] ?? '', 'Renovación') === 0);
+    if ($es_renovacion_cot) {
+        $docs_obligatorios_asesor = ['poliza']; // Solo la póliza renovada
+    } elseif ($ramo_cot === 'autos') {
         $docs_obligatorios_asesor = ['doc_cotizacion', 'ine', 'comprobante_dom', 'tarjeta_circulacion', 'foto_coche_1', 'foto_coche_2'];
     } else {
         $docs_obligatorios_asesor = ['doc_cotizacion', 'ine', 'comprobante_dom'];
@@ -1560,7 +1565,8 @@ $BADGE_PAGO_CL = [
         'comprobante_dom'     => 'Comprobante de Domicilio',
         'tarjeta_circulacion' => 'Tarjeta de Circulación',
         'foto_coche_1'        => 'Foto de Coche 1',
-        'foto_coche_2'        => 'Foto de Coche 2'
+        'foto_coche_2'        => 'Foto de Coche 2',
+        'poliza'              => 'Póliza renovada',
     ];
 
     // 3. Obtener los documentos que el asesor ya subió en esta cotización
