@@ -571,6 +571,32 @@ if(in_array($text,['/agendar'],true)||str_contains($textNorm,'agendar')||str_con
     return;
 }
 
+// ── NUEVO CÓDIGO: VINCULACIÓN DE CITA VÍA TOKEN ──
+if (str_starts_with($text, 'CITA:')) {
+    $token = substr($text, 5);
+    $cita = $citaModel->getByTelegramToken($token); // ya existe este método
+    if ($cita) {
+        $_waDb->prepare("UPDATE clientes SET whatsapp_chat_id = ? WHERE id = ?")
+               ->execute([$phone, $cita['cliente_id']]);
+        waSend($phone, "✅ *¡Cita vinculada!*\n\n" . waResumen($cita) . "\n\n¿Qué deseas hacer?",
+               $WA_PHONE_ID, $WA_TOKEN, ['🔄 Reprogramar', '❌ Cancelar cita', '🏠 Menú principal']);
+    } else {
+        waSend($phone, "⚠️ No encontré esa cita. ¿Registraste con otro número?",
+               $WA_PHONE_ID, $WA_TOKEN, ['📋 Ver mis citas', '🏠 Menú principal']);
+    }
+    return;
+}
+
+// Fallback
+waSetState($phone,[]);
+waMenuPrincipal($phone,$from,$WA_PHONE_ID,$WA_TOKEN,$_waDb);
+
+} catch (\Throwable $e) {
+    error_log('WhatsAppBot: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+    wa_bot_debug_log('EXC: ' . $e->getMessage() . ' ' . $e->getFile() . ':' . $e->getLine());
+}
+}
+
 // Fallback
 waSetState($phone,[]);
 waMenuPrincipal($phone,$from,$WA_PHONE_ID,$WA_TOKEN,$_waDb);

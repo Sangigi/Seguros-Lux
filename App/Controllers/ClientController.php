@@ -12,7 +12,7 @@ class ClientController
 {
     private const EMPRESA_NOMBRE = 'Seguros LUX';
     private const EMPRESA_EMAIL  = 'noreply@seguroslux.mx';
-    private const ASESOR_EMAIL   = 'leonelalmanza21@gmail.com';
+    private const ASESOR_EMAIL   = 'contacto@seguroslux.mx';
 
     public static function handle(): void
     {
@@ -456,7 +456,7 @@ HTML;
     {
         if (!$waNumero) return null;
         $nombre = trim($nombre) ?: 'cliente';
-        return 'https://wa.me/' . $waNumero . '?text=' . rawurlencode("Hola, acabo de agendar una cita. Mi nombre es {$nombre}.");
+        return 'https://wa.me/' . $waNumero . '?text=' . rawurlencode("CITA:{$token}");
     }
 
     private static function resolverAgenteId(int $clienteId, int $agenteIdActual): int
