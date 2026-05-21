@@ -638,7 +638,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 "INSERT INTO cotizacion_archivos (cotizacion_id, agente_id, tipo_documento, nombre_archivo, nombre_original, ruta, subido_en) 
                  VALUES (?, ?, 'poliza', ?, ?, ?, NOW())"
             )->execute([$nuevaCotId, $agenteId, $nombreArchivo, $_FILES['archivo']['name'], $rutaRelativa]);
-            $nuevaCotId = (int)$db->lastInsertId();
 
             // Marcar póliza original como renovada
             $db->prepare("UPDATE polizas SET estado='renovada' WHERE id=?")->execute([$polizaId]);
