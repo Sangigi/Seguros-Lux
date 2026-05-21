@@ -133,7 +133,7 @@ class VidaSolicitudController
         // ── Guardar en CRM (tabla clientes) con agente por menor carga ─────────
         $agenteAsignado = self::guardarEnCRM(
             nombre: $nombre, correo: $correo, telefono: $telefono, nacimiento: $nacimiento,
-            ramo: $ramo, tipoVeh: $tipoVeh, marca: $marca: $
+            ramo: $ramo, tipoVeh: $tipoVeh, marca: $marca, submarca: $submarca,
             modelo: $modelo, version: $version, anio: $anio, domicilio: $domicilio, cp: $cp,
             edadGmm: $edadGmm, depGmm: $depGmm, hospitales: $hospitales,
             empresa: $empresa, giroEmp: $giroEmp, empleados: $empleados, servicios: $servicios,
@@ -145,8 +145,8 @@ class VidaSolicitudController
             nombre: $nombre, correo: $correo, telefono: $telefono, fechaPref: $fechaPref,
             ramo: $ramo, edadGmm: $edadGmm, depGmm: $depGmm, comentarios: $comentarios,
             empresa: $empresa, empleados: $empleados, servicios: $servicios,
-            marca: $marca, modelo: $modelo, anio: $anio, tipoVeh: $tipoVeh,
-            hospitales: $hospitales: $ version: $version,
+            marca: $marca, submarca: $submarca, modelo: $modelo, version: $version,
+            anio: $anio, tipoVeh: $tipoVeh, hospitales: $hospitales,
             cp: $cp, domicilio: $domicilio
         );
 
@@ -156,7 +156,7 @@ class VidaSolicitudController
             telefono: $telefono, fechaPref: $fechaPref, ramo: $ramo,
             edadGmm: $edadGmm, depGmm: $depGmm, comentarios: $comentarios,
             empresa: $empresa, giroEmp: $giroEmp, empleados: $empleados, servicios: $servicios,
-            marca: $marca: $ modelo: $modelo, version: $version,
+            marca: $marca, submarca: $submarca, modelo: $modelo, version: $version,
             anio: $anio, tipoVeh: $tipoVeh, domicilio: $domicilio, cp: $cp,
             hospitales: $hospitales, urgencia: $urgencia,
             numUnidades: $numUnidades, tipoFlota: $tipoFlota, nacimiento: $nacimiento
@@ -205,7 +205,7 @@ class VidaSolicitudController
 
     private static function guardarEnCRM(
         string $nombre, string $correo, string $telefono, string $nacimiento,
-        string $ramo, string $tipoVeh, string $marca, string $
+        string $ramo, string $tipoVeh, string $marca, string $submarca,
         string $modelo, string $version, string $anio, string $domicilio, string $cp,
         string $edadGmm, string $depGmm, string $hospitales,
         string $empresa, string $giroEmp, string $empleados, string $servicios,
