@@ -567,6 +567,106 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         }
     }
 
+    // ── Ejecutar renovación: el asesor sube la póliza renovada ───────────────
+    if ($_POST['accion'] === 'ejecutar_renovacion_asesor') {
+        $polizaId    = (int)($_POST['poliza_id']    ?? 0);
+        $numPoliza   = trim($_POST['num_poliza']    ?? '');
+        $fechaInicio = trim($_POST['fecha_inicio']  ?? '');
+        $fechaFin    = trim($_POST['fecha_fin']     ?? '');
+        $prima       = trim($_POST['prima']         ?? '');
+        $comentarios = trim($_POST['comentarios']   ?? '');
+
+        if (!$polizaId) { echo json_encode(['ok'=>false,'msg'=>'Póliza no indicada.']); exit; }
+        if (empty($_FILES['archivo']['name']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
+            echo json_encode(['ok'=>false,'msg'=>'Archivo de póliza no recibido.']); exit;
+        }
+
+        $ext = strtolower(pathinfo($_FILES['archivo']['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['pdf','jpg','jpeg','png'], true)) {
+            echo json_encode(['ok'=>false,'msg'=>'Formato de archivo inválido (PDF, JPG o PNG).']); exit;
+        }
+        if ($_FILES['archivo']['size'] > 20 * 1024 * 1024) {
+            echo json_encode(['ok'=>false,'msg'=>'El archivo no debe superar 20 MB.']); exit;
+        }
+
+        try {
+            $db = \Database\Connection::getConnection();
+
+            // Verificar que la póliza pertenece al cliente/asesor
+            $stPol = $db->prepare('SELECT id, numero_poliza, compania, cotizacion_id FROM polizas WHERE id=? AND cliente_id=?');
+            $stPol->execute([$polizaId, $clienteId]);
+            $pol = $stPol->fetch(\PDO::FETCH_ASSOC);
+            if (!$pol) { echo json_encode(['ok'=>false,'msg'=>'Póliza no encontrada.']); exit; }
+
+            // Guardar archivo
+            $uploadDir = dirname(__DIR__, 3) . "/uploads/polizas/renovaciones/{$clienteId}/";
+            if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+            $nombreArchivo = 'renovacion_' . time() . '.' . $ext;
+            $rutaRelativa  = "uploads/polizas/renovaciones/{$clienteId}/{$nombreArchivo}";
+            if (!move_uploaded_file($_FILES['archivo']['tmp_name'], $uploadDir . $nombreArchivo)) {
+                echo json_encode(['ok'=>false,'msg'=>'Error al guardar el archivo.']); exit;
+            }
+
+            // Crear cotización de renovación (pendiente de pago para coordinador)
+            $ins = $db->prepare(
+                "INSERT INTO cotizaciones
+                 (cliente_id, agente_id, ramo, compania, tipo_cobertura, num_poliza,
+                  precio, fecha_inicio, fecha_fin, pdf_path, estado, estado_pago,
+                  emision_estado, creada_en)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,'enviada','pendiente','en_proceso',NOW())"
+            );
+            $ramo = $cliente['ramo'] ?? 'autos';
+            $ins->execute([
+                $clienteId,
+                $agenteId,
+                $ramo,
+                $pol['compania'],
+                'Renovación',
+                $numPoliza ?: $pol['numero_poliza'],
+                $prima ?: null,
+                $fechaInicio ?: null,
+                $fechaFin    ?: null,
+                $rutaRelativa,
+            ]);
+            $nuevaCotId = (int)$db->lastInsertId();
+
+            // Marcar póliza original como renovada
+            $db->prepare("UPDATE polizas SET estado='renovada' WHERE id=?")->execute([$polizaId]);
+
+            // Registrar en historial
+            $historialModel->registrar(
+                $clienteId, $agenteId, 'cotizacion',
+                '🔁 Renovación enviada a coordinador',
+                'Póliza ' . ($numPoliza ?: $pol['numero_poliza']) . ' — ' . $pol['compania'] . ($comentarios ? " | {$comentarios}" : '')
+            );
+
+            // Notificar a coordinadores
+            $coords = $db->query("SELECT id FROM agentes WHERE rol IN ('coordinador','superadmin') AND activo=1")
+                         ->fetchAll(\PDO::FETCH_COLUMN);
+            $stNom = $db->prepare("SELECT CONCAT(cl.nombre,' ',cl.apellido_paterno) AS nom FROM clientes cl WHERE cl.id=?");
+            $stNom->execute([$clienteId]);
+            $clienteNombre = $stNom->fetchColumn() ?: "Cliente #{$clienteId}";
+            $stNotif = $db->prepare(
+                "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
+                 VALUES (?,?,?,?,1,'blue',?,0,NOW())"
+            );
+            foreach ($coords as $cid) {
+                $stNotif->execute([
+                    $cid, 'emision',
+                    "🔁 Renovación lista — {$clienteNombre}",
+                    "El asesor subió la póliza renovada de {$clienteNombre} ({$pol['compania']}). Pendiente de cobro.",
+                    '/admin?tab=emision',
+                ]);
+            }
+
+            echo json_encode(['ok'=>true, 'cotizacion_id'=>$nuevaCotId]);
+        } catch (\Throwable $e) {
+            error_log('[ejecutar_renovacion_asesor] ' . $e->getMessage());
+            echo json_encode(['ok'=>false,'msg'=>'Error interno: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
     echo json_encode(['ok'=>false,'msg'=>'Acción desconocida.']); exit;
 }
 
