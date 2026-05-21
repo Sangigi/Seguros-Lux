@@ -253,19 +253,21 @@ class ClientController
             self::enviarConfirmacionEmail($nombreCompleto, $correo, $citaData, $canales);
         }
 
-        // Generar token de WhatsApp (reutiliza la misma columna telegram_token)
-        $waToken = ($citaId && $waNumero) ? $citaModel->generarTelegramToken($citaId) : null;
+        // Generar el token UNA sola vez — se reutiliza para Telegram y WhatsApp.
+        // Si se llama generarTelegramToken() dos veces sobreescribe el token en BD
+        // y el primer link generado deja de funcionar.
+        $sharedToken = $citaId ? $citaModel->generarTelegramToken($citaId) : null;
 
         $response = [
             'success'           => true,
             'agente_id'         => $agenteId,
             'cita_id'           => $citaId,
             'canal_notificacion'=> $canalNotificacion,
-            'telegram_link'     => $citaId
-                ? "https://t.me/{$botUsername}?start=" . $citaModel->generarTelegramToken($citaId)
+            'telegram_link'     => ($citaId && $sharedToken)
+                ? "https://t.me/{$botUsername}?start={$sharedToken}"
                 : null,
-            'whatsapp_link'     => ($citaId && $waToken)
-                ? self::buildWhatsAppLink($waNumero, $waToken)
+            'whatsapp_link'     => ($citaId && $sharedToken && $waNumero)
+                ? self::buildWhatsAppLink($waNumero, $sharedToken)
                 : null,
             'cliente_existente' => $existente,
             'tiene_cita_activa' => $tieneActiva,

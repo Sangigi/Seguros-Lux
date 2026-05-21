@@ -266,7 +266,7 @@ if($text==='/salir'){
 // ── /asesor ───────────────────────────────────────────────────────────────────
 if($text==='/asesor'){
     waSetState($phone,[]);
-    waSend($phone,"📞 *Contacta a un asesor directamente:*\n\n☎️ *800 123 4567*\n"
+    waSend($phone,"📞 *Contacta a un asesor directamente:*\n\n☎️ *55 4123 2311*\n"
         ."📧 contacto@seguroslux.mx\n🌐 seguroslux.mx/contacto\n\n"
         ."Horario: Lun-Vie 9am–7pm · Sáb 9am–2pm",$WA_PHONE_ID,$WA_TOKEN,
         ['🏠 Menú principal','📋 Ver mi cita']);
@@ -277,7 +277,7 @@ if($text==='/asesor'){
 if($text==='/agendar'){
     waSetState($phone,[]);
     waSend($phone,"📅 *Agenda tu cita gratis:*\n\n🌐 *seguroslux.mx/formulario*\n\n"
-        ."O llama: ☎️ *800 123 4567*",$WA_PHONE_ID,$WA_TOKEN,
+        ."O llama: ☎️ *55 4123 2311*",$WA_PHONE_ID,$WA_TOKEN,
         ['🏠 Menú principal','📋 Ver mi cita','📞 Contactar asesor']);
     return;
 }
@@ -303,101 +303,29 @@ if($esMenu||$esDesdeForm){
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// FLUJOS COTIZACIÓN — AUTO
+// COTIZACIÓN — redirige directo al formulario (sin flujo de preguntas)
 // ══════════════════════════════════════════════════════════════════════════════
-if($text==='/auto'){
-    waSetState($phone,['flow'=>'auto','step'=>'marca']);
-    waSend($phone,"🚗 *Cotización de Auto*\n\n¿Cuál es la *marca* de tu vehículo?\n_(Ej: Nissan, Toyota, Honda, VW...)_",$WA_PHONE_ID,$WA_TOKEN);
-    return;
-}
-if($step==='marca'&&($state['flow']??'')==='auto'){
-    waSetState($phone,array_merge($state,['marca'=>$text,'step'=>'modelo']));
-    waSend($phone,"✅ *{$text}* — ¿Cuál es el *modelo*?\n_(Ej: Versa, Corolla, Jetta...)_",$WA_PHONE_ID,$WA_TOKEN);
-    return;
-}
-if($step==='modelo'&&($state['flow']??'')==='auto'){
-    waSetState($phone,array_merge($state,['modelo'=>$text,'step'=>'anio']));
-    waSend($phone,"✅ ¿De qué *año* es tu {$state['marca']} {$text}?\n_(Ej: 2024, 2022, 2019...)_",$WA_PHONE_ID,$WA_TOKEN);
-    return;
-}
-if($step==='anio'&&($state['flow']??'')==='auto'){
-    $año=(int)preg_replace('/\D/','',$text);
-    if($año<1990||$año>(int)date('Y')+1){waSend($phone,"⚠️ Año no válido. Ingresa entre 1990 y ".(date('Y')+1),$WA_PHONE_ID,$WA_TOKEN);return;}
-    waSetState($phone,array_merge($state,['anio'=>$año,'step'=>'uso']));
-    waSend($phone,"✅ ¿Cuál es el *uso principal* del vehículo?",$WA_PHONE_ID,$WA_TOKEN,
-        ['Particular','Trabajo/Oficina','Plataforma (Uber/Didi)']);
-    return;
-}
-if($step==='uso'&&($state['flow']??'')==='auto'){
-    $uso=str_contains(mb_strtolower($text),'plataforma')||str_contains(mb_strtolower($text),'uber')?'plataforma':'particular';
-    $s2=array_merge($state,['uso'=>$uso,'step'=>'cotizado']);
-    waSetState($phone,$s2);
-    waSend($phone,waCotizarAuto($s2),$WA_PHONE_ID,$WA_TOKEN);
-    waSend($phone,"¿Qué deseas hacer?",$WA_PHONE_ID,$WA_TOKEN,['📅 Agendar con asesor','📋 Ver mi cita','🏠 Menú principal']);
-    return;
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// FLUJOS COTIZACIÓN — VIDA
-// ══════════════════════════════════════════════════════════════════════════════
-if($text==='/vida'){
-    waSetState($phone,['flow'=>'vida','step'=>'edad_vida']);
-    waSend($phone,"❤️ *Seguro de Vida*\n\nTe haré unas preguntas rápidas.\n¿Cuántos años tienes?",$WA_PHONE_ID,$WA_TOKEN);
-    return;
-}
-if($step==='edad_vida'){
-    $edad=(int)preg_replace('/\D/','',$text);
-    if($edad<18||$edad>75){waSend($phone,"⚠️ La edad debe ser entre 18 y 75 años.",$WA_PHONE_ID,$WA_TOKEN);return;}
-    waSetState($phone,['flow'=>'vida','step'=>'obj_vida','edad'=>$edad]);
-    waSend($phone,"✅ ¿Cuál es tu objetivo principal?",$WA_PHONE_ID,$WA_TOKEN,
-        ['Proteger a mi familia','Ahorro a largo plazo','Herencia/Retiro']);
-    return;
-}
-if($step==='obj_vida'){
-    $edad=$state['edad']??30;
-    if($edad<35)$prima='~$350';elseif($edad<50)$prima='~$650';else$prima='~$1,200';
+if(in_array($text,['/auto','/vida','/gmm'],true)){
+    $ramos=['/auto'=>'🚗 Auto','/vida'=>'❤️ Vida','/gmm'=>'🏥 Gastos Médicos'];
+    $label=$ramos[$text];
     waSetState($phone,[]);
-    waSend($phone,"❤️ *Orientación — Seguro de Vida*\n\n"
-        ."Con *{$edad} años* · Objetivo: _{$text}_\n\n"
-        ."💡 Opciones recomendadas:\n"
-        ."• *Temporal 20 años* — Protección familiar ({$prima}/mes est.)\n"
-        ."• *Vida Entera* — Protección + Ahorro permanente\n"
-        ."• *Dotal* — Ahorro a plazo fijo con cobertura\n\n"
-        ."_Cotización final con asesor, sin costo ni compromiso._",$WA_PHONE_ID,$WA_TOKEN,
-        ['📅 Agendar asesoría','📞 Contactar asesor','🏠 Menú principal']);
+    waSend($phone,
+        "¡Perfecto! Para cotizar tu seguro de {$label} un asesor te atenderá personalmenente.\n\n"
+        ."📋 *Llena el formulario en:*\n🌐 seguroslux.mx/formulario\n\n"
+        ."O llámanos directamente:\n☎️ *55 4123 2311*",
+        $WA_PHONE_ID,$WA_TOKEN,
+        ['🏠 Menú principal','📋 Ver mi cita','📞 Contactar asesor']
+    );
     return;
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// FLUJOS COTIZACIÓN — GMM
-// ══════════════════════════════════════════════════════════════════════════════
-if($text==='/gmm'){
-    waSetState($phone,['flow'=>'gmm','step'=>'edad_gmm']);
-    waSend($phone,"🏥 *Gastos Médicos Mayores*\n\n¿Cuántos años tienes?",$WA_PHONE_ID,$WA_TOKEN);
-    return;
-}
-if($step==='edad_gmm'){
-    $edad=(int)preg_replace('/\D/','',$text);
-    if($edad<0||$edad>85){waSend($phone,"⚠️ Ingresa una edad válida.",$WA_PHONE_ID,$WA_TOKEN);return;}
-    waSetState($phone,['flow'=>'gmm','step'=>'dep_gmm','edad'=>$edad]);
-    waSend($phone,"✅ ¿El seguro incluiría más personas además de ti?",$WA_PHONE_ID,$WA_TOKEN,
-        ['Solo yo','Pareja','Familia (con hijos)']);
-    return;
-}
-if($step==='dep_gmm'){
-    $edad=$state['edad']??30; $dep=$text;
-    $esFam=str_contains(mb_strtolower($dep),'famil')||str_contains(mb_strtolower($dep),'hijos');
-    $esPar=str_contains(mb_strtolower($dep),'parej');
-    if($esFam){$b='~$18,000';$m='~$30,000';$p='~$50,000+';}
-    elseif($esPar){$b='~$12,000';$m='~$20,000';$p='~$35,000+';}
-    else{$b='~$7,000';$m='~$12,000';$p='~$22,000+';}
+// Mantener aliases de entrada por si el usuario escribe el nombre del ramo
+if(in_array($step,['marca','modelo','anio','uso','cotizado','edad_vida','obj_vida','edad_gmm','dep_gmm'],true)){
+    // flujo viejo ya no existe — redirigir
     waSetState($phone,[]);
-    waSend($phone,"🏥 *GMM — {$edad} años / {$dep}*\n\n"
-        ."💊 *Esencial:* {$b}/año — Hospitalización · Cirugías · Médicos\n"
-        ."💊 *Estándar:* {$m}/año — + Red amplia · Suma mayor\n"
-        ."💊 *Premium:* {$p}/año — + Internacional · Sin deducible · Top hospitales\n\n"
-        ."_Cotización exacta requiere asesor por historial médico._",$WA_PHONE_ID,$WA_TOKEN,
-        ['📅 Solicitar asesoría','📞 Contactar asesor','🏠 Menú principal']);
+    waSend($phone,
+        "Para cotizar, llena el formulario o llámanos:\n🌐 seguroslux.mx/formulario\n☎️ *55 4123 2311*",
+        $WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']
+    );
     return;
 }
 
