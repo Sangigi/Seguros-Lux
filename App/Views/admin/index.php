@@ -75,9 +75,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
         }
     }
 
+    if (!isset($docsMap['comprobante_pago'])) {
+        $stComp2 = $db->prepare(
+            "SELECT nombre_original, nombre_archivo, creado_en AS subido_en
+             FROM cotizacion_comprobantes_pago
+             WHERE cotizacion_id = ? AND eliminado_en IS NULL
+             ORDER BY creado_en DESC LIMIT 1"
+        );
+        $stComp2->execute([$cotId]);
+        $comp2 = $stComp2->fetch(\PDO::FETCH_ASSOC);
+        if ($comp2) {
+            $docsMap['comprobante_pago'] = $comp2;
+        }
+    }
+    
     $stCk = $db->prepare(
-        "SELECT doc_tipo, estado, nota, revisado_en
-         FROM emision_checklist
+        "SELECT doc_tipo, estado, nota, actualizado_en AS revisado_en
+         FROM emi_checklist
          WHERE cotizacion_id = ?"
     );
     $stCk->execute([$cotId]);
