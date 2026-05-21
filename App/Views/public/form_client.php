@@ -482,7 +482,7 @@ $nonce = SessionManager::nonce();
 var selectedRamo        = null;
 var selectedVidaGmmRamo = null;
 // Números de WhatsApp/Telegram para fallback (si el servidor no devuelve link)
-var WA_NUMERO_NEGOCIO   = '5215541232311'; // número sin + con código país
+var WA_NUMERO_NEGOCIO   = '5215514605959'; // número del bot WhatsApp
 var TG_BOT_USERNAME     = 'SegurosLuxBot'; // username del bot sin @
 
 var _vehRadioSel        = { tipoVehiculo: null, asegurado: null, tiempoCompra: null, recienComprado: null, sexo: null, tipoCita: null };

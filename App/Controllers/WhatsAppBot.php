@@ -505,7 +505,14 @@ if(in_array($text,['/agendar'],true)||str_contains($textNorm,'agendar')||str_con
 if (str_starts_with($text, 'CITA:')) {
     $token = trim(substr($text, 5));
     $cita  = $citaModel->getByTelegramToken($token);
+
+    // Si el token no se encuentra (p.ej. fue sobreescrito en BD), buscar por teléfono
+    if (!$cita) {
+        $cita = $citaModel->getByChatId($phone);
+    }
+
     if ($cita) {
+        // Vincular número WhatsApp al cliente para futuras búsquedas
         $_waDb->prepare("UPDATE clientes SET whatsapp_chat_id = ? WHERE id = ?")
               ->execute([$phone, $cita['cliente_id_real'] ?? $cita['cliente_id']]);
         waSend($phone,
@@ -515,8 +522,8 @@ if (str_starts_with($text, 'CITA:')) {
         );
     } else {
         waSend($phone,
-            "⚠️ No encontré esa cita. ¿Registraste con otro número?\n\n"
-            . "Escribe *mi cita* para buscar por tu número actual.",
+            "⚠️ No encontré una cita activa vinculada a este número.\n\n"
+            . "Si agendaste con otro número, escribe *mi cita* y te ayudo a buscarlo.",
             $WA_PHONE_ID, $WA_TOKEN,
             ['📋 Ver mis citas', '🏠 Menú principal']
         );

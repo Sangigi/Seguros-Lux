@@ -763,7 +763,7 @@
         </div>
         <h3>WhatsApp</h3>
         <p>Escríbenos y recibe respuesta inmediata.</p>
-        <a href="https://wa.me/525541232311" class="link">Enviar mensaje</a>
+        <a href="https://wa.me/5215514605959" class="link">Enviar mensaje</a>
       </div>
       <div class="contacto-card reveal">
         <div class="contacto-icon">
