@@ -782,27 +782,36 @@ class CotizacionModel extends BaseModel
     }
 
     /**
-     * Elimina (soft-delete) una cotización.
-     * Marca eliminado_en en lugar de borrar el registro para preservar el historial.
-     * Si la tabla no tiene esa columna, hace DELETE físico como fallback.
+     * Elimina una cotización y sus registros vinculados.
+     * Hace DELETE físico para que desaparezca de todas las vistas sin
+     * necesidad de agregar filtros eliminado_en en cada query existente.
      */
     public function eliminar(int $id, int $agenteId): bool
     {
-        try {
-            $stmt = $this->db()->prepare(
-                "UPDATE cotizaciones SET eliminado_en = NOW()
-                 WHERE id = ? AND agente_id = ? AND eliminado_en IS NULL"
-            );
-            $stmt->execute([$id, $agenteId]);
-            return $stmt->rowCount() > 0;
-        } catch (\Throwable $e) {
-            // Fallback: la columna eliminado_en no existe — borrado físico
-            $stmt = $this->db()->prepare(
-                'DELETE FROM cotizaciones WHERE id = ? AND agente_id = ?'
-            );
-            $stmt->execute([$id, $agenteId]);
-            return $stmt->rowCount() > 0;
+        $db = $this->db();
+
+        // Verificar que pertenece al agente antes de borrar
+        $st = $db->prepare('SELECT id FROM cotizaciones WHERE id = ? AND agente_id = ?');
+        $st->execute([$id, $agenteId]);
+        if (!$st->fetch()) {
+            return false;
         }
+
+        // Soft-delete de archivos vinculados (para no perder evidencia documental)
+        try {
+            $db->prepare('UPDATE cotizacion_archivos SET eliminado_en = NOW() WHERE cotizacion_id = ? AND eliminado_en IS NULL')
+               ->execute([$id]);
+        } catch (\Throwable $e) {}
+
+        // Borrar registros relacionados sin soft-delete
+        foreach (['cotizacion_detalles', 'cotizacion_pagos'] as $tabla) {
+            try { $db->prepare("DELETE FROM {$tabla} WHERE cotizacion_id = ?")->execute([$id]); } catch (\Throwable $e) {}
+        }
+
+        // Borrar la cotización
+        $stmt = $db->prepare('DELETE FROM cotizaciones WHERE id = ? AND agente_id = ?');
+        $stmt->execute([$id, $agenteId]);
+        return $stmt->rowCount() > 0;
     }
 
     /** Cotizaciones próximas a vencer */
