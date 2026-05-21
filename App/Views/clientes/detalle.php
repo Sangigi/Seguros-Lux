@@ -94,38 +94,127 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     }
 
     if ($_POST['accion'] === 'solicitar_renovacion') {
-        $polizaId   = (int)($_POST['poliza_id'] ?? 0);
-        $comentarios = trim($_POST['comentarios'] ?? '');
-        if (!$polizaId) { echo json_encode(['ok'=>false,'msg'=>'Póliza no indicada.']); exit; }
-        $db = \Database\Connection::getConnection();
-        // Verificar que la póliza pertenece al cliente
-        $stPol = $db->prepare('SELECT id, numero_poliza, compania, fecha_fin FROM polizas WHERE id=? AND cliente_id=?');
-        $stPol->execute([$polizaId, $clienteId]);
-        $pol = $stPol->fetch(\PDO::FETCH_ASSOC);
-        if (!$pol) { echo json_encode(['ok'=>false,'msg'=>'Póliza no encontrada.']); exit; }
-        // Anti-spam: bloquear si ya hay solicitud pendiente para esta póliza (últimos 30 días)
-        $stDup = $db->prepare(
-            "SELECT COUNT(*) FROM historial_cliente
-             WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'
-               AND descripcion LIKE ?
-               AND fecha >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
-        );
-        $stDup->execute([$clienteId, "%#{$pol['numero_poliza']}%"]);
-        if ((int)$stDup->fetchColumn() > 0) {
-            echo json_encode(['ok'=>false,'msg'=>'Ya hay una solicitud de renovación pendiente para esta póliza. El coordinador la gestionará pronto.']); exit;
-        }
-        // Registrar solicitud de renovación como nota en historial
-        $detalle = "Renovación solicitada — Póliza #{$pol['numero_poliza']} ({$pol['compania']})";
-        if ($comentarios) $detalle .= " | Nota: {$comentarios}";
-        $historialModel->registrar($clienteId, $agenteId, 'nota', '🔄 Solicitud de renovación', $detalle);
-        // Marcar póliza como por_vencer para que aparezca en alertas del coordinador
-        $fechaAhora = date('Y-m-d H:i');
-        $notaRenovacion = "\n[{$fechaAhora}] Renovación solicitada por asesor.";
-        $db->prepare(
-            "UPDATE polizas SET estado='por_vencer', notas=CONCAT(IFNULL(notas,''), ?) WHERE id=?"
-        )->execute([$notaRenovacion, $polizaId]);
-        echo json_encode(['ok'=>true]); exit;
+
+    $polizaId    = (int)($_POST['poliza_id'] ?? 0);
+    $comentarios = trim($_POST['comentarios'] ?? '');
+
+    if (!$polizaId) {
+        echo json_encode(['ok'=>false,'msg'=>'Póliza no indicada.']);
+        exit;
     }
+
+    $db = \Database\Connection::getConnection();
+
+    // ── Verificar que la póliza pertenece al cliente ──────────────────────────
+    $stPol = $db->prepare(
+        'SELECT id, numero_poliza, compania, fecha_fin 
+         FROM polizas 
+         WHERE id = ? AND cliente_id = ?'
+    );
+    $stPol->execute([$polizaId, $clienteId]);
+    $pol = $stPol->fetch(\PDO::FETCH_ASSOC);
+
+    if (!$pol) {
+        echo json_encode(['ok'=>false,'msg'=>'Póliza no encontrada.']);
+        exit;
+    }
+
+    // ── Anti-spam: evitar múltiples solicitudes (30 días) ────────────────────
+    $stDup = $db->prepare(
+        "SELECT COUNT(*) FROM historial_cliente
+         WHERE cliente_id = ?
+           AND titulo = '🔄 Solicitud de renovación'
+           AND descripcion LIKE ?
+           AND fecha >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+    );
+    $stDup->execute([$clienteId, "%#{$pol['numero_poliza']}%"]);
+
+    if ((int)$stDup->fetchColumn() > 0) {
+        echo json_encode([
+            'ok'=>false,
+            'msg'=>'Ya existe una solicitud de renovación reciente para esta póliza.'
+        ]);
+        exit;
+    }
+
+    // ── Registrar solicitud en historial ─────────────────────────────────────
+    $detalle = "Renovación solicitada — Póliza #{$pol['numero_poliza']} ({$pol['compania']})";
+    if ($comentarios) {
+        $detalle .= " | Nota: {$comentarios}";
+    }
+
+    $historialModel->registrar(
+        $clienteId,
+        $agenteId,
+        'nota',
+        '🔄 Solicitud de renovación',
+        $detalle
+    );
+
+    // ── Marcar póliza como por_vencer ─────────────────────────────────────────
+    $notaRenovacion = "\n[".date('Y-m-d H:i')."] Renovación solicitada por asesor.";
+    $db->prepare(
+        "UPDATE polizas 
+         SET estado = 'por_vencer',
+             notas  = CONCAT(IFNULL(notas,''), ?) 
+         WHERE id = ?"
+    )->execute([$notaRenovacion, $polizaId]);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ── EJECUCIÓN DE RENOVACIÓN (archivo + cotización) ────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+
+    if (!empty($_FILES['archivo']['name']) && $_FILES['archivo']['error'] === UPLOAD_ERR_OK) {
+
+        $ext = strtolower(pathinfo($_FILES['archivo']['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['pdf','jpg','jpeg','png'], true)) {
+            echo json_encode(['ok'=>false,'msg'=>'Formato de archivo inválido.']);
+            exit;
+        }
+
+        $uploadDir = dirname(__DIR__,3)."/uploads/polizas/renovaciones/{$clienteId}/";
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $nombreArchivo = 'renovacion_' . time() . '.' . $ext;
+        $rutaRelativa  = "uploads/polizas/renovaciones/{$clienteId}/{$nombreArchivo}";
+
+        move_uploaded_file(
+            $_FILES['archivo']['tmp_name'],
+            $uploadDir . $nombreArchivo
+        );
+
+        // Crear cotización de renovación
+        $db->prepare(
+            "INSERT INTO cotizaciones 
+            (cliente_id, agente_id, compania, tipo_cobertura, num_poliza,
+             prima, fecha_inicio, fecha_fin, pdf_path, estado_pago, creada_en)
+             VALUES (?,?,?,?,?,?,?,?,?,'pendiente',NOW())"
+        )->execute([
+            $clienteId,
+            $agenteId,
+            $pol['compania'],
+            'Renovación',
+            $_POST['num_poliza']   ?? $pol['numero_poliza'],
+            $_POST['prima']        ?? null,
+            $_POST['fecha_inicio'] ?? null,
+            $_POST['fecha_fin']    ?? null,
+            $rutaRelativa
+        ]);
+
+        $historialModel->registrar(
+            $clienteId,
+            $agenteId,
+            'cotizacion',
+            '🔁 Renovación cargada',
+            'Se adjuntó póliza renovada y se generó cotización pendiente de pago.'
+        );
+    }
+
+    echo json_encode(['ok'=>true]);
+    exit;
+}
 
     if ($_POST['accion'] === 'cambiar_estado') {
         $nuevo=trim($_POST['estado']??'');
@@ -1625,22 +1714,35 @@ $BADGE_PAGO_CL = [
             <h3 class="modal-title">🔄 Solicitar Renovación de Póliza</h3>
             <button class="modal-close" data-close="modalRenovacion">&times;</button>
         </div>
+
         <div class="modal-body">
             <input type="hidden" id="renovPolizaId" value="">
+
             <div style="background:var(--info-light,#eff6ff);border:1px solid var(--info-color,#3b82f6);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;">
-                <strong>📄 Póliza:</strong> <span id="renovPolizaNum" style="color:var(--accent-color);font-weight:600;"></span>
+                <strong>📄 Póliza:</strong>
+                <span id="renovPolizaNum" style="color:var(--accent-color);font-weight:600;"></span>
             </div>
+
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;line-height:1.55;">
                 Al solicitar la renovación, esta póliza quedará marcada como <strong>Por vencer</strong> y se registrará en el historial del cliente para darle seguimiento.
             </p>
-            <div class="form-group">
-                <label class="form-label">Comentario adicional (opcional)</label>
-                <textarea class="form-input" id="renovComentarios" rows="3" placeholder="Ej: Cliente interesado en ampliar cobertura, cambio de vehículo…" style="resize:vertical;"></textarea>
-            </div>
+
+            <!-- Campos de renovación -->
+            <input type="text" id="renovNumPoliza" placeholder="Número de Póliza" class="form-control mb-2">
+            <input type="date" id="renovFechaInicio" class="form-control mb-2">
+            <input type="date" id="renovFechaFin" class="form-control mb-2">
+            <input type="number" id="renovPrima" placeholder="Prima (Precio)" class="form-control mb-2">
+            <input type="file" id="renovArchivo" class="form-control mb-2" accept=".pdf">
+
+            <textarea id="renovComentarios" class="form-control" rows="3"
+                placeholder="Comentarios adicionales…" style="resize:vertical;"></textarea>
         </div>
+
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalRenovacion">Cancelar</button>
-            <button class="btn btn-primary" id="btnConfirmarRenovacion" data-action="det-confirmarRenovacion">🔄 Confirmar Renovación</button>
+            <button class="btn btn-primary" id="btnConfirmarRenovacion" data-action="det-confirmarRenovacion">
+                🔄 Confirmar Renovación
+            </button>
         </div>
     </div>
 </div>
@@ -2241,33 +2343,35 @@ document.addEventListener('click', function(e) {
 });
 
 function confirmarRenovacion() {
-    const btn  = document.getElementById('btnConfirmarRenovacion');
-    const polizaId   = document.getElementById('renovPolizaId').value;
-    const comentarios= document.getElementById('renovComentarios').value.trim();
-    if (!polizaId) { showToast('Error: no hay póliza seleccionada', 'error'); return; }
+    const btn = document.getElementById('btnConfirmarRenovacion');
+    const fd  = new FormData();
+    
+    // Obtener valores
+    const file = document.getElementById('renovArchivo').files[0];
+    
+    // Validaciones básicas
+    if (!file) { alert('Selecciona el PDF de la póliza'); return; }
+    if (!document.getElementById('renovPrima').value) { alert('Falta el precio (prima)'); return; }
+
+    fd.append('accion', 'ejecutar_renovacion_asesor');
+    fd.append('poliza_id', document.getElementById('renovPolizaId').value);
+    fd.append('num_poliza', document.getElementById('renovNumPoliza').value);
+    fd.append('fecha_inicio', document.getElementById('renovFechaInicio').value);
+    fd.append('fecha_fin', document.getElementById('renovFechaFin').value);
+    fd.append('prima', document.getElementById('renovPrima').value);
+    fd.append('archivo', file);
+    fd.append('comentarios', document.getElementById('renovComentarios').value);
+
     btn.disabled = true;
-    btn.textContent = 'Procesando…';
-    const fd = new FormData();
-    fd.append('accion', 'solicitar_renovacion');
-    fd.append('poliza_id', polizaId);
-    fd.append('comentarios', comentarios);
     fetch(`/cliente/${clienteId}`, { method: 'POST', body: fd })
         .then(r => r.json())
         .then(d => {
-            btn.disabled = false;
-            btn.textContent = '🔄 Confirmar Renovación';
             if (d.ok) {
-                showToast('Renovación registrada en el historial del cliente', 'success');
-                if (typeof closeModal === 'function') closeModal('modalRenovacion');
-                setTimeout(() => location.reload(), 1200);
+                location.reload();
             } else {
-                showToast(d.msg || 'Error al registrar renovación', 'error');
+                alert(d.msg);
+                btn.disabled = false;
             }
-        })
-        .catch(() => {
-            btn.disabled = false;
-            btn.textContent = '🔄 Confirmar Renovación';
-            showToast('Error de conexión', 'error');
         });
 }
 </script>
