@@ -42,7 +42,7 @@ class HistorialModel extends BaseModel
         return $stmt->fetchAll();
     }
 
-    public function getByClienteIdConAgente(int $clienteId, int $limit = 20): array
+    public function getByClienteIdConAgente(int $clienteId, int $limit = 200): array
     {
         $stmt = $this->db()->prepare(
             "SELECT h.tipo, h.titulo, h.descripcion, h.fecha,
