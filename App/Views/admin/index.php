@@ -468,6 +468,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $ok = $pm->restaurar((int)($_POST['poliza_id'] ?? 0), $agenteId);
         echo json_encode(['ok' => $ok]);
 
+    } elseif ($a === 'forzar_estado_cotizacion') {
+        if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Solo SA.']); exit; }
+        $cotId        = (int)($_POST['cotizacion_id'] ?? 0);
+        $estado       = trim($_POST['estado']        ?? '');
+        $emisionEstado= trim($_POST['emision_estado']?? '');
+        if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        $ok = $cotModel->forzarEstado($cotId, $estado, $emisionEstado);
+        echo json_encode(['ok' => $ok]);
+
     } elseif ($a === 'get_documentos_admin') {
         $cotId=(int)($_POST['cotizacion_id']??0);
         if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
@@ -1487,11 +1496,19 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                 <?php elseif($dR<=0): ?><div style="font-size:10px;color:#dc2626;font-weight:700;">VENCIDA</div><?php endif; ?>
                 <?php else: ?><span style="font-size:11px;color:var(--text-muted);">—</span><?php endif; ?>
             </td>
-            <td><button class="btn btn-sm btn-ghost" style="color:var(--danger-color);"
-                    data-action="adm-eliminarCot"
-                    data-id="<?php echo $cot['id']; ?>"
-                    data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>">🗑</button></td>
-        </tr>
+            <td style="display:flex;gap:4px;align-items:center;">
+                <?php if ($isSuperadmin): ?>
+                <button class="btn btn-sm btn-ghost"
+                        title="Forzar estado (solo SA)"
+                        data-action="adm-forzarEstado"
+                        data-id="<?php echo $cot['id']; ?>"
+                        data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>">🔧</button>
+                <?php endif; ?>
+                <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);"
+                        data-action="adm-eliminarCot"
+                        data-id="<?php echo $cot['id']; ?>"
+                        data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>">🗑</button>
+            </td>
         <?php endforeach; ?>
         </tbody></table>
         <div class="pagination" id="pgC"></div>
