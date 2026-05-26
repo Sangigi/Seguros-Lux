@@ -3,8 +3,8 @@ RewriteEngine On
 
 # ── Redirigir HTTP → HTTPS en producción ──────────────────────────────────────
 # Descomenta estas líneas cuando tengas SSL activo:
-# RewriteCond %{HTTPS} off
-# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+RewriteCond %{HTTPS} off
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 
 # ── Webhooks de bots: rutas directas, sin pasar por index.php ─────────────────
 # Telegram: https://seguroslux.mx/telegram/webhook
