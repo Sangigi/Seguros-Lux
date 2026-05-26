@@ -461,6 +461,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $cotModel->eliminar($cid, 0); // 0 = coordinador puede borrar cualquier cotización
         echo json_encode(['ok'=>true]);
 
+    // ▶ NUEVO PARCHE I2: Restaurar póliza (Solo SA)
+    } elseif ($a === 'restaurar_poliza') {
+        if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Solo SA.']); exit; }
+        $pm = new \App\Models\PolizaModel();
+        $ok = $pm->restaurar((int)($_POST['poliza_id'] ?? 0), $agenteId);
+        echo json_encode(['ok' => $ok]);
+
     } elseif ($a === 'get_documentos_admin') {
         $cotId=(int)($_POST['cotizacion_id']??0);
         if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }

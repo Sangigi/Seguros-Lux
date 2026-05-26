@@ -140,6 +140,15 @@ class PolizaModel extends BaseModel
         return $st->execute([$id, $agenteId]);
     }
 
+    // ── Restaurar póliza eliminada (I2) ──────────────────────────────────────
+    public function restaurar(int $id, int $agenteId): bool 
+    {
+        $st = $this->db()->prepare(
+            'UPDATE polizas SET eliminado_en=NULL WHERE id=? AND agente_id=?'
+        );
+        return $st->execute([$id, $agenteId]) && $st->rowCount() > 0;
+    }
+
     // ── iDrive ───────────────────────────────────────────────────────────────
     public function marcarIdrive(int $id, string $key): void
     {

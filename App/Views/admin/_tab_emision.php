@@ -370,10 +370,18 @@ try {
 
                     <?php elseif ($puedeRegistrarPago): ?>
                         <?php if ($enProceso): ?>
-                            <div style="font-size:10px;color:var(--success-color);font-weight:700;margin-bottom:6px;">
-                                ✅ Docs. recibidos, listo para cobro
-                            </div>
-                        <?php else: ?>
+                        <div style="font-size:10px;color:var(--success-color);font-weight:700;margin-bottom:6px;">
+                            ✅ Docs. recibidos, listo para cobro
+                        </div>
+                        <!-- NUEVO: Botón para rechazar expediente completo -->
+                        <button class="btn btn-sm btn-danger"
+                                data-action="emi-rechazarDocs"
+                                data-id="<?= (int)$cot['id'] ?>"
+                                data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
+                                style="width:100%; margin-bottom:4px;">
+                            ✗ Rechazar expediente
+                        </button>
+                    <?php else: ?>
                             <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;">
                                 📁 <?= (int)$cot['total_archivos'] ?> doc(s) subidos
                             </div>
@@ -538,6 +546,29 @@ try {
             <button class="btn btn-outline" data-close="modalEmiVerComp">Cerrar</button>
         </div>
     </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODAL: Rechazar expediente (E1)
+══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalEmiRechazar">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h3 class="modal-title">✗ Rechazar expediente — <span id="rdFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+      <button class="modal-close" data-close="modalEmiRechazar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="rdCotId">
+      <div class="form-group">
+        <label class="form-label required">Motivo del rechazo <span style="color:#dc2626">*</span></label>
+        <textarea class="form-input" id="rdMotivo" rows="4" placeholder="Describe qué falta o qué está incorrecto…" style="resize:vertical;"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" data-close="modalEmiRechazar">Cancelar</button>
+      <button class="btn btn-danger" data-action="emi-confirmarRechazo">Confirmar rechazo</button>
+    </div>
+  </div>
 </div>
 
 <script nonce="<?= $cspNonce ?>">

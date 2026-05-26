@@ -878,4 +878,13 @@ class CotizacionModel extends BaseModel
         $stmt->execute([$agenteId, $dias]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
+
+    // ▶ NUEVO PARCHE I4: Forzar estado de cotización sin eliminar
+    public function forzarEstado(int $id, string $estado, string $emisionEstado): bool {
+        $ok = ['pendiente','en_proceso','enviado','rechazado','aceptada','pagado'];
+        if (!in_array($emisionEstado, $ok, true)) return false;
+        return $this->db()->prepare(
+            'UPDATE cotizaciones SET estado=?,emision_estado=? WHERE id=?'
+        )->execute([$estado, $emisionEstado, $id]);
+    }
 }

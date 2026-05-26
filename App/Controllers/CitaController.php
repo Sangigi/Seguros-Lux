@@ -91,10 +91,16 @@ class CitaController
 
         // ── Cambiar estado ────────────────────────────────────────────────────
         if ($accion === 'estado') {
-            $citaId    = (int)($_POST['cita_id'] ?? 0);
+            $citaId      = (int)($_POST['cita_id'] ?? 0);
             $nuevoEstado = trim($_POST['estado'] ?? '');
 
-            if (!$citaId || !in_array($nuevoEstado, ['programada', 'completada', 'cancelada'], true)) {
+            // ▶ PARCHE I3: Ampliar permisos de estado para el Superadmin
+            $permitidos = ['programada', 'completada', 'cancelada'];
+            if (SessionManager::isSuperadmin()) {
+                $permitidos[] = 'vencida';
+            }
+
+            if (!$citaId || !in_array($nuevoEstado, $permitidos, true)) {
                 http_response_code(400);
                 echo json_encode(['ok' => false, 'msg' => 'Datos inválidos']);
                 return;
