@@ -340,8 +340,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 LEFT JOIN cotizacion_comprobantes_pago ccp ON ccp.cotizacion_id = p.cotizacion_id AND ccp.eliminado_en IS NULL
                 LEFT JOIN (SELECT cotizacion_id, MAX(id) AS max_id FROM cotizacion_pagos GROUP BY cotizacion_id) cpmax
                           ON cpmax.cotizacion_id = p.cotizacion_id
-                LEFT JOIN cotizacion_pagos cp ON cp.id = cpmax.max_id
-                WHERE p.eliminado_en IS NULL';
+                LEFT JOIN cotizacion_pagos cp ON cp.id = cpmax.max_id';
+                
+        // ▶ APLICAR EL TOGGLE DE PAPELERA AQUÍ
+        $verEliminadas = !empty($_POST['ver_eliminadas']) && $isSuperadmin;
+        $sql .= ' WHERE ' . ($verEliminadas ? 'p.eliminado_en IS NOT NULL' : 'p.eliminado_en IS NULL');
+        
         $params = [];
         if ($filtroAsesor) { $sql .= ' AND p.agente_id = ?'; $params[] = $filtroAsesor; }
         $sql .= ' ORDER BY p.fecha_fin ASC LIMIT 500';
@@ -465,7 +469,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     } elseif ($a === 'restaurar_poliza') {
         if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Solo SA.']); exit; }
         $pm = new \App\Models\PolizaModel();
-        $ok = $pm->restaurar((int)($_POST['poliza_id'] ?? 0), $agenteId);
+        $ok = $pm->restaurar((int)($_POST['poliza_id'] ?? 0));
         echo json_encode(['ok' => $ok]);
 
     } elseif ($a === 'forzar_estado_cotizacion') {
@@ -475,6 +479,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $emisionEstado= trim($_POST['emision_estado']?? '');
         if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
         $ok = $cotModel->forzarEstado($cotId, $estado, $emisionEstado);
+        // Revertir estado del cliente si se des-pagó
+        if ($ok && $estado !== 'pagado') {
+            $db->prepare(
+                "UPDATE clientes SET estado_cliente='con_cotizacion'
+                 WHERE id = (SELECT cliente_id FROM cotizaciones WHERE id = ?) 
+                   AND estado_cliente = 'cerrado'"
+            )->execute([$cotId]);
+        }
         echo json_encode(['ok' => $ok]);
 
     } elseif ($a === 'get_documentos_admin') {

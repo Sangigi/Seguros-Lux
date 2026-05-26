@@ -881,10 +881,12 @@ class CotizacionModel extends BaseModel
 
     // ▶ NUEVO PARCHE I4: Forzar estado de cotización sin eliminar
     public function forzarEstado(int $id, string $estado, string $emisionEstado): bool {
-        $ok = ['pendiente','en_proceso','enviado','rechazado','aceptada','pagado'];
+        $ok = ['pendiente', 'en_proceso', 'emitida', 'rechazado', 'pagado']; // ← también fix del Bug 2
         if (!in_array($emisionEstado, $ok, true)) return false;
         return $this->db()->prepare(
-            'UPDATE cotizaciones SET estado=?,emision_estado=? WHERE id=?'
-        )->execute([$estado, $emisionEstado, $id]);
+            'UPDATE cotizaciones SET estado=?, emision_estado=?,
+             estado_pago = IF(? = \'pagado\', \'confirmado\', \'pendiente\')
+             WHERE id=?'
+        )->execute([$estado, $emisionEstado, $estado, $id]);
     }
 }
