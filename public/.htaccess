@@ -66,7 +66,7 @@ RewriteRule ^ index.php [QSA,L]
     Header always set X-Frame-Options "DENY"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     # Activar HSTS solo cuando HTTPS esté confirmado y estable:
-    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
 </IfModule>
 
 # ── Proteger directorios sensibles ────────────────────────────────────────────
