@@ -6,25 +6,27 @@ use App\Models\{AgentModel, CotizacionModel};
 use Database\Connection;
 
 // Capturar cualquier excepción PHP en peticiones AJAX y devolver JSON legible
+// SIN filtrar detalles internos (stack trace, nombre de archivo, mensaje de BD).
 set_exception_handler(function(\Throwable $e) {
+    // Registrar siempre el detalle completo en el log del servidor
+    error_log('[admin exception] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+
     if (!headers_sent()) header('Content-Type: application/json');
     $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
     if ($isPost) {
+        // JSON: solo un mensaje genérico, nunca detalles de BD o rutas internas
         echo json_encode([
-            'ok'   => false,
-            'msg'  => '[PHP Exception] ' . $e->getMessage(),
-            'file' => basename($e->getFile()) . ':' . $e->getLine(),
+            'ok'  => false,
+            'msg' => 'Error interno del servidor. Inténtalo de nuevo.',
         ]);
     } else {
+        // Vista HTML (navegación normal): mensaje genérico sin stacktrace
         echo '<div style="background:#fee2e2;color:#7f1d1d;padding:20px;font-family:monospace;border-radius:8px;margin:20px;">
-              <b>Error PHP:</b> ' . htmlspecialchars($e->getMessage()) . '<br>
-              <small>' . htmlspecialchars(basename($e->getFile()) . ':' . $e->getLine()) . '</small></div>';
+              <b>Error interno.</b> Consulta el log del servidor para más detalles.</div>';
     }
     exit;
 });
-// Forzar visualización de errores temporalmente
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
+
 SessionManager::requireRole('coordinador', '/login');
 
 $agenteId    = SessionManager::getAgentId();
@@ -348,10 +350,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $st->execute($params);
             $polizas = $st->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            echo json_encode(['ok'=>false, 'msg'=>'Error SQL: ' . $e->getMessage()]);
+            error_log('[admin/polizas PDO] ' . $e->getMessage());
+            echo json_encode(['ok'=>false, 'msg'=>'Error al consultar pólizas.']);
             exit;
         } catch (Throwable $e) {
-            echo json_encode(['ok'=>false, 'msg'=>'Error: ' . $e->getMessage()]);
+            error_log('[admin/polizas] ' . $e->getMessage());
+            echo json_encode(['ok'=>false, 'msg'=>'Error interno.']);
             exit;
         }
         $pagadas    = array_values(array_filter($polizas, fn($p) => !empty($p['pago_confirmado'])));
@@ -417,7 +421,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             unset($r);
             echo json_encode(['ok'=>true,'historial'=>$rows]);
         } catch (\Throwable $eH) {
-            echo json_encode(['ok'=>false,'msg'=>'Error al consultar historial: '.$eH->getMessage()]);
+            error_log('[admin/historial] ' . $eH->getMessage());
+            echo json_encode(['ok'=>false,'msg'=>'Error al consultar historial.']);
         }
 
     } elseif ($a === 'cambiar_rol') {

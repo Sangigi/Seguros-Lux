@@ -526,6 +526,45 @@ class CotizacionModel extends BaseModel
         return (int) $this->db()->lastInsertId();
     }
 
+    /**
+     * Reemplaza el archivo existente de un tipo para una cotización:
+     * - Soft-delete del registro anterior en BD.
+     * - Inserta el nuevo registro.
+     * - Devuelve la ruta física del archivo anterior (para borrarlo del disco).
+     */
+    public function reemplazarArchivo(int $cotizacionId, int $agenteId, string $tipoDocumento, string $nombreOriginal, string $nombreArchivo, string $ruta): array
+    {
+        $db = $this->db();
+
+        // Obtener el archivo anterior activo del mismo tipo
+        $stmt = $db->prepare(
+            'SELECT id, ruta FROM cotizacion_archivos
+             WHERE cotizacion_id = ? AND tipo_documento = ? AND eliminado_en IS NULL
+             ORDER BY subido_en DESC LIMIT 1'
+        );
+        $stmt->execute([$cotizacionId, $tipoDocumento]);
+        $anterior = $stmt->fetch() ?: null;
+
+        // Soft-delete del registro anterior
+        if ($anterior) {
+            $db->prepare(
+                'UPDATE cotizacion_archivos SET eliminado_en = NOW() WHERE id = ?'
+            )->execute([$anterior['id']]);
+        }
+
+        // Insertar el nuevo
+        $db->prepare(
+            'INSERT INTO cotizacion_archivos
+             (cotizacion_id, agente_id, tipo_documento, nombre_original, nombre_archivo, ruta)
+             VALUES (?,?,?,?,?,?)'
+        )->execute([$cotizacionId, $agenteId, $tipoDocumento, $nombreOriginal, $nombreArchivo, $ruta]);
+
+        return [
+            'nuevo_id'    => (int) $db->lastInsertId(),
+            'ruta_previa' => $anterior['ruta'] ?? null,
+        ];
+    }
+
     public function getArchivos(int $cotizacionId): array
     {
         $stmt = $this->db()->prepare(

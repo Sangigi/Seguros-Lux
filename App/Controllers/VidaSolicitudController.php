@@ -3,6 +3,8 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Services\MailQueue;
+use App\Security\RateLimiter;
+use App\Security\SecurityLogger;
 use Database\Connection;
 
 $__crmAutoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
@@ -37,6 +39,21 @@ class VidaSolicitudController
             echo json_encode(['ok' => false, 'msg' => 'Método no permitido.']);
             return;
         }
+
+        // ── Rate limiting por IP (formulario público, sin sesión) ─────────────
+        // Reutiliza el RateLimiter existente: clave fija 'publica' + IP.
+        // Límite: 5 solicitudes / 15 min por IP. Mismo comportamiento que el login.
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        if (RateLimiter::tooManyAttempts('publica', $ip)) {
+            SecurityLogger::log('public_form_rate_limited', ['ip' => $ip]);
+            http_response_code(429);
+            echo json_encode([
+                'ok'  => false,
+                'msg' => 'Demasiadas solicitudes. Espera unos minutos e intenta de nuevo.',
+            ]);
+            return;
+        }
+        RateLimiter::hit('publica', $ip);
 
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
 

@@ -12,6 +12,9 @@ declare(strict_types=1);
  *   WHATSAPP_TOKEN        → Bearer token permanente (no de prueba)
  *   WHATSAPP_PHONE_ID     → Phone Number ID del número de negocios
  *   WHATSAPP_VERIFY_TOKEN → Token que tú eliges para verificar el webhook
+ *   WHATSAPP_APP_SECRET   → App Secret de la app en Meta Developer Console
+ *                           (Dashboard → App → Settings → Basic → App Secret)
+ *                           Necesario para verificar firma HMAC-SHA256 de Meta.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -22,6 +25,14 @@ $waEnvFile = WA_PROJECT_ROOT . '/.env.php';
 if (is_file($waEnvFile)) {
     require_once $waEnvFile;
 }
+
+// Cargar autoloader temprano para que SecurityLogger esté disponible
+// desde el bloque de verificación HMAC (antes de procesar cualquier mensaje).
+$_waAutoloaderEarly = WA_PROJECT_ROOT . '/vendor/autoload.php';
+if (file_exists($_waAutoloaderEarly)) require_once $_waAutoloaderEarly;
+require_once WA_PROJECT_ROOT . '/Core/Autoloader.php';
+
+use App\Security\SecurityLogger;
 
 $logFile = __DIR__ . '/wa.log';
 $rawBody = file_get_contents('php://input');
@@ -37,7 +48,43 @@ $waWebhookLog = static function (string $message) use ($logFile, $waDebugLog): v
 
 $waWebhookLog($_SERVER['REQUEST_METHOD'] . "\n" . $rawBody . "\n\n");
 
-// ── 3. GET: Verificación del webhook (Meta lo llama una sola vez al registrar) ─
+// ── 2. Verificación de firma HMAC-SHA256 (solo en POST) ───────────────────────
+// Meta firma CADA mensaje con HMAC-SHA256 del cuerpo usando APP_SECRET.
+// Sin esta verificación, cualquiera puede enviar payloads falsos al bot.
+// Referencia: https://developers.facebook.com/docs/messenger-platform/webhooks#validate-payloads
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $appSecret = getenv('WHATSAPP_APP_SECRET') ?: ($_ENV['WHATSAPP_APP_SECRET'] ?? '');
+
+    if ($appSecret === '') {
+        error_log('whatsapp_webhook: WHATSAPP_APP_SECRET no está configurado — rechazando POST.');
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'msg' => 'Configuración incompleta.']);
+        exit;
+    }
+
+    $sigHeader = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
+    // El header tiene el formato: "sha256=<hex_hash>"
+    if (!str_starts_with($sigHeader, 'sha256=')) {
+        $waWebhookLog("HMAC: header X-Hub-Signature-256 ausente o malformado.\n\n");
+        SecurityLogger::log('wa_hmac_missing', ['ip' => $_SERVER['REMOTE_ADDR'] ?? '']);
+        http_response_code(403);
+        echo 'Forbidden';
+        exit;
+    }
+
+    $receivedHash  = substr($sigHeader, 7); // quitar "sha256="
+    $expectedHash  = hash_hmac('sha256', $rawBody, $appSecret);
+
+    if (!hash_equals($expectedHash, $receivedHash)) {
+        $waWebhookLog("HMAC: firma inválida. Recibida={$receivedHash}\n\n");
+        SecurityLogger::log('wa_hmac_invalid', ['ip' => $_SERVER['REMOTE_ADDR'] ?? '']);
+        http_response_code(403);
+        echo 'Forbidden';
+        exit;
+    }
+
+    $waWebhookLog("HMAC: firma válida.\n\n");
+}
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $verifyToken = getenv('WHATSAPP_VERIFY_TOKEN') ?: ($_ENV['WHATSAPP_VERIFY_TOKEN'] ?? '');
 
@@ -91,10 +138,6 @@ if (!is_file($waEnvFile)) {
     echo json_encode(['ok' => true]);
     exit;
 }
-
-$autoloader = WA_PROJECT_ROOT . '/vendor/autoload.php';
-if (file_exists($autoloader)) require_once $autoloader;
-require_once WA_PROJECT_ROOT . '/Core/Autoloader.php';
 
 // ── 7. Procesar mensaje con el bot ────────────────────────────────────────────
 // $payload y $value quedan en scope para WhatsAppBot.php

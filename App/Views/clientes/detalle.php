@@ -453,14 +453,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                     if (is_array($decoded)) $prevExtra = $decoded;
                 }
                 $extra = [];
-                foreach (['color','placas','vin','rines_lujo','gps','uso_auto'] as $key) {
+                foreach (['version','color','placas','vin','rines_lujo','gps','uso_auto','info_adicional'] as $key) {
                     if (($_POST[$key] ?? '') !== '') $extra[$key] = trim($_POST[$key]);
                 }
-                if (!empty($extra)) {
-                    $merged = array_merge($prevExtra, $extra);
-                    $campos['detalle_adaptaciones'] = json_encode($merged, JSON_UNESCAPED_UNICODE);
-                    $campos['tiene_adaptaciones']   = !empty($merged) ? 1 : 0;
+                // Adaptaciones: texto libre del textarea
+                if (isset($_POST['detalle_adaptaciones_texto'])) {
+                    $extra['adaptaciones_texto'] = trim($_POST['detalle_adaptaciones_texto']);
                 }
+                $tieneAdapt = ($_POST['tiene_adaptaciones'] ?? '0') === '1';
+                $campos['tiene_adaptaciones'] = $tieneAdapt ? 1 : 0;
+                $merged = array_merge($prevExtra, $extra);
+                $campos['detalle_adaptaciones'] = json_encode($merged, JSON_UNESCAPED_UNICODE);
                 if (empty($campos)) { echo json_encode(['ok'=>true]); exit; }
                 $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($campos)));
                 $vals = array_values($campos);
@@ -725,6 +728,7 @@ if (($cliente['ramo'] ?? 'autos') === 'autos') {
             !empty($_extra['gps'])        ? 'GPS: '.$_extra['gps']          : '',
             !empty($_extra['uso_auto'])   ? 'Uso: '.$_extra['uso_auto']     : '',
         ]))) : '',
+        'adaptaciones_texto'  => $_extra['adaptaciones_texto'] ?? '',
         'info_adicional'      => $_extra['info_adicional'] ?? '',
     ];
 }
@@ -1038,7 +1042,7 @@ $pageTitle=$nombreCompleto;
         <?php if (!empty($vehiculo['tiene_adaptaciones'])): ?>
         <div style="margin-top:12px;background:var(--info-light);border-radius:8px;padding:12px;font-size:13px;">
             <strong>🔧 Adaptaciones / Modificaciones:</strong><br>
-            <?= nl2br(htmlspecialchars($vehiculo['detalle_adaptaciones'] ?? '—')) ?>
+            <?= nl2br(htmlspecialchars($vehiculo['adaptaciones_texto'] ?: ($vehiculo['detalle_adaptaciones'] ?? '—'))) ?>
         </div>
         <?php endif; ?>
         <?php if (!empty($vehiculo['info_adicional'])): ?>
@@ -1164,14 +1168,14 @@ $pageTitle=$nombreCompleto;
                 <label class="form-label">¿Cuáles adaptaciones o modificaciones?</label>
                 <textarea class="form-input" name="vehiculo_detalle_adaptaciones" rows="2"
                           placeholder="Describe las adaptaciones o modificaciones del vehículo…"
-                          style="resize:vertical;"><?= htmlspecialchars($vehiculo['detalle_adaptaciones'] ?? '') ?></textarea>
+                          style="resize:vertical;"><?= htmlspecialchars($vehiculo['adaptaciones_texto'] ?? '') ?></textarea>
             </div>
-            <div class="form-group">
-                <label class="form-label">¿Deseas agregar algo más?</label>
-                <textarea class="form-input" name="vehiculo_info_adicional" rows="2"
-                          placeholder="Información adicional relevante del vehículo…"
-                          style="resize:vertical;"><?= htmlspecialchars($vehiculo['info_adicional'] ?? '') ?></textarea>
-            </div>
+        </div>
+        <div class="form-group" style="margin-top:8px;">
+            <label class="form-label">¿Deseas agregar algo más?</label>
+            <textarea class="form-input" name="vehiculo_info_adicional" rows="2"
+                      placeholder="Información adicional relevante del vehículo…"
+                      style="resize:vertical;"><?= htmlspecialchars($vehiculo['info_adicional'] ?? '') ?></textarea>
         </div>
  
         <div style="display:flex;gap:10px;margin-top:16px;">
@@ -2391,15 +2395,21 @@ function guardarEdicionCliente() {
         // Campos principales (nombres exactos que espera el PHP handler)
         fd.append('marca',         form.querySelector('[name="vehiculo_marca"]')?.value ?? '');
         fd.append('modelo',        form.querySelector('[name="vehiculo_submarca"]')?.value ?? ''); // submarca→modelo en BD
-        fd.append('anio_vehiculo', form.querySelector('[name="vehiculo_anio"]')?.value ?? '');
+        fd.append('anio_vehiculo', form.querySelector('[name="vehiculo_modelo"]')?.value ?? '');  // vehiculo_modelo = año
         fd.append('tipo_vehiculo', form.querySelector('[name="vehiculo_tipo"]')?.value ?? '');
         // Campos adicionales (se guardan en detalle_adaptaciones JSON)
+        fd.append('version',    form.querySelector('[name="vehiculo_version"]')?.value ?? '');
         fd.append('color',      form.querySelector('[name="vehiculo_color"]')?.value ?? '');
         fd.append('placas',     form.querySelector('[name="vehiculo_placas"]')?.value ?? '');
         fd.append('vin',        form.querySelector('[name="vehiculo_vin"]')?.value ?? '');
         fd.append('rines_lujo', form.querySelector('[name="vehiculo_rines_lujo"]')?.value ?? '');
         fd.append('gps',        form.querySelector('[name="vehiculo_gps"]')?.value ?? '');
         fd.append('uso_auto',   form.querySelector('[name="vehiculo_uso_auto"]')?.value ?? '');
+        // Adaptaciones e info adicional
+        const chkAdapt = form.querySelector('[name="vehiculo_tiene_adaptaciones"]');
+        fd.append('tiene_adaptaciones',        chkAdapt?.checked ? '1' : '0');
+        fd.append('detalle_adaptaciones_texto', form.querySelector('[name="vehiculo_detalle_adaptaciones"]')?.value ?? '');
+        fd.append('info_adicional',             form.querySelector('[name="vehiculo_info_adicional"]')?.value ?? '');
         fd.append('_solo_vehiculo', '1');
         fetch(`/cliente/<?= $clienteId ?>`, { method: 'POST', body: fd })
             .then(r => r.json())

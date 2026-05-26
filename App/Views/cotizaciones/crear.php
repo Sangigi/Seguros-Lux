@@ -185,6 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 
         $tiposDoc = ['doc_cotizacion'=>['Doc',['pdf','jpg','jpeg','png']],'foto_coche_1'=>['F1',['jpg','jpeg','png']],'foto_coche_2'=>['F2',['jpg','jpeg','png']],'foto_coche_3'=>['F3',['jpg','jpeg','png']],'foto_coche_4'=>['F4',['jpg','jpeg','png']],'foto_coche_5'=>['F5',['jpg','jpeg','png']],'ine'=>['INE',['pdf','jpg','jpeg','png']],'comprobante_dom'=>['CD',['pdf','jpg','jpeg','png']],'tarjeta_circulacion'=>['TC',['pdf','jpg','jpeg','png']],'factura_auto'=>['FA',['pdf','jpg','jpeg','png']],'constancia_fiscal'=>['CF',['pdf','jpg','jpeg','png']]];
         $uploadDir = dirname(__DIR__,3)."/uploads/cotizaciones/{$pCotId}/";
+        $baseDir   = dirname(__DIR__,3)."/";
         if (!is_dir($uploadDir)) mkdir($uploadDir,0755,true);
         foreach ($tiposDoc as $tipo=>[$label,$exts]) {
             if (empty($_FILES[$tipo]['name'])) continue;
@@ -192,8 +193,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $ext=strtolower(pathinfo($file['name'],PATHINFO_EXTENSION));
             if(!in_array($ext,$exts,true)||$file['size']>10*1024*1024) continue;
             $n=$tipo.'_'.time().'.'.$ext; $r="uploads/cotizaciones/{$pCotId}/{$n}";
-            if(move_uploaded_file($file['tmp_name'],$uploadDir.$n))
-                $cotizacionModel->adjuntarArchivo($pCotId,$agenteId,$tipo,$file['name'],$n,$r);
+            if(move_uploaded_file($file['tmp_name'],$uploadDir.$n)) {
+                // Reemplaza el registro anterior del mismo tipo (soft-delete) y borra el archivo físico
+                $resultado = $cotizacionModel->reemplazarArchivo($pCotId,$agenteId,$tipo,$file['name'],$n,$r);
+                if (!empty($resultado['ruta_previa'])) {
+                    $rutaFisicaAnterior = $baseDir . $resultado['ruta_previa'];
+                    if (file_exists($rutaFisicaAnterior)) @unlink($rutaFisicaAnterior);
+                }
+            }
         }
 
         echo json_encode(['ok'=>true,'folio'=>$cotExist['folio']??'','cliente_id'=>$cotExist['cliente_id']]);

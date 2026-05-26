@@ -1,0 +1,8 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migración 003: Nota de directorio de locks (no es SQL, es un recordatorio)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- El cron CronRenovaciones.php necesita que exista el directorio:
+--   storage/locks/
+-- Se crea automáticamente en runtime, pero debe ser escribible por el proceso PHP.
+-- En servidor compartido (Hostgator): asegúrate de que public_html/storage/locks/
+-- tenga permisos 750 y sea propiedad del usuario de PHP.

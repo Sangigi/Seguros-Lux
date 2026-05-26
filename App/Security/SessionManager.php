@@ -265,9 +265,11 @@ class SessionManager
 
     private static function validateFingerprint(): bool
     {
+        // Si el fingerprint no está guardado en sesión, la sesión es inválida
+        // (puede indicar sesión parcialmente restaurada o almacenamiento corrupto).
+        // Retornar false obliga a re-login en lugar de pasar silenciosamente.
         if (empty($_SESSION['fp_ip']) || empty($_SESSION['fp_ua'])) {
-            self::storeFingerprint();
-            return true;
+            return false;
         }
 
         $ipOk = hash_equals($_SESSION['fp_ip'], hash('sha256', $_SERVER['REMOTE_ADDR'] ?? ''));

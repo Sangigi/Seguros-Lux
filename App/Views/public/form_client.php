@@ -2,6 +2,7 @@
 declare(strict_types=1);
 use App\Security\SessionManager;
 $nonce = SessionManager::nonce();
+header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwYCGbqfOpVAETI36Ug==' 'nonce-bCTKJ8jvaMQSTk+mJqNnSQ==' 'sha256-SxvxBwFKi30Ha/zZWTRb9NJg74REtc1o54/FaxCyQxg=' 'sha256-nMfu92wtOkaru2r7PqzP6B80M8SdzaU6H3INqlYVRqo=' 'sha256-Gwl3zb9M02Q7E/PnJHqlQngViTYyz175pzuwLgN8EcA=' 'sha256-zU92tUfcgNOSw/JQ9H7HZI9KwEgnmnZUfMzwuz+mN+s=' 'sha256-OXiyEbUgkkJphSJ8KbSgayxuH+bsHW21a0LrN6JLpOM=' https://cdn.jsdelivr.net https://blog.seguroslux.mx https://www.googletagmanager.com https://googleads.g.doubleclick.net https://www.googleadservices.com;");
 ?>
 <!DOCTYPE html>
 <html lang="es">
