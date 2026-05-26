@@ -290,6 +290,12 @@ switch ($accion) {
         $nombreOrig = null;
         if (!empty($_FILES['poliza_file']['name']) && $_FILES['poliza_file']['error'] === UPLOAD_ERR_OK) {
             $file = $_FILES['poliza_file'];
+            
+            // ▶ PARCHE P1: Límite de tamaño 20 MB (Póliza)
+            if ($file['size'] > 20 * 1024 * 1024) {
+                echo json_encode(['ok'=>false,'msg'=>'El archivo no debe superar 20 MB.']); exit;
+            }
+
             $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
             if (!in_array($ext, ['pdf','jpg','jpeg','png','webp'], true)) {
                 echo json_encode(['ok'=>false,'msg'=>'Tipo de archivo no permitido.']); exit;
@@ -298,8 +304,20 @@ switch ($accion) {
             if (!is_dir($dir)) mkdir($dir, 0755, true);
             $nombreArch = 'poliza_' . time() . '.' . $ext;
             $nombreOrig = basename($file['name']);
+            
             if (!move_uploaded_file($file['tmp_name'], $dir . $nombreArch)) {
                 echo json_encode(['ok'=>false,'msg'=>'Error al guardar el archivo.']); exit;
+            }
+
+            // ▶ PARCHE P2: Validación MIME real con finfo (Póliza)
+            $finfo    = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeReal = finfo_file($finfo, $dir . $nombreArch);
+            finfo_close($finfo);
+
+            $mimesPermitidos = ['application/pdf','image/jpeg','image/png','image/webp'];
+            if (!in_array($mimeReal, $mimesPermitidos, true)) {
+                unlink($dir . $nombreArch);
+                echo json_encode(['ok'=>false,'msg'=>'El contenido del archivo no coincide con su extensión.']); exit;
             }
         }
 
@@ -423,6 +441,12 @@ switch ($accion) {
         $nombreOrig  = null;
         if (!empty($_FILES['comprobante']['name'])) {
             $file  = $_FILES['comprobante'];
+
+            // ▶ PARCHE P1: Límite de tamaño 20 MB (Comprobante)
+            if ($file['size'] > 20 * 1024 * 1024) {
+                echo json_encode(['ok'=>false,'msg'=>'El archivo no debe superar 20 MB.']); exit;
+            }
+
             $ext   = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
             $allow = ['pdf','jpg','jpeg','png','webp'];
             if (!in_array($ext, $allow, true)) {
@@ -432,10 +456,29 @@ switch ($accion) {
             if (!is_dir($dir)) mkdir($dir, 0755, true);
             $nombreArch = 'comprobante_' . $agenteId . '_' . time() . '.' . $ext;
             $nombreOrig = basename($file['name']);
+            
             if (!move_uploaded_file($file['tmp_name'], $dir . $nombreArch)) {
                 echo json_encode(['ok'=>false,'msg'=>'Error al guardar el archivo.']); exit;
             }
+
+            // ▶ PARCHE P2: Validación MIME real con finfo (Comprobante)
+            $finfo    = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeReal = finfo_file($finfo, $dir . $nombreArch);
+            finfo_close($finfo);
+
+            $mimesPermitidos = ['application/pdf','image/jpeg','image/png','image/webp'];
+            if (!in_array($mimeReal, $mimesPermitidos, true)) {
+                unlink($dir . $nombreArch);
+                echo json_encode(['ok'=>false,'msg'=>'El contenido del archivo no coincide con su extensión.']); exit;
+            }
         }
+
+        // ▶ PARCHE P4: Soft-delete del comprobante anterior antes del INSERT
+        $db->prepare(
+            "UPDATE cotizacion_comprobantes_pago
+             SET eliminado_en = NOW()
+             WHERE cotizacion_id = ? AND eliminado_en IS NULL"
+        )->execute([$cotId]);
 
         // Insertar comprobante
         $ins = $db->prepare(
@@ -491,7 +534,9 @@ switch ($accion) {
             ]);
         }
 
-        // Auto-marcar comprobante_pago en checklist como ok
+        // ▶ PARCHE P5 (Seguridad en Checklist): Al fallar `move_uploaded_file`, 
+        // el código ya ejecuta un exit; en las líneas de arriba, por lo que si llegamos a esta línea, 
+        // el archivo (si lo hay) ya se guardó correctamente. El marcado del checklist es seguro.
         try {
             $db->prepare(
                 "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en)
@@ -553,6 +598,7 @@ switch ($accion) {
             }
             
         } catch (\Throwable $he) { error_log('[historial_cliente cobro] ' . $he->getMessage()); }
+        
         // Notificación al asesor: estado de póliza cambió a PAGADO
         if ($asesorId) {
             $urlCliente = '/cliente/' . ($datosCot['cliente_id'] ?? '');
