@@ -1679,6 +1679,7 @@ document.addEventListener('click', function(e) {
         case 'adm-crearAgente':        crearAgente(); break;
         case 'adm-toggleAgente':       delAg(+el.dataset.id, el.dataset.nombre, +el.dataset.activo); break;
         case 'adm-eliminarCot':        delCot(+el.dataset.id, el.dataset.folio); break;
+        case 'adm-forzarEstado':       abrirForzarEstado(+el.dataset.id, el.dataset.folio); break;
         case 'adm-ejecutarReasignacion': ejecutarReasignacion(); break;
         case 'adm-deseleccionarTodos': deseleccionarTodos(); break;
         case 'adm-toggleCliente': {
@@ -1780,7 +1781,17 @@ function chgRol(id,rol){if(!confirm(`¿Cambiar rol a "${rol}"?`))return;post({ac
 function delAg(id,n,activo){const accion=activo?'eliminar_agente':'reactivar_agente';if(!confirm(activo?`¿Desactivar al asesor ${n}?`:`¿Reactivar al asesor ${n}?`))return;post({accion,agente_id:id}).then(d=>{if(d.ok){toast(d.msg||'OK','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
 function crearAgente(){const n=document.getElementById('nN').value.trim(),a=document.getElementById('nA').value.trim(),c=document.getElementById('nC').value.trim(),t=document.getElementById('nT').value.trim(),p=document.getElementById('nP').value.trim(),r=document.getElementById('nR').value;if(!n||!a||!c||!p){toast('Completa los campos requeridos','error');return;}if(p.length<8){toast('Contraseña mínimo 8 caracteres','error');return;}post({accion:'crear_agente',nombre:n,apellido:a,correo:c,telefono:t,password:p,rol:r}).then(d=>{if(d.ok){toast('Asesor creado','success');closeModal('modalCrearAgente');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
 function delCot(id,f){if(!confirm(`¿Eliminar cotización ${f}? Esta acción no se puede deshacer.`))return;post({accion:'eliminar_cotizacion',cotizacion_id:id}).then(d=>{if(d.ok){toast('Eliminada','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
-
+function abrirForzarEstado(id, folio) {
+    const estados = ['pendiente','en_proceso','enviada','rechazada','aceptada','pagado'];
+    const emision = ['pendiente','en_proceso','emitida','rechazado'];
+    const est    = prompt(`Forzar estado de cotización ${folio}\n\nEstados válidos:\n${estados.join(', ')}\n\nNuevo estado:`);
+    if (!est || !estados.includes(est)) { toast('Estado inválido o cancelado','error'); return; }
+    const emi = prompt(`Estado de emisión válidos:\n${emision.join(', ')}\n\nNuevo emision_estado:`);
+    if (!emi || !emision.includes(emi)) { toast('Estado de emisión inválido o cancelado','error'); return; }
+    post({ accion:'forzar_estado_cotizacion', cotizacion_id:id, estado:est, emision_estado:emi })
+        .then(d => d.ok ? (toast('Estado forzado correctamente','success'), setTimeout(()=>location.reload(),900))
+                        : toast(d.msg||'Error','error'));
+}
 // PARCHE: Guardar edición de agente (nombre + contraseña)
 async function guardarEdicionAgente() {
     const id    = document.getElementById('editAgenteId').value;
