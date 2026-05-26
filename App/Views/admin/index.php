@@ -1140,11 +1140,11 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
 
                             <?php if ($isSuperadmin): ?>
                             <button class="btn btn-sm btn-ghost"
-                                    title="Ver historial del coordinador"
+                                    title="Ver historial de actividad"
                                     data-action="adm-verHistorialCoord"
                                     data-id="<?php echo $ag['id']; ?>"
                                     data-nombre="<?php echo htmlspecialchars($ag['nombre'].' '.$ag['apellido'],ENT_QUOTES); ?>"
-                                    style="<?php echo $ag['rol']==='coordinador'?'':'display:none;'; ?>">
+                                    style="<?php echo in_array($ag['rol'], ['coordinador', 'superadmin']) ? '' : 'display:none;'; ?>">
                                 📋
                             </button>
                             <?php endif; ?>
