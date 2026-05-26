@@ -325,10 +325,239 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         echo json_encode(['ok'=>true,'id'=>$polizaId,'en_idrive'=>(bool)$iKey]); exit;
     }
 
-    if ($_POST['accion'] === 'editar_poliza' && $polizaModel) { /* ... Sin cambios ... */ }
-    if ($_POST['accion'] === 'eliminar_poliza' && $polizaModel) { /* ... Sin cambios ... */ }
-    if ($_POST['accion'] === 'eliminar_archivo_cot') { /* ... Sin cambios ... */ }
-    if ($_POST['accion'] === 'editar_cliente') { /* ... Sin cambios ... */ }
+    if ($_POST['accion'] === 'editar_poliza' && $polizaModel) {
+        $pid=(int)($_POST['poliza_id']??0);
+        if (!$pid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        $ok=$polizaModel->actualizar($pid,$agenteId,[
+            'compania'=>trim($_POST['compania']??''),
+            'numero_poliza'=>trim($_POST['numero_poliza']??''),
+            'fecha_inicio'=>trim($_POST['fecha_inicio']??'')?:null,
+            'fecha_fin'=>trim($_POST['fecha_fin']??'')?:null,
+            'frecuencia_renovacion'=>trim($_POST['frecuencia_renovacion']??'anual'),
+            'estado'=>trim($_POST['estado']??'vigente'),
+            'notas'=>trim($_POST['notas']??''),
+        ]);
+        echo json_encode(['ok'=>$ok]); exit;
+    }
+
+    if ($_POST['accion'] === 'eliminar_poliza' && $polizaModel) {
+        $pid=(int)($_POST['poliza_id']??0);
+        echo json_encode(['ok'=>$pid?$polizaModel->eliminar($pid,$agenteId):false]); exit;
+    }
+
+    if ($_POST['accion'] === 'eliminar_archivo_cot') {
+        $aid=(int)($_POST['archivo_id']??0);
+        if (!$aid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        try {
+            $db=\Database\Connection::getConnection();
+            $db->prepare('UPDATE cotizacion_archivos SET eliminado_en=NOW() WHERE id=? AND agente_id=?')
+               ->execute([$aid,$agenteId]);
+            echo json_encode(['ok'=>true]); exit;
+        } catch(\Throwable $e){ echo json_encode(['ok'=>false,'msg'=>'Error.']); exit; }
+    }
+
+    // ── Confirmar pago de cotización ──────────────────────────────────────────
+    // if ($_POST['accion'] === 'confirmar_pago') {
+    //     $cotId  = (int)($_POST['cotizacion_id'] ?? 0);
+    //     $metodo = trim($_POST['metodo_pago'] ?? '');
+    //     $notas  = trim($_POST['notas_pago'] ?? '');
+    //     $metodosValidos = ['spei','contado','meses_sin_intereses'];
+
+    //     if (!$cotId || !in_array($metodo, $metodosValidos, true)) {
+    //         echo json_encode(['ok'=>false,'msg'=>'Datos incompletos.']); exit;
+    //     }
+
+    //     // Verificar que la cotización pertenece al agente
+    //     $db = \Database\Connection::getConnection();
+    //     $stCot = $db->prepare('SELECT id, estado, precio, folio FROM cotizaciones WHERE id=? AND agente_id=?');
+    //     $stCot->execute([$cotId, $agenteId]);
+    //     $cot = $stCot->fetch(\PDO::FETCH_ASSOC);
+    //     if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
+    //     if ($cot['estado'] === 'pagado') { echo json_encode(['ok'=>false,'msg'=>'Esta cotización ya está marcada como pagada.']); exit; }
+
+    //     // Si el método requiere comprobante y no lo subieron
+    //     $requiereComprobante = in_array($metodo, ['spei','meses_sin_intereses'], true);
+    //     $rutaPago = null;
+    //     $nombreArch = null;
+    //     $nombreOrig = null;
+
+    //     if ($requiereComprobante) {
+    //         if (empty($_FILES['comprobante_pago']['name']) || $_FILES['comprobante_pago']['error'] !== UPLOAD_ERR_OK) {
+    //             echo json_encode(['ok'=>false,'msg'=>'El comprobante de pago es obligatorio para transferencia o MSI.']); exit;
+    //         }
+    //         $file = $_FILES['comprobante_pago'];
+    //         $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    //         if (!in_array($ext, ['pdf','jpg','jpeg','png'], true) || $file['size'] > 15*1024*1024) {
+    //             echo json_encode(['ok'=>false,'msg'=>'Formato inválido o mayor a 15MB.']); exit;
+    //         }
+    //         $uploadDir = dirname(__DIR__,3) . "/uploads/cotizaciones/{$cotId}/";
+    //         if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+    //         $nombreArch = 'comprobante_pago_' . time() . '.' . $ext;
+    //         $rutaPago   = "uploads/cotizaciones/{$cotId}/{$nombreArch}";
+    //         $nombreOrig = $file['name'];
+    //         if (!move_uploaded_file($file['tmp_name'], $uploadDir . $nombreArch)) {
+    //             echo json_encode(['ok'=>false,'msg'=>'Error al guardar el comprobante.']); exit;
+    //         }
+    //     }
+
+    //     try {
+    //         $db->beginTransaction();
+    //         // Actualizar estado de cotización a pagado
+    //         $db->prepare('UPDATE cotizaciones SET estado=?, metodo_pago=? WHERE id=?')
+    //            ->execute(['pagado', $metodo, $cotId]);
+
+    //         if ($nombreArch !== null && $rutaPago !== null && $requiereComprobante) {
+    //             $cotizacionModel->adjuntarArchivo(
+    //                 $cotId,
+    //                 $agenteId,
+    //                 'comprobante_pago',
+    //                 $nombreOrig ?: $nombreArch,
+    //                 $nombreArch,
+    //                 $rutaPago
+    //             );
+    //         }
+
+    //         // Insertar en cotizacion_pagos
+    //         $db->prepare(
+    //             'INSERT INTO cotizacion_pagos (cotizacion_id, agente_id, metodo_pago, notas, ruta, nombre_archivo, nombre_original, fecha_pago, creado_en)
+    //              VALUES (?,?,?,?,?,?,?,CURDATE(),NOW())'
+    //         )->execute([$cotId, $agenteId, $metodo, $notas, $rutaPago, $nombreArch, $nombreOrig]);
+    //         // Historial
+    //         $historialModel->registrar($clienteId, $agenteId, 'venta',
+    //             'Pago confirmado — Folio: ' . ($cot['folio'] ?? '#'.$cotId),
+    //             ucfirst(str_replace('_',' ',$metodo)) . ($notas ? " · $notas" : '')
+    //         );
+    //         // Notificación importante al asesor confirmando el pago registrado
+    //         try {
+    //             $db->prepare(
+    //                 "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
+    //                  VALUES (?,?,?,?,1,'green',?,0,NOW())"
+    //             )->execute([
+    //                 $agenteId,
+    //                 'pago',
+    //                 '✅ Pago confirmado — ' . ($cot['folio'] ?? '#'.$cotId),
+    //                 'El pago de la cotización ' . ($cot['folio'] ?? '#'.$cotId) . ' ha sido registrado correctamente. Método: ' . ucfirst(str_replace('_',' ',$metodo)) . '. Recuerda contactar al cliente para gestionar su renovación cuando corresponda.',
+    //                 '/cliente/' . $clienteId,
+    //             ]);
+    //         } catch (\Throwable $ne) { error_log('[notif_pago] ' . $ne->getMessage()); }
+    //         $db->commit();
+    //         echo json_encode(['ok'=>true]); exit;
+    //     } catch(\Throwable $e) {
+    //         $db->rollBack();
+    //         error_log('confirmar_pago error: ' . $e->getMessage());
+    //         echo json_encode(['ok'=>false,'msg'=>'Error al registrar el pago.']); exit;
+    //     }
+    // }
+
+    // ── Editar datos del cliente ───────────────────────────────────────────────
+    if ($_POST['accion'] === 'editar_cliente') {
+        $soloVehiculo = !empty($_POST['_solo_vehiculo']);
+
+        if ($soloVehiculo) {
+            // ── Guardar solo campos de vehículo ───────────────────────────────
+            $ramo = $cliente['ramo'] ?? 'autos';
+            if ($ramo !== 'autos') {
+                echo json_encode(['ok'=>false,'msg'=>'Solo disponible para ramo autos.']); exit;
+            }
+            $campos = [];
+            // Campos directos en tabla clientes (autos)
+            if (($_POST['marca']         ?? '') !== '') $campos['marca']         = trim($_POST['marca']);
+            if (($_POST['modelo']        ?? '') !== '') $campos['modelo']        = trim($_POST['modelo']); // submarca->modelo
+            if (($_POST['anio_vehiculo'] ?? '') !== '') $campos['anio_vehiculo'] = (int)$_POST['anio_vehiculo'] ?: null;
+            if (($_POST['tipo_vehiculo'] ?? '') !== '') $campos['tipo_vehiculo'] = trim($_POST['tipo_vehiculo']);
+            try {
+                $db = \Database\Connection::getConnection();
+                // Leer extra actual (color, placas, vin, rines, gps, uso) guardado en detalle_adaptaciones como JSON
+                $stAct = $db->prepare('SELECT detalle_adaptaciones FROM clientes WHERE id = ? AND agente_id = ?');
+                $stAct->execute([$clienteId, $agenteId]);
+                $rowAct = $stAct->fetch(\PDO::FETCH_ASSOC);
+                $prevExtra = [];
+                if (!empty($rowAct['detalle_adaptaciones'])) {
+                    $decoded = @json_decode($rowAct['detalle_adaptaciones'], true);
+                    if (is_array($decoded)) $prevExtra = $decoded;
+                }
+                $extra = [];
+                foreach (['version','color','placas','vin','rines_lujo','gps','uso_auto','info_adicional'] as $key) {
+                    if (($_POST[$key] ?? '') !== '') $extra[$key] = trim($_POST[$key]);
+                }
+                // Adaptaciones: texto libre del textarea
+                if (isset($_POST['detalle_adaptaciones_texto'])) {
+                    $extra['adaptaciones_texto'] = trim($_POST['detalle_adaptaciones_texto']);
+                }
+                $tieneAdapt = ($_POST['tiene_adaptaciones'] ?? '0') === '1';
+                $campos['tiene_adaptaciones'] = $tieneAdapt ? 1 : 0;
+                $merged = array_merge($prevExtra, $extra);
+                $campos['detalle_adaptaciones'] = json_encode($merged, JSON_UNESCAPED_UNICODE);
+                if (empty($campos)) { echo json_encode(['ok'=>true]); exit; }
+                $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($campos)));
+                $vals = array_values($campos);
+                $vals[] = $clienteId;
+                $vals[] = $agenteId;
+                $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")
+                   ->execute($vals);
+                echo json_encode(['ok'=>true]); exit;
+            } catch(\Throwable $e) {
+                echo json_encode(['ok'=>false,'msg'=>'Error: '.$e->getMessage()]); exit;
+            }
+        }
+
+        $campos = [
+            'nombre'           => trim($_POST['nombre']           ?? ''),
+            'apellido_paterno' => trim($_POST['apellido_paterno'] ?? ''),
+            'apellido_materno' => trim($_POST['apellido_materno'] ?? ''),
+            'correo'           => trim($_POST['correo']           ?? ''),
+            'telefono'         => trim($_POST['telefono']         ?? ''),
+            'fecha_nacimiento' => trim($_POST['fecha_nacimiento'] ?? ''),
+            'sexo'             => trim($_POST['sexo']             ?? ''),
+            'estado_civil'     => trim($_POST['estado_civil']     ?? ''),
+            'calle'            => trim($_POST['calle']            ?? ''),
+            'colonia'          => trim($_POST['colonia']          ?? ''),
+            'ciudad'           => trim($_POST['ciudad']           ?? ''),
+            'estado'           => trim($_POST['estado']           ?? ''),
+            'codigo_postal'    => trim($_POST['codigo_postal']    ?? ''),
+        ];
+
+        if (!$campos['nombre'] || !$campos['apellido_paterno'] || !$campos['correo']) {
+            echo json_encode(['ok'=>false,'msg'=>'Nombre, apellido y correo son obligatorios.']); exit;
+        }
+        if (!filter_var($campos['correo'], FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['ok'=>false,'msg'=>'Correo inválido.']); exit;
+        }
+
+        // Campos extra según ramo
+        $ramo = $cliente['ramo'] ?? 'autos';
+        if ($ramo === 'autos') {
+            $campos['marca']         = trim($_POST['marca']        ?? '');
+            $campos['modelo']        = trim($_POST['modelo']       ?? '');
+            $campos['anio_vehiculo'] = (int)($_POST['anio_vehiculo'] ?? 0) ?: null;
+            $campos['tipo_vehiculo'] = trim($_POST['tipo_vehiculo'] ?? '');
+            $campos['asegurado']     = trim($_POST['asegurado']    ?? 'no');
+            $campos['tiempo_compra'] = trim($_POST['tiempo_compra'] ?? '');
+        } elseif (in_array($ramo, ['vida','gastos_medicos'], true)) {
+            $campos['sexo']            = trim($_POST['sexo'] ?? '');
+            $campos['fecha_nacimiento']= trim($_POST['fecha_nacimiento'] ?? '');
+            $campos['asegurado']       = trim($_POST['asegurado'] ?? 'no');
+        } elseif ($ramo === 'empresas') {
+            $campos['giro_empresa']      = trim($_POST['giro_empresa']     ?? '');
+            $campos['num_empleados']     = (int)($_POST['num_empleados']   ?? 0) ?: null;
+            $campos['facturacion_anual'] = (float)($_POST['facturacion_anual'] ?? 0) ?: null;
+        }
+
+        try {
+            $db = \Database\Connection::getConnection();
+            $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($campos)));
+            $vals = array_values($campos);
+            $vals[] = $clienteId;
+            $vals[] = $agenteId;
+            $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")
+               ->execute($vals);
+            $historialModel->registrar($clienteId, $agenteId, 'nota', 'Datos del cliente actualizados', '');
+            echo json_encode(['ok'=>true]); exit;
+        } catch(\Throwable $e) {
+            error_log('editar_cliente error: ' . $e->getMessage());
+            echo json_encode(['ok'=>false,'msg'=>'Error al guardar.']); exit;
+        }
+    }
 
     // ── Notificar al coordinador que el expediente está listo ─────────────────
     if ($_POST['accion'] === 'enviar_coordinador') {
