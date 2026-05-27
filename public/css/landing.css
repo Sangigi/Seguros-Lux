@@ -587,7 +587,6 @@ footer ul li a:hover { color: var(--accent); }
     .beneficios { border-radius: 28px 28px 0 0; padding: 70px 0 60px; }
     .seguros, .testimonios, .contacto-section { padding: 70px 0; }
     .avisos-grid { grid-template-columns: 1fr; }
-  }
   .nav-menu { display: none; }
   .nav-menu.open {
     display: flex;
