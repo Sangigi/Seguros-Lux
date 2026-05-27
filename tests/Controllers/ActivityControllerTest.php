@@ -59,7 +59,7 @@ class ActivityControllerTest extends TestCase
     public function controlador_delega_en_session_ping(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/ActivityController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/ActivityController.php'
         );
         $this->assertStringContainsString('SessionManager::ping', $source);
     }

@@ -146,7 +146,7 @@ class VidaSolicitudControllerTest extends TestCase
     public function ramo_invalido_cae_a_vida(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/VidaSolicitudController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/VidaSolicitudController.php'
         );
 
         // El controlador acepta: vida, gmm, empresas, autos — default 'vida'

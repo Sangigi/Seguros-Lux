@@ -84,7 +84,7 @@ class ExportControllerTest extends TestCase
     public function estados_validos_de_cotizacion(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/ExportController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/ExportController.php'
         );
 
         foreach (['pendiente', 'enviada', 'aceptada', 'rechazada', 'pagado'] as $estado) {
@@ -111,7 +111,7 @@ class ExportControllerTest extends TestCase
     public function controlador_soporta_tipo_cotizaciones_y_ranking(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/ExportController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/ExportController.php'
         );
 
         $this->assertStringContainsString("'cotizaciones'", $source);
@@ -122,7 +122,7 @@ class ExportControllerTest extends TestCase
     public function controlador_soporta_formato_excel_y_pdf(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/ExportController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/ExportController.php'
         );
 
         $this->assertStringContainsString("'excel'", $source);
@@ -194,7 +194,7 @@ class ExportControllerTest extends TestCase
     public function controlador_require_auth(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/ExportController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/ExportController.php'
         );
 
         $this->assertStringContainsString('requireAuth', $source);
@@ -204,7 +204,7 @@ class ExportControllerTest extends TestCase
     public function agente_solo_ve_sus_cotizaciones(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/ExportController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/ExportController.php'
         );
 
         // El controlador debe filtrar por agente_id cuando no es admin

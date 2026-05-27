@@ -118,7 +118,7 @@ class ConfigControllerTest extends TestCase
     {
         // Verificar que el controller comprueba isSuperadmin()
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/ConfigController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/ConfigController.php'
         );
         $this->assertStringContainsString('isSuperadmin', $source);
         $this->assertStringContainsString('403', $source);
@@ -128,7 +128,7 @@ class ConfigControllerTest extends TestCase
     public function post_items_vacios_devuelve_error(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/ConfigController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/ConfigController.php'
         );
         $this->assertStringContainsString('400', $source);
         $this->assertStringContainsString('items', $source);

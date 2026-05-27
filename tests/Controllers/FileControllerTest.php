@@ -121,7 +121,7 @@ class FileControllerTest extends TestCase
         // Verificamos que handle() tiene la lógica inline para estos tipos
         // leyendo el código fuente o via prueba de comportamiento indirecto
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/FileController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/FileController.php'
         );
 
         $this->assertStringContainsString('application/pdf', $source);

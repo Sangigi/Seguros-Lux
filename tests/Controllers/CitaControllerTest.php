@@ -169,7 +169,7 @@ class CitaControllerTest extends TestCase
     public function controlador_valida_regex_fecha(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/CitaController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/CitaController.php'
         );
 
         $this->assertStringContainsString('\d{4}-\d{2}-\d{2}', $source,
@@ -180,7 +180,7 @@ class CitaControllerTest extends TestCase
     public function controlador_rechaza_metodo_desconocido(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/CitaController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/CitaController.php'
         );
 
         // Debe retornar 405 si el método no es GET ni POST
@@ -191,7 +191,7 @@ class CitaControllerTest extends TestCase
     public function controlador_permite_estado_vencida_solo_a_superadmin(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/CitaController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/CitaController.php'
         );
 
         $this->assertStringContainsString('isSuperadmin', $source);

@@ -115,7 +115,7 @@ class LoginControllerTest extends TestCase
     public function controlador_usa_lista_blanca_para_redirect(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/LoginController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/LoginController.php'
         );
 
         $this->assertStringContainsString('ALLOWED_REDIRECTS', $source);
@@ -127,7 +127,7 @@ class LoginControllerTest extends TestCase
     public function controlador_no_usa_redirect_de_usuario(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/LoginController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/LoginController.php'
         );
 
         // Nunca debe leer ?redirect= o similar del input del usuario
@@ -180,7 +180,7 @@ class LoginControllerTest extends TestCase
     public function controlador_soporta_respuesta_json_para_ajax(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/LoginController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/LoginController.php'
         );
 
         $this->assertStringContainsString('XMLHttpRequest', $source);
@@ -193,7 +193,7 @@ class LoginControllerTest extends TestCase
     public function controlador_captura_excepciones_de_bd(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/LoginController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/LoginController.php'
         );
 
         $this->assertStringContainsString('catch', $source);

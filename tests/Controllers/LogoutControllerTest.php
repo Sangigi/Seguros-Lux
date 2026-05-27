@@ -90,7 +90,7 @@ class LogoutControllerTest extends TestCase
     public function controlador_valida_csrf_antes_de_destruir(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/LogoutController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/LogoutController.php'
         );
 
         $this->assertStringContainsString('validateCsrf', $source);
@@ -101,7 +101,7 @@ class LogoutControllerTest extends TestCase
     public function controlador_acepta_token_csrf_por_header_x_csrf(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/LogoutController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/LogoutController.php'
         );
 
         $this->assertStringContainsString('HTTP_X_CSRF_TOKEN', $source);
@@ -111,7 +111,7 @@ class LogoutControllerTest extends TestCase
     public function controlador_redirige_a_login_tras_logout(): void
     {
         $source = file_get_contents(
-            dirname(__DIR__, 3) . '/App/Controllers/LogoutController.php'
+            dirname(__DIR__, 2) . '/App/Controllers/LogoutController.php'
         );
 
         $this->assertStringContainsString('/login', $source);
