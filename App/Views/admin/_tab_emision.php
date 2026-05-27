@@ -186,7 +186,7 @@ try {
     </select>
     <!-- Toggle: ver completadas (pagadas + emitidas) -->
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
-        <input type="checkbox" name="emi_ver_pagadas" value="1" <?= $emiMostrarPagadas ? 'checked' : '' ?> onchange="this.form.submit()" style="width:14px;height:14px;">
+        <input type="checkbox" id="chkEmiVerPagadas" name="emi_ver_pagadas" value="1" <?= $emiMostrarPagadas ? 'checked' : '' ?> style="width:14px;height:14px;">
         Ver completadas
     </label>
     <button type="submit" class="btn btn-outline btn-sm">Filtrar</button>
@@ -573,6 +573,10 @@ try {
 
 <script nonce="<?= $cspNonce ?>">
 (function () {
+    // Auto-enviar formulario al cambiar el toggle de "Ver completadas"
+    document.getElementById('chkEmiVerPagadas')?.addEventListener('change', function () {
+        this.form.submit();
+    });
     // ── Método pago → mostrar banco ───────────────────────────────────────────
     document.getElementById('emiCompMetodo')?.addEventListener('change', function () {
         const necesitaBanco = ['tarjeta_credito','tarjeta_debito','transferencia','msi_3','msi_6','msi_12','msi_18','deposito_banco'].includes(this.value);

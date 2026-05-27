@@ -1481,7 +1481,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                         var pagoBadge = (p.pago_confirmado==1||p.pago_confirmado===true) ? `<span class="badge badge-success">✅ Pagada</span>` : `<span class="badge badge-warning">⏳ Pendiente</span>`;
                         var estadoHtml = isEliminada ? '<span class="badge badge-danger">🗑️ Eliminada</span>' : (estadoBadge[p.estado]??p.estado);
                         
-                        var colAccion = viendoPapelera ? (isEliminada ? `<td><button class="btn btn-sm btn-outline" style="color:#16a34a;border-color:#16a34a;" onclick="restaurarPolizaAdmin(${p.id})">♻️ Restaurar</button></td>` : `<td>—</td>`) : '';
+                        var colAccion = viendoPapelera ? (isEliminada ? `<td><button class="btn btn-sm btn-outline btn-restaurar-poliza" style="color:#16a34a;border-color:#16a34a;" data-id="${p.id}">♻️ Restaurar</button></td>` : `<td>—</td>`) : '';
 
                         return `<tr style="${isEliminada ? 'opacity:0.6; background:#fef2f2;' : ''}">
                             <td><a href="/cliente/${p.cliente_id_ref}" style="font-weight:600;color:var(--accent-color);">${p.cliente_nombre??'—'}</a><br><span style="font-size:11px;color:var(--text-muted);">${p.asesor_nombre??''}</span></td>
@@ -1504,6 +1504,14 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                 document.getElementById('polTablaWrap').innerHTML='<p style="padding:20px;color:red;">Error de conexión crítico: ' + err.message + '</p>';
             });
     }
+
+    // Delegación de eventos para el botón de restaurar
+    document.getElementById('polTablaWrap').addEventListener('click', function(e) {
+        var btn = e.target.closest('.btn-restaurar-poliza');
+        if (btn) {
+            restaurarPolizaAdmin(btn.dataset.id);
+        }
+    });
 
     // Listener general para restaurar
     window.restaurarPolizaAdmin = function(id) {
