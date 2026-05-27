@@ -697,7 +697,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
       <!-- Las tarjetas se inyectan dinámicamente -->
     </div>
     <div class="blog-cta" id="blogCta" hidden>
-      <a href="https://blog.seguroslux.mx/blog/" class="btn btn-ghost-accent">
+      <a href="https://blog.seguroslux.mx/" class="btn btn-ghost-accent">
         Ver todos los artículos
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2">
