@@ -100,19 +100,16 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     display: block;
   }
   .sub-hero-img-wrap::after {
-    content: '';
-    position: absolute; inset: 0;
-    background: linear-gradient(
-      135deg,
-      rgba(15,23,42,0.82) 0%,
-      
-
-
-#0dec0949
-,
-      rgba(15,23,42,0.70) 100%
-    );
-  }
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(15,23,42,0.92) 0%,
+    rgba(15,23,42,0.80) 45%,
+    #0dec0949 75%,
+    rgba(15,23,42,0.70) 100%
+  );
+}
   .sub-hero .container {
     position: relative;
     z-index: 1;
