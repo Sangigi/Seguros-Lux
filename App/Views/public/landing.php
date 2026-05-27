@@ -512,7 +512,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 <!-- ========== BANNER PROMOCIONAL ========== -->
 <section class="promo-banner">
   <!-- Opcional: Envolvemos la imagen en un enlace para que dirija a la cotización -->
-  <a href="/formulario">
+  <a href="tel:+525541232311">
     <img src="images/Banner_add.jpg" alt="Promoción Hot Sale - 15% OFF + 12 MSI" loading="lazy">
   </a>
 </section>
