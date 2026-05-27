@@ -267,6 +267,9 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     .form-wrap { padding: 28px 22px; }
     .footer-grid { grid-template-columns: 1fr 1fr; }
     .sub-hero .container { padding-top: 60px; padding-bottom: 70px; }
+    
+    /* AQUÍ AGREGAS LA NUEVA REGLA */
+    .reasons-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 520px) {
     .footer-grid { grid-template-columns: 1fr; }
@@ -274,6 +277,14 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     .sub-hero-ctas { flex-direction: column; align-items: stretch; }
     .cta-final-actions { flex-direction: column; align-items: stretch; }
   }
+  /* ========== REASONS GRID (Por qué un seguro) ========== */
+.reasons-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+}
 </style>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18175049842"></script>
@@ -380,7 +391,9 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
       <h2>¿Por qué tener un <em>seguro de vida?</em></h2>
       <p>No se trata de pensar en lo peor. Se trata de ser responsable con quienes dependen de ti.</p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;max-width:960px;margin:0 auto;">
+    
+    <div class="reasons-grid">
+      
       <div style="background:var(--gray-50);border-radius:var(--radius-xl);padding:32px 26px;border-left:4px solid var(--vida-primary);">
         <div style="font-size:36px;margin-bottom:14px;">🏠</div>
         <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Protege el patrimonio</h4>
