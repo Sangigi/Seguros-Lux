@@ -623,3 +623,38 @@ footer ul li a:hover { color: var(--accent); }
 
 .reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s, transform .6s; }
 .reveal.in { opacity: 1; transform: translateY(0); }
+
+/* ===== 1. MODIFICAR EL CONTENEDOR DEL TEXTO ===== */
+.hero-vehiculo-text {
+  background: rgba(15, 23, 42, 0.55); /* Un fondo oscuro pero muy translúcido */
+  backdrop-filter: blur(12px);        /* Desenfoca el ruido de la imagen de fondo */
+  -webkit-backdrop-filter: blur(12px);/* Soporte para Safari */
+  padding: 40px;
+  border-radius: var(--radius-xl);    /* Usa tu variable de bordes redondeados */
+  border: 1px solid rgba(255, 255, 255, 0.12); /* Un borde fino brillante tipo cristal */
+  box-shadow: var(--shadow-lg);       /* Le da profundidad sobre el fondo */
+}
+
+/* ===== 2. LIMPIAR LAS SOMBRAS INTERNAS (Para un look más limpio y premium) ===== */
+.hero-vehiculo-text h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  font-weight: 900; line-height: 1.05; letter-spacing: -1.5px;
+  margin-bottom: 18px;
+  text-shadow: none; /* Quitamos la sombra dura de 3px ya que no la necesitas */
+}
+.hero-vehiculo-text h1 em { font-style: italic; color: var(--accent); font-weight: 500; }
+
+.hero-vehiculo-text p.lead { 
+  font-size: 17px; 
+  color: rgba(255,255,255,0.95); /* Subimos un poco la opacidad del texto */
+  margin-bottom: 22px; 
+  text-shadow: none; /* Quitamos sombra */
+}
+
+.hero-bullets li {
+  padding: 8px 0; font-size: 15px; 
+  color: rgba(255,255,255,0.95); /* Subimos opacidad */
+  display: flex; align-items: center; gap: 10px; 
+  text-shadow: none; /* Quitamos sombra */
+}
