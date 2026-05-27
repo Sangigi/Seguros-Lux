@@ -32,36 +32,23 @@ class SessionManager
     // ── Inicio de sesión ──────────────────────────────────────────────────────
 
     public static function start(): void
-{
-    if (session_status() !== PHP_SESSION_NONE) return;
+    {
+        if (session_status() !== PHP_SESSION_NONE) return;
 
-    // ── Redis como gestor de sesiones (si está disponible) ────────────────
-    // Requiere la extensión php-redis O la extensión redis nativa de PHP.
-    // Si no está disponible, PHP usa el handler de archivos por defecto.
-    if (class_exists(\Redis::class)) {
-        $host = getenv('REDIS_HOST') ?: '127.0.0.1';
-        $port = getenv('REDIS_PORT') ?: 6379;
-        $pass = getenv('REDIS_PASSWORD') ?: '';
-        $auth = $pass ? "?auth={$pass}" : '';
+        $isSecure = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                 || (getenv('APP_ENV') === 'production');
 
-        ini_set('session.save_handler', 'redis');
-        ini_set('session.save_path', "tcp://{$host}:{$port}{$auth}");
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => $isSecure,
+            'httponly' => true,
+            'samesite' => 'Strict',
+        ]);
+
+        session_start();
     }
-
-    $isSecure = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-             || (getenv('APP_ENV') === 'production');
-
-    session_set_cookie_params([
-        'lifetime' => 0,
-        'path'     => '/',
-        'domain'   => '',
-        'secure'   => $isSecure,
-        'httponly' => true,
-        'samesite' => 'Strict',
-    ]);
-
-    session_start();
-}
 
     // ── Nonce por request ─────────────────────────────────────────────────────
 
