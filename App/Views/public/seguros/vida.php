@@ -412,7 +412,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     
     <div class="reasons-grid">
       
-      <div style="background:var(--gray-50);border-radius:var(--radius-xl);padding:32px 26px;border-left:4px solid var(--vida-primary);">
+      <div style="background:var(--gray-50);padding:32px 26px;border-left:4px solid var(--vida-primary);">
         <div style="font-size:36px;margin-bottom:14px;">🏠</div>
         <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Protege el patrimonio</h4>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;">Si algo te llegara a pasar, tu familia podría mantener su estilo de vida, cubrir la hipoteca y los gastos del hogar sin depender de nadie.</p>
@@ -422,7 +422,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Garantiza la educación</h4>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;">El futuro de tus hijos no depende de lo que pase contigo. Una póliza bien elegida garantiza que sus estudios sigan adelante pase lo que pase.</p>
       </div>
-      <div style="background:var(--gray-50);border-radius:var(--radius-xl);padding:32px 26px;border-left:4px solid var(--vida-primary);">
+      <div style="background:var(--gray-50);padding:32px 26px;border-left:4px solid var(--vida-primary);">
         <div style="font-size:36px;margin-bottom:14px;">💰</div>
         <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Construye ahorro</h4>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;">Muchos planes de vida incluyen un componente de ahorro o inversión a mediano y largo plazo. Proteges a tu familia y generas capital al mismo tiempo.</p>
