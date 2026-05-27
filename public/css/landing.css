@@ -592,7 +592,38 @@ footer ul li a:hover { color: var(--accent); }
       visibility: visible !important;
       box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
     }
+    .reasons-grid, .seguros-grid, .testi-grid, .contacto-grid { grid-template-columns: 1fr; }
+    .benefits-mini { grid-template-columns: repeat(2, 1fr); }
+    .beneficios { border-radius: 28px 28px 0 0; padding: 70px 0 60px; }
+    .seguros, .testimonios, .contacto-section { padding: 70px 0; }
+    .avisos-grid { grid-template-columns: 1fr; }
+  .nav-menu { display: none; }
+  .nav-menu.open {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 100%; left: 0; right: 0;
+    background: var(--white);
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--gray-200);
+    gap: 10px;
+    align-items: flex-start;
+    box-shadow: var(--shadow-md);
   }
+  .nav-menu.open .submenu {
+    position: static; opacity: 1; visibility: visible;
+    transform: none; margin: 6px 0 0 12px;
+    box-shadow: none; border: 0; padding: 0;
+    background: var(--gray-50);
+  }
+  .nav-phone { display: none; }
+  .nav-toggle { display: block; }
+  .footer-grid { grid-template-columns: 1fr 1fr; }
+  .sub-hero { padding: 50px 0 60px; }
+  .sub-hero-ctas { flex-direction: column; align-items: stretch; width: 100%; }
+  .blog-grid { grid-template-columns: 1fr; }
+  .partner-card { width: 160px; }
+}
 @media (max-width: 520px) {
   .nav-cta span.hide-sm { display: none; }
   .footer-grid { grid-template-columns: 1fr; }
