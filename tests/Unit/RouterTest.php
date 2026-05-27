@@ -36,16 +36,12 @@ final class RouterTest extends TestCase
 
     public function testNormalizePathUnificaSeparadoresMixtos(): void
     {
-        $input    = 'foo/bar\\baz';
-        $expected = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $input);
-
-        $this->assertSame($expected, \Router::normalizePath($input));
+        $this->assertSame('foo/bar/baz', \Router::normalizePath('foo/bar\baz'));
     }
 
     public function testNormalizePathNoModificaRutaYaNormalizada(): void
     {
-        $path = implode(DIRECTORY_SEPARATOR, ['foo', 'bar', 'baz']);
-        $this->assertSame($path, \Router::normalizePath($path));
+        $this->assertSame('foo/bar/baz', \Router::normalizePath('foo/bar/baz'));
     }
 
     public function testNormalizePathManejaStringVacio(): void
