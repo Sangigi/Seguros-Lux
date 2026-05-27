@@ -63,7 +63,7 @@ class ClientController
     {
         SessionManager::requireAuthApi();
 
-        $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+        $id = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT);
         if (!$id) {
             http_response_code(400);
             echo json_encode(['success' => false, 'error' => 'ID inválido']);

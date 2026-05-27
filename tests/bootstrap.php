@@ -58,6 +58,10 @@ function createTestPdo(): PDO
     $pdo->sqliteCreateFunction('CURDATE',  fn() => date('Y-m-d'),       0);
     $pdo->sqliteCreateFunction('DATEDIFF', fn($a, $b) => (int)((strtotime($a) - strtotime($b)) / 86400), 2);
     $pdo->sqliteCreateFunction('INTERVAL', fn($n, $unit) => $n, 2); // stub — solo para parsing
+    $pdo->sqliteCreateFunction('YEAR',     fn($d) => $d ? (int)date('Y', strtotime($d)) : null, 1);
+    $pdo->sqliteCreateFunction('MONTH',    fn($d) => $d ? (int)date('n', strtotime($d)) : null, 1);
+    $pdo->sqliteCreateFunction('CONCAT',   fn(...$args) => implode('', $args), -1);
+    $pdo->sqliteCreateFunction('DATE_SUB', fn($d, $i) => date('Y-m-d H:i:s', strtotime($d . ' -' . $i . ' month')), 2);
 
     // SQLite no tiene ENUM — se usa TEXT con CHECK para aproximar.
     $pdo->exec(<<<'SQL'
@@ -126,10 +130,16 @@ function createTestPdo(): PDO
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
             cliente_id              INTEGER NOT NULL,
             agente_id               INTEGER NOT NULL,
+            folio                   TEXT,
             ramo                    TEXT,
             estado                  TEXT    DEFAULT 'pendiente',
             precio                  REAL    DEFAULT 0,
             tipo_cobertura          TEXT,
+            compania                TEXT,
+            vigencia                TEXT,
+            deducible               TEXT,
+            metodo_pago             TEXT,
+            fecha                   TEXT    DEFAULT (datetime('now')),
             emision_estado          TEXT    DEFAULT 'pendiente',
             emision_coordinador_id  INTEGER,
             fecha_creacion          TEXT    DEFAULT (datetime('now')),
@@ -182,6 +192,23 @@ function createTestPdo(): PDO
             created_at     TEXT    DEFAULT (datetime('now')),
             last_tried_at  TEXT,
             sent_at        TEXT
+        );
+
+        CREATE TABLE cotizacion_archivos (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            cotizacion_id    INTEGER NOT NULL,
+            tipo_documento   TEXT,
+            ruta             TEXT,
+            nombre_archivo   TEXT,
+            eliminado_en     TEXT    DEFAULT NULL
+        );
+
+        CREATE TABLE cotizacion_pagos (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            cotizacion_id    INTEGER NOT NULL,
+            ruta             TEXT,
+            nombre_archivo   TEXT,
+            created_at       TEXT    DEFAULT (datetime('now'))
         );
 
     SQL);

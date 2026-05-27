@@ -26,10 +26,15 @@ class ExportControllerTest extends TestCase
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
-        $_SESSION['agente_id']     = 1;
-        $_SESSION['agente_rol']    = 'asesor';
-        $_SESSION['logged_in']     = true;
-        $_SESSION['last_activity'] = time();
+        $_SESSION['agente_id']       = 1;
+        $_SESSION['agente']          = 'test@seguroslux.mx';
+        $_SESSION['agente_nombre']   = 'Test';
+        $_SESSION['agente_apellido'] = 'User';
+        $_SESSION['agente_rol']      = 'asesor';
+        $_SESSION['logged_in']       = true;
+        $_SESSION['LAST_ACTIVITY']   = time();
+        $_SESSION['fp_ip']           = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '');
+        $_SESSION['fp_ua']           = hash('sha256', $_SERVER['HTTP_USER_AGENT'] ?? '');
 
         $this->pdo = \Database\Connection::getConnection();
 
@@ -141,12 +146,18 @@ class ExportControllerTest extends TestCase
         )->execute([$this->clienteId, $this->agenteId]);
 
         $_SESSION['agente_id']  = $this->agenteId;
-        $_SESSION['agente_rol'] = 'asesor';
+        $_SESSION['agente']        = 'test@seguroslux.mx';
+        $_SESSION['agente_rol']    = 'asesor';
+        $_SESSION['LAST_ACTIVITY'] = time();
+        $_SESSION['fp_ip']         = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '');
+        $_SESSION['fp_ua']         = hash('sha256', $_SERVER['HTTP_USER_AGENT'] ?? '');
         $_GET['formato'] = 'excel';
         $_GET['tipo']    = 'cotizaciones';
 
+        $level = ob_get_level();
         ob_start();
         \App\Controllers\ExportController::handle();
+        while (ob_get_level() > $level + 1) ob_end_clean();
         $out = ob_get_clean();
 
         // CSV debe contener encabezados de columnas
@@ -159,12 +170,18 @@ class ExportControllerTest extends TestCase
     public function export_csv_incluye_bom_utf8(): void
     {
         $_SESSION['agente_id']  = $this->agenteId;
-        $_SESSION['agente_rol'] = 'asesor';
+        $_SESSION['agente']        = 'test@seguroslux.mx';
+        $_SESSION['agente_rol']    = 'asesor';
+        $_SESSION['LAST_ACTIVITY'] = time();
+        $_SESSION['fp_ip']         = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '');
+        $_SESSION['fp_ua']         = hash('sha256', $_SERVER['HTTP_USER_AGENT'] ?? '');
         $_GET['formato'] = 'excel';
         $_GET['tipo']    = 'cotizaciones';
 
+        $level = ob_get_level();
         ob_start();
         \App\Controllers\ExportController::handle();
+        while (ob_get_level() > $level + 1) ob_end_clean();
         $out = ob_get_clean();
 
         // BOM UTF-8: EF BB BF
@@ -176,12 +193,18 @@ class ExportControllerTest extends TestCase
     public function export_ranking_genera_columna_conversion(): void
     {
         $_SESSION['agente_id']  = $this->agenteId;
-        $_SESSION['agente_rol'] = 'administrador';
+        $_SESSION['agente']        = 'test@seguroslux.mx';
+        $_SESSION['agente_rol']    = 'administrador';
+        $_SESSION['LAST_ACTIVITY'] = time();
+        $_SESSION['fp_ip']         = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '');
+        $_SESSION['fp_ua']         = hash('sha256', $_SERVER['HTTP_USER_AGENT'] ?? '');
         $_GET['formato'] = 'excel';
         $_GET['tipo']    = 'ranking';
 
+        $level = ob_get_level();
         ob_start();
         \App\Controllers\ExportController::handle();
+        while (ob_get_level() > $level + 1) ob_end_clean();
         $out = ob_get_clean();
 
         $this->assertStringContainsString('Asesor',     $out);

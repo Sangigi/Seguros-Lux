@@ -27,10 +27,15 @@ class FileControllerTest extends TestCase
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
-        $_SESSION['agente_id']  = 1;
-        $_SESSION['agente_rol'] = 'asesor';
-        $_SESSION['logged_in']  = true;
-        $_SESSION['last_activity'] = time();
+        $_SESSION['agente_id']       = 1;
+        $_SESSION['agente']          = 'test@seguroslux.mx';
+        $_SESSION['agente_nombre']   = 'Test';
+        $_SESSION['agente_apellido'] = 'User';
+        $_SESSION['agente_rol']      = 'asesor';
+        $_SESSION['logged_in']       = true;
+        $_SESSION['LAST_ACTIVITY']   = time();
+        $_SESSION['fp_ip']           = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '');
+        $_SESSION['fp_ua']           = hash('sha256', $_SERVER['HTTP_USER_AGENT'] ?? '');
 
         unset($_GET['file']);
     }
@@ -85,9 +90,7 @@ class FileControllerTest extends TestCase
     public function mime_map_contiene_tipos_comunes(): void
     {
         $reflection = new \ReflectionClass(FileController::class);
-        $prop       = $reflection->getProperty('MIME_MAP');
-        $prop->setAccessible(true);
-        $mimes = $prop->getValue(null);
+        $mimes = $reflection->getConstant('MIME_MAP');
 
         $esperados = ['pdf', 'jpg', 'png', 'docx', 'xlsx'];
         foreach ($esperados as $ext) {
@@ -99,9 +102,7 @@ class FileControllerTest extends TestCase
     public function mime_map_no_contiene_extensiones_peligrosas(): void
     {
         $reflection = new \ReflectionClass(FileController::class);
-        $prop       = $reflection->getProperty('MIME_MAP');
-        $prop->setAccessible(true);
-        $mimes = $prop->getValue(null);
+        $mimes = $reflection->getConstant('MIME_MAP');
 
         $peligrosos = ['php', 'sh', 'exe', 'bat', 'js', 'html'];
         foreach ($peligrosos as $ext) {
