@@ -12,6 +12,12 @@
  */
 declare(strict_types=1);
 
+// ── Protección contra ejecución web (HTTP) ───────────────────────────────────
+if (php_sapi_name() !== 'cli' && php_sapi_name() !== 'phpdbg') {
+    http_response_code(403);
+    exit('Acceso denegado. Este script solo puede ejecutarse vía CLI/Cron.');
+}
+
 // ── Capturar CUALQUIER error fatal y loguearlo ────────────────────────────────
 register_shutdown_function(function () {
     $error = error_get_last();
