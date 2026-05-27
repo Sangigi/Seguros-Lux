@@ -509,6 +509,14 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   </div>
 </section>
 
+<!-- ========== BANNER PROMOCIONAL ========== -->
+<section class="promo-banner">
+  <!-- Opcional: Envolvemos la imagen en un enlace para que dirija a la cotización -->
+  <a href="/formulario">
+    <img src="Banner_add.jpg" alt="Promoción Hot Sale - 15% OFF + 12 MSI" loading="lazy">
+  </a>
+</section>
+
 <!-- SEGUROS -->
 <section class="seguros" id="seguros">
   <div class="container">
