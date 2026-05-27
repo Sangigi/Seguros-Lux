@@ -9,7 +9,8 @@ namespace App\Models;
 class NotificacionModel extends BaseModel
 {
     protected string $table = 'notificaciones';
-
+    protected int $cacheTtl = 0;
+    
     protected array $fillable = [
         'agente_id'  => 'int',
         'tipo'       => 'string',

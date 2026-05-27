@@ -6,7 +6,7 @@ namespace App\Models;
 class AgentModel extends BaseModel
 {
     protected string $table = 'agentes';
-
+    protected int $cacheTtl = 300;
     protected array $defaultColumns = [
         'id', 'nombre', 'apellido', 'correo', 'telefono', 'rol', 'activo',
     ];

@@ -7,7 +7,7 @@ use App\Services\QueryCache;
 class CotizacionModel extends BaseModel
 {
     protected string $table = 'cotizaciones';
-
+    protected int $cacheTtl = 90;
     protected array $defaultColumns = [
         'id', 'cliente_id', 'agente_id', 'compania', 'tipo_cobertura',
         'precio', 'deducible', 'vigencia', 'estado', 'fecha', 'folio', 'ramo',

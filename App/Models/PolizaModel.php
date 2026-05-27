@@ -10,6 +10,7 @@ namespace App\Models;
 class PolizaModel extends BaseModel
 {
     protected string $table = 'polizas';
+    protected int $cacheTtl = 120;
     
     protected array $fillable = [
         'cliente_id'            => 'int',
