@@ -74,6 +74,12 @@ jobs:
         env:
           APP_ENV: testing
 
+      # ── 10. Tests de seguridad ────────────────────────────────────────────────
+      - name: PHPUnit — security suite
+        run: vendor/bin/phpunit --testsuite controllers --testdox
+        env:
+          APP_ENV: testing
+
   # ── Job de cobertura (solo PHP 8.2, no bloquea el merge) ────────────────────
   coverage:
     name: Cobertura de código

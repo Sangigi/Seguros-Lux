@@ -44,6 +44,11 @@
         <testsuite name="security">
             <directory>tests/Security</directory>
         </testsuite>
+
+        <!-- Tests de controladores: Peticiones HTTP, rutas y respuestas JSON/HTML -->
+        <testsuite name="controllers">
+            <directory>tests/Controllers</directory>
+        </testsuite>
     </testsuites>
 
     <!-- ── Fuentes para análisis de cobertura ──────────────────────────────── -->
