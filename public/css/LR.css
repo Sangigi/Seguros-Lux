@@ -420,28 +420,26 @@
    Máxima densidad visual
 ──────────────── */
 @media (max-width: 480px) {
-
   .left {
-    padding: 32px 28px;
+    padding: 32px 24px;
+    min-height: 280px;
   }
 
   .right {
-    padding: 40px 28px;
+    padding: 40px 24px;
   }
 
-  .left-headline {
-    font-size: 26px;
-  }
+  .left-headline { font-size: 26px; }
+  .form-title { font-size: 24px; }
+  .field-inp { font-size: 13px; }
+  .stat-n { font-size: 18px; }
 
-  .form-title {
-    font-size: 24px;
+  .stats-row {
+    flex-wrap: wrap;
+    gap: 16px;
+    padding-top: 20px;
   }
-
-  .field-inp {
-    font-size: 13px;
-  }
-
-  .stat-n {
-    font-size: 18px;
+  .stat {
+    flex: 1 1 45%;
   }
 }
