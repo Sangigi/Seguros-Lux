@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Services\QueryCache;
+
 class ClientModel extends BaseModel
 {
     protected string $table = 'clientes';
@@ -191,34 +193,55 @@ class ClientModel extends BaseModel
 
     public function countHoy(int $agenteId, ?string $ramo = null): int
     {
-        $ramoFilter = $ramo ? ' AND ramo = ?' : '';
-        $stmt = $this->db()->prepare(
-            "SELECT COUNT(*) FROM clientes WHERE agente_id = ? AND DATE(fecha_registro) = CURDATE(){$ramoFilter}"
+        return (int) QueryCache::remember(
+            table: 'clientes',
+            key:   "countHoy:{$agenteId}:{$ramo}",
+            ttl:   90,
+            fn:    function () use ($agenteId, $ramo): int {
+                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $stmt = $this->db()->prepare(
+                    "SELECT COUNT(*) FROM clientes WHERE agente_id = ? AND DATE(fecha_registro) = CURDATE(){$ramoFilter}"
+                );
+                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                return (int) $stmt->fetchColumn();
+            }
         );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
-        return (int) $stmt->fetchColumn();
     }
 
     public function countEstaSemana(int $agenteId, ?string $ramo = null): int
     {
-        $ramoFilter = $ramo ? ' AND ramo = ?' : '';
-        $stmt = $this->db()->prepare(
-            "SELECT COUNT(*) FROM clientes
-             WHERE agente_id = ? AND YEARWEEK(fecha_registro,1) = YEARWEEK(CURDATE(),1){$ramoFilter}"
+        return (int) QueryCache::remember(
+            table: 'clientes',
+            key:   "countEstaSemana:{$agenteId}:{$ramo}",
+            ttl:   90,
+            fn:    function () use ($agenteId, $ramo): int {
+                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $stmt = $this->db()->prepare(
+                    "SELECT COUNT(*) FROM clientes
+                     WHERE agente_id = ? AND YEARWEEK(fecha_registro,1) = YEARWEEK(CURDATE(),1){$ramoFilter}"
+                );
+                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                return (int) $stmt->fetchColumn();
+            }
         );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
-        return (int) $stmt->fetchColumn();
     }
 
     public function countEsteMes(int $agenteId, ?string $ramo = null): int
     {
-        $ramoFilter = $ramo ? ' AND ramo = ?' : '';
-        $stmt = $this->db()->prepare(
-            "SELECT COUNT(*) FROM clientes
-             WHERE agente_id = ? AND YEAR(fecha_registro)=YEAR(NOW()) AND MONTH(fecha_registro)=MONTH(NOW()){$ramoFilter}"
+        return (int) QueryCache::remember(
+            table: 'clientes',
+            key:   "countEsteMes:{$agenteId}:{$ramo}",
+            ttl:   120,
+            fn:    function () use ($agenteId, $ramo): int {
+                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $stmt = $this->db()->prepare(
+                    "SELECT COUNT(*) FROM clientes
+                     WHERE agente_id = ? AND YEAR(fecha_registro)=YEAR(NOW()) AND MONTH(fecha_registro)=MONTH(NOW()){$ramoFilter}"
+                );
+                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                return (int) $stmt->fetchColumn();
+            }
         );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
-        return (int) $stmt->fetchColumn();
     }
 
     /**
@@ -242,77 +265,98 @@ class ClientModel extends BaseModel
 
     public function getClientesPorDia(int $agenteId, ?string $ramo = null): array
     {
-        $ramoFilter = $ramo ? ' AND ramo = ?' : '';
-        $stmt = $this->db()->prepare(
-            "SELECT CASE DAYOFWEEK(fecha_registro)
-                        WHEN 1 THEN 'Dom' WHEN 2 THEN 'Lun' WHEN 3 THEN 'Mar'
-                        WHEN 4 THEN 'Mié' WHEN 5 THEN 'Jue' WHEN 6 THEN 'Vie'
-                        WHEN 7 THEN 'Sáb'
-                    END AS dia,
-                    COUNT(*) AS total
-             FROM clientes
-             WHERE agente_id = ? AND fecha_registro >= DATE_SUB(CURDATE(), INTERVAL 6 DAY){$ramoFilter}
-             GROUP BY DATE(fecha_registro), dia
-             ORDER BY DATE(fecha_registro) ASC"
-        );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
-        $raw = $stmt->fetchAll();
+        return QueryCache::remember(
+            table: 'clientes',
+            key:   "clientesPorDia:{$agenteId}:{$ramo}",
+            ttl:   90,
+            fn:    function () use ($agenteId, $ramo): array {
+                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $stmt = $this->db()->prepare(
+                    "SELECT CASE DAYOFWEEK(fecha_registro)
+                                WHEN 1 THEN 'Dom' WHEN 2 THEN 'Lun' WHEN 3 THEN 'Mar'
+                                WHEN 4 THEN 'Mié' WHEN 5 THEN 'Jue' WHEN 6 THEN 'Vie'
+                                WHEN 7 THEN 'Sáb'
+                            END AS dia,
+                            COUNT(*) AS total
+                     FROM clientes
+                     WHERE agente_id = ? AND fecha_registro >= DATE_SUB(CURDATE(), INTERVAL 6 DAY){$ramoFilter}
+                     GROUP BY DATE(fecha_registro), dia
+                     ORDER BY DATE(fecha_registro) ASC"
+                );
+                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                $raw = $stmt->fetchAll();
 
-        $diasSemana = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-        $diasMap    = array_column($raw, 'total', 'dia');
+                $diasSemana = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+                $diasMap    = array_column($raw, 'total', 'dia');
 
-        return array_map(
-            fn($d) => ['dia' => $d, 'total' => (int)($diasMap[$d] ?? 0)],
-            $diasSemana
+                return array_map(
+                    fn($d) => ['dia' => $d, 'total' => (int)($diasMap[$d] ?? 0)],
+                    $diasSemana
+                );
+            }
         );
     }
 
     public function getTopVehiculos(?int $agenteId = null, int $limit = 8): array
     {
-        $where = $agenteId !== null ? "WHERE agente_id = ? AND ramo = 'autos'" : "WHERE ramo = 'autos'";
-        $sql = "SELECT tipo, SUM(cnt) AS total
-                FROM (
-                    SELECT
-                        CASE LOWER(TRIM(tipo_vehiculo))
-                            WHEN 'auto'           THEN 'Auto'
-                            WHEN 'autos'          THEN 'Auto'
-                            WHEN 'moto'           THEN 'Moto'
-                            WHEN 'motos'          THEN 'Moto'
-                            WHEN 'camioneta'      THEN 'SUV / Camioneta'
-                            WHEN 'suv'            THEN 'SUV / Camioneta'
-                            WHEN 'suv_camioneta'  THEN 'SUV / Camioneta'
-                            WHEN 'pickup'         THEN 'Pickup'
-                            WHEN 'deportivo'      THEN 'Deportivo'
-                            WHEN 'electrico'      THEN 'Eléctrico'
-                            WHEN 'van'            THEN 'Van / Minivan'
-                            ELSE CONCAT(UPPER(SUBSTRING(tipo_vehiculo,1,1)),LOWER(SUBSTRING(tipo_vehiculo,2)))
-                        END AS tipo,
-                        COUNT(*) AS cnt
-                    FROM clientes {$where}
-                    GROUP BY tipo_vehiculo
-                ) t
-                GROUP BY tipo ORDER BY total DESC LIMIT ?";
+        return QueryCache::remember(
+            table: 'clientes',
+            key:   "topVehiculos:{$agenteId}:{$limit}",
+            ttl:   120,
+            fn:    function () use ($agenteId, $limit): array {
+                $where = $agenteId !== null ? "WHERE agente_id = ? AND ramo = 'autos'" : "WHERE ramo = 'autos'";
+                $sql = "SELECT tipo, SUM(cnt) AS total
+                        FROM (
+                            SELECT
+                                CASE LOWER(TRIM(tipo_vehiculo))
+                                    WHEN 'auto'           THEN 'Auto'
+                                    WHEN 'autos'          THEN 'Auto'
+                                    WHEN 'moto'           THEN 'Moto'
+                                    WHEN 'motos'          THEN 'Moto'
+                                    WHEN 'camioneta'      THEN 'SUV / Camioneta'
+                                    WHEN 'suv'            THEN 'SUV / Camioneta'
+                                    WHEN 'suv_camioneta'  THEN 'SUV / Camioneta'
+                                    WHEN 'pickup'         THEN 'Pickup'
+                                    WHEN 'deportivo'      THEN 'Deportivo'
+                                    WHEN 'electrico'      THEN 'Eléctrico'
+                                    WHEN 'van'            THEN 'Van / Minivan'
+                                    ELSE CONCAT(UPPER(SUBSTRING(tipo_vehiculo,1,1)),LOWER(SUBSTRING(tipo_vehiculo,2)))
+                                END AS tipo,
+                                COUNT(*) AS cnt
+                            FROM clientes {$where}
+                            GROUP BY tipo_vehiculo
+                        ) t
+                        GROUP BY tipo ORDER BY total DESC LIMIT ?";
 
-        $params = $agenteId !== null ? [$agenteId, $limit] : [$limit];
-        $stmt = $this->db()->prepare($sql);
-        $stmt->execute($params);
-        return $stmt->fetchAll() ?: [['tipo' => 'Sin datos', 'total' => 1]];
+                $params = $agenteId !== null ? [$agenteId, $limit] : [$limit];
+                $stmt = $this->db()->prepare($sql);
+                $stmt->execute($params);
+                return $stmt->fetchAll() ?: [['tipo' => 'Sin datos', 'total' => 1]];
+            }
+        );
     }
 
     public function getEstadoAsegurado(int $agenteId, ?string $ramo = null): array
     {
-        $ramoFilter = $ramo ? ' AND ramo = ?' : '';
-        $stmt = $this->db()->prepare(
-            "SELECT SUM(asegurado='si') AS asegurados,
-                    SUM(asegurado='no') AS no_asegurados
-             FROM clientes WHERE agente_id = ?{$ramoFilter}"
+        return QueryCache::remember(
+            table: 'clientes',
+            key:   "estadoAsegurado:{$agenteId}:{$ramo}",
+            ttl:   90,
+            fn:    function () use ($agenteId, $ramo): array {
+                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $stmt = $this->db()->prepare(
+                    "SELECT SUM(asegurado='si') AS asegurados,
+                            SUM(asegurado='no') AS no_asegurados
+                     FROM clientes WHERE agente_id = ?{$ramoFilter}"
+                );
+                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                $d = $stmt->fetch();
+                return [
+                    'asegurados'    => (int)($d['asegurados']    ?? 0),
+                    'no_asegurados' => (int)($d['no_asegurados'] ?? 0),
+                ];
+            }
         );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
-        $d = $stmt->fetch();
-        return [
-            'asegurados'    => (int)($d['asegurados']    ?? 0),
-            'no_asegurados' => (int)($d['no_asegurados'] ?? 0),
-        ];
     }
 
     // ── Notas ─────────────────────────────────────────────────────────────────

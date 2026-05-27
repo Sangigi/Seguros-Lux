@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Sesión keepalive (ping cada 5 min) ────────────────────────────────
     setInterval(async () => {
-        const res = await fetch('/src/Security/SessionPing.php');
+        const res = await fetch('/SessionPing.php');
         if (res.status === 401) {
             window.location.href = '/templates/Login.php?expired=1';
         }

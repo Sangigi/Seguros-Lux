@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Services\QueryCache;
 class CotizacionModel extends BaseModel
 {
     protected string $table = 'cotizaciones';
@@ -376,37 +377,103 @@ class CotizacionModel extends BaseModel
 
     public function countEnviadas(int $agenteId, ?string $ramo = null): int
     {
-        $ramoFilter = $ramo ? 'AND ramo = ?' : '';
-        $stmt = $this->db()->prepare(
-            "SELECT COUNT(*) FROM cotizaciones
-             WHERE agente_id = ? AND estado = 'enviada' {$ramoFilter}"
+        return (int) QueryCache::remember(
+            table: 'cotizaciones',
+            key:   "countEnviadas:{$agenteId}:{$ramo}",
+            ttl:   90,
+            fn:    function () use ($agenteId, $ramo): int {
+                $ramoFilter = $ramo ? 'AND ramo = ?' : '';
+                $stmt = $this->db()->prepare(
+                    "SELECT COUNT(*) FROM cotizaciones
+                     WHERE agente_id = ? AND estado = 'enviada' {$ramoFilter}"
+                );
+                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                return (int) $stmt->fetchColumn();
+            }
         );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
-        return (int) $stmt->fetchColumn();
     }
 
     public function contarPorRamo(int $agenteId): array
     {
-        $stmt = $this->db()->prepare(
-            "SELECT ramo, COUNT(*) AS cotizaciones, SUM(" . self::ventaConcretadaSql('cotizaciones') . ") AS ventas
-             FROM cotizaciones WHERE agente_id = ? GROUP BY ramo"
-        );
-        $stmt->execute([$agenteId]);
-        $ramos = [
-            'autos'          => ['cotizaciones'=>0,'ventas'=>0],
-            'vida'           => ['cotizaciones'=>0,'ventas'=>0],
-            'gastos_medicos' => ['cotizaciones'=>0,'ventas'=>0],
-            'empresas'       => ['cotizaciones'=>0,'ventas'=>0],
-        ];
-        foreach ($stmt->fetchAll() as $row) {
-            if (isset($ramos[$row['ramo']])) {
-                $ramos[$row['ramo']] = [
-                    'cotizaciones' => (int)$row['cotizaciones'],
-                    'ventas'       => (int)$row['ventas'],
+        return QueryCache::remember(
+            table: 'cotizaciones',
+            key:   "contarPorRamo:{$agenteId}",
+            ttl:   90,
+            fn:    function () use ($agenteId): array {
+                $stmt = $this->db()->prepare(
+                    "SELECT ramo, COUNT(*) AS cotizaciones, SUM(" . self::ventaConcretadaSql('cotizaciones') . ") AS ventas
+                     FROM cotizaciones WHERE agente_id = ? GROUP BY ramo"
+                );
+                $stmt->execute([$agenteId]);
+                $ramos = [
+                    'autos'          => ['cotizaciones'=>0,'ventas'=>0],
+                    'vida'           => ['cotizaciones'=>0,'ventas'=>0],
+                    'gastos_medicos' => ['cotizaciones'=>0,'ventas'=>0],
+                    'empresas'       => ['cotizaciones'=>0,'ventas'=>0],
                 ];
+                foreach ($stmt->fetchAll() as $row) {
+                    if (isset($ramos[$row['ramo']])) {
+                        $ramos[$row['ramo']] = [
+                            'cotizaciones' => (int)$row['cotizaciones'],
+                            'ventas'       => (int)$row['ventas'],
+                        ];
+                    }
+                }
+                return $ramos;
             }
-        }
-        return $ramos;
+        );
+    }
+
+    public function getEvolucionMensual(int $agenteId, ?string $ramo = null): array
+    {
+        return QueryCache::remember(
+            table: 'cotizaciones',
+            key:   "evolucionMensual:{$agenteId}:{$ramo}",
+            ttl:   120, // TTL un poco más alto ya que es un reporte histórico pesado
+            fn:    function () use ($agenteId, $ramo): array {
+                $ramoFiltroClientes = '';
+                $ramoFiltroCot      = '';
+                $params             = [$agenteId];
+
+                if ($ramo) {
+                    $ramoFiltroClientes = " AND ramo = '{$ramo}'";
+                    $ramoFiltroCot      = " AND ramo = '{$ramo}'";
+                }
+
+                $stmt = $this->db()->prepare(
+                    "SELECT DATE_FORMAT(meses.mes_inicio,'%b') AS mes,
+                            COALESCE(cl.total,0)    AS clientes,
+                            COALESCE(co.total,0)    AS cotizaciones,
+                            COALESCE(co.ventas,0)   AS ventas,
+                            COALESCE(co.ingresos,0) AS ingresos
+                     FROM (
+                         SELECT DATE_FORMAT(DATE_SUB(LAST_DAY(NOW()),INTERVAL n MONTH),'%Y-%m-01') AS mes_inicio
+                         FROM (SELECT 0 n UNION SELECT 1 UNION SELECT 2
+                               UNION SELECT 3 UNION SELECT 4 UNION SELECT 5) nums
+                     ) meses
+                     LEFT JOIN (
+                         SELECT DATE_FORMAT(fecha_registro,'%Y-%m-01') AS m, COUNT(*) AS total
+                         FROM clientes WHERE agente_id = ?{$ramoFiltroClientes} GROUP BY m
+                     ) cl ON cl.m = meses.mes_inicio
+                     LEFT JOIN (
+                         SELECT DATE_FORMAT(fecha_creacion,'%Y-%m-01') AS m,
+                                COUNT(*) AS total,
+                                SUM(" . self::ventaConcretadaSql('cotizaciones') . ") AS ventas,
+                                SUM(CASE WHEN " . self::ventaConcretadaSql('cotizaciones') . " THEN precio ELSE 0 END) AS ingresos
+                         FROM cotizaciones WHERE agente_id = ?{$ramoFiltroCot} GROUP BY m
+                     ) co ON co.m = meses.mes_inicio
+                     ORDER BY meses.mes_inicio ASC"
+                );
+                $stmt->execute([$agenteId, $agenteId]);
+                return array_map(fn($e) => [
+                    'mes'          => $e['mes'],
+                    'clientes'     => (int)   $e['clientes'],
+                    'cotizaciones' => (int)   $e['cotizaciones'],
+                    'ventas'       => (int)   $e['ventas'],
+                    'ingresos'     => (float) $e['ingresos'],
+                ], $stmt->fetchAll());
+            }
+        );
     }
 
     public function getRecientsGlobal(int $limit = 20): array
@@ -679,51 +746,6 @@ class CotizacionModel extends BaseModel
     public function generarFolioPublico(int $agenteId, string $ramo, string $cobertura, string $estado = 'N'): string
     {
         return $this->generarFolio($agenteId, $ramo, $cobertura, $estado);
-    }
-
-    public function getEvolucionMensual(int $agenteId, ?string $ramo = null): array
-    {
-        $ramoFiltroClientes = '';
-        $ramoFiltroCot      = '';
-        $params             = [$agenteId];
-
-        if ($ramo) {
-            $ramoFiltroClientes = " AND ramo = '{$ramo}'";
-            $ramoFiltroCot      = " AND ramo = '{$ramo}'";
-        }
-
-        $stmt = $this->db()->prepare(
-            "SELECT DATE_FORMAT(meses.mes_inicio,'%b') AS mes,
-                    COALESCE(cl.total,0)    AS clientes,
-                    COALESCE(co.total,0)    AS cotizaciones,
-                    COALESCE(co.ventas,0)   AS ventas,
-                    COALESCE(co.ingresos,0) AS ingresos
-             FROM (
-                 SELECT DATE_FORMAT(DATE_SUB(LAST_DAY(NOW()),INTERVAL n MONTH),'%Y-%m-01') AS mes_inicio
-                 FROM (SELECT 0 n UNION SELECT 1 UNION SELECT 2
-                       UNION SELECT 3 UNION SELECT 4 UNION SELECT 5) nums
-             ) meses
-             LEFT JOIN (
-                 SELECT DATE_FORMAT(fecha_registro,'%Y-%m-01') AS m, COUNT(*) AS total
-                 FROM clientes WHERE agente_id = ?{$ramoFiltroClientes} GROUP BY m
-             ) cl ON cl.m = meses.mes_inicio
-             LEFT JOIN (
-                 SELECT DATE_FORMAT(fecha_creacion,'%Y-%m-01') AS m,
-                        COUNT(*) AS total,
-                        SUM(" . self::ventaConcretadaSql('cotizaciones') . ") AS ventas,
-                        SUM(CASE WHEN " . self::ventaConcretadaSql('cotizaciones') . " THEN precio ELSE 0 END) AS ingresos
-                 FROM cotizaciones WHERE agente_id = ?{$ramoFiltroCot} GROUP BY m
-             ) co ON co.m = meses.mes_inicio
-             ORDER BY meses.mes_inicio ASC"
-        );
-        $stmt->execute([$agenteId, $agenteId]);
-        return array_map(fn($e) => [
-            'mes'          => $e['mes'],
-            'clientes'     => (int)   $e['clientes'],
-            'cotizaciones' => (int)   $e['cotizaciones'],
-            'ventas'       => (int)   $e['ventas'],
-            'ingresos'     => (float) $e['ingresos'],
-        ], $stmt->fetchAll());
     }
 
     // ── Métodos de compatibilidad / alias ─────────────────────────────────────

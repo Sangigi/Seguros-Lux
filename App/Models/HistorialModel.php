@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 namespace App\Models;
-
+use App\Services\QueryCache;
 class HistorialModel extends BaseModel
 {
     protected string $table = 'historial_cliente';
@@ -57,14 +57,21 @@ class HistorialModel extends BaseModel
 
     public function getRecentByAgenteId(int $agenteId, int $limit = 8): array
     {
-        $stmt = $this->db()->prepare(
-            "SELECT h.tipo, h.titulo AS actividad_desc, h.fecha,
-                    CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
-             FROM historial_cliente h
-             JOIN clientes cl ON cl.id = h.cliente_id
-             WHERE h.agente_id = ? ORDER BY h.fecha DESC LIMIT ?"
+        return QueryCache::remember(
+            table: 'historial_cliente',
+            key:   "recentActivity:{$agenteId}:{$limit}",
+            ttl:   60, // TTL más corto (60s) porque el historial es muy dinámico
+            fn:    function () use ($agenteId, $limit): array {
+                $stmt = $this->db()->prepare(
+                    "SELECT h.tipo, h.titulo AS actividad_desc, h.fecha,
+                            CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
+                     FROM historial_cliente h
+                     JOIN clientes cl ON cl.id = h.cliente_id
+                     WHERE h.agente_id = ? ORDER BY h.fecha DESC LIMIT ?"
+                );
+                $stmt->execute([$agenteId, $limit]);
+                return $stmt->fetchAll();
+            }
         );
-        $stmt->execute([$agenteId, $limit]);
-        return $stmt->fetchAll();
     }
 }

@@ -25,7 +25,8 @@ class Connection
                 self::$conn = new PDO(
                     "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
                     $user,
-                    $pass
+                    $pass,
+                    [PDO::ATTR_PERSISTENT => true]
                 );
                 self::$conn->setAttribute(PDO::ATTR_ERRMODE,            PDO::ERRMODE_EXCEPTION);
                 self::$conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
