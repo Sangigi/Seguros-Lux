@@ -277,6 +277,14 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     margin: 0 auto;
   }
 
+  .plans-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 22px;
+    max-width: 960px;
+    margin: 0 auto 32px;
+  }
+
   /* 2. DESPUÉS va el Media Query (Móviles) */
   @media (max-width: 900px) {
     .benefits-grid { grid-template-columns: repeat(2, 1fr); }
@@ -287,6 +295,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     
     /* En móviles, cambia a 1 columna */
     .reasons-grid { grid-template-columns: 1fr; }
+    .plans-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 520px) {
     .footer-grid { grid-template-columns: 1fr; }
@@ -471,7 +480,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
       <h2>Planes para cada <em>etapa de tu vida</em></h2>
       <p>Elige el objetivo que mejor describe lo que buscas. Tu asesor te orientará en el plan ideal según tu perfil.</p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:22px;max-width:960px;margin:0 auto 32px;">
+    <div class="plans-grid">
       <!-- Retiro -->
       <div style="background:var(--white);border:2px solid var(--gray-200);border-radius:var(--radius-xl);padding:32px 28px;transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 20px 50px rgba(0,0,0,0.1)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
         <div style="font-size:40px;margin-bottom:14px;">🏖️</div>
