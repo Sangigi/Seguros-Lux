@@ -558,6 +558,18 @@ footer ul li a:hover { color: var(--accent); }
 
 /* ========== RESPONSIVE ========== */
 @media (max-width: 900px) {
+    .hero-inner { grid-template-columns: 1fr; padding: 60px 24px 40px; gap: 40px; }
+    .hero-visual { height: auto; display: flex; flex-direction: column; gap: 16px; align-items: center; }
+    .glass-card {
+      position: relative;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      transform: none !important;
+      width: 100% !important;
+      max-width: 340px;
+    }
   .nav-menu { display: none; }
   .nav-menu.open {
     display: flex;
