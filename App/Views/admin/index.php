@@ -319,7 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $sql = 'SELECT p.id, p.cliente_id, p.cotizacion_id, p.agente_id,
                        p.compania, p.numero_poliza, p.fecha_inicio, p.fecha_fin,
                        p.frecuencia_renovacion, p.estado, p.notas,
-                       p.nombre_original, p.subido_en,
+                       p.nombre_original, p.subido_en, p.eliminado_en,
                        CONCAT(c.nombre," ",c.apellido_paterno) AS cliente_nombre,
                        c.id AS cliente_id_ref,
                        CONCAT(a.nombre," ",a.apellido) AS asesor_nombre,
