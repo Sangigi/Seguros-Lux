@@ -1158,8 +1158,18 @@ $pageTitle=$nombreCompleto;
             <div class="form-group">
                 <label class="form-label">Tipo</label>
                 <select class="form-select" name="vehiculo_tipo">
-                    <?php foreach (['Sedán','SUV','Pickup','Hatchback','Coupé','Convertible','Minivan','Van','Camión','Motocicleta','Otro'] as $t): ?>
-                    <option value="<?= $t ?>" <?= ($vehiculo['tipo'] ?? '') === $t ? 'selected' : '' ?>><?= $t ?></option>
+                    <option value="">— Selecciona —</option>
+                    <?php foreach([
+                        'auto'          => 'Auto / Sedán',
+                        'suv_camioneta' => 'SUV / Camioneta',
+                        'pickup'        => 'Pickup',
+                        'moto'          => 'Motocicleta',
+                        'deportivo'     => 'Deportivo',
+                        'electrico'     => 'Eléctrico',
+                        'van'           => 'Van / Minivan',
+                        'otro'          => 'Otro',
+                    ] as $v => $l): ?>
+                    <option value="<?= $v ?>" <?= ($vehiculo['tipo'] ?? '') === $v ? 'selected' : '' ?>><?= $l ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
