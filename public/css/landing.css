@@ -558,58 +558,41 @@ footer ul li a:hover { color: var(--accent); }
 
 /* ========== RESPONSIVE ========== */
 @media (max-width: 900px) {
-    .hero-inner { grid-template-columns: 1fr; padding: 60px 24px 100px; gap: 40px; }
-    .hero-visual { 
-      height: auto; 
-      display: flex; 
-      flex-direction: column; 
-      gap: 16px; 
-      align-items: center; 
-      padding-bottom: 20px;
+    /* 1. Ajustamos el contenedor del Hero */
+    .hero-inner { 
+      grid-template-columns: 1fr !important; 
+      padding: 40px 20px !important; 
+      text-align: center; 
     }
+
+    /* 2. Forzamos a que el contenedor de tarjetas crezca según su contenido */
+    .hero-visual {
+      height: auto !important; 
+      min-height: auto !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 20px !important; /* Espacio entre tarjetas */
+      padding: 20px 0 !important;
+      margin: 0 auto !important;
+      overflow: visible !important;
+    }
+
+    /* 3. Quitamos el posicionamiento absoluto y las rotaciones */
     .glass-card {
       position: relative !important;
-      top: auto !important;
-      left: auto !important;
-      right: auto !important;
-      bottom: auto !important;
-      transform: none !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      transform: none !important; /* Elimina las inclinaciones de escritorio */
       width: 100% !important;
-      max-width: 360px; 
-      margin: 0 auto;
+      max-width: 350px !important;
+      margin: 0 auto !important;
+      opacity: 1 !important; /* Asegura que sean visibles */
+      visibility: visible !important;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
     }
-    .reasons-grid, .seguros-grid, .testi-grid, .contacto-grid { grid-template-columns: 1fr; }
-    .benefits-mini { grid-template-columns: repeat(2, 1fr); }
-    .beneficios { border-radius: 28px 28px 0 0; padding: 70px 0 60px; }
-    .seguros, .testimonios, .contacto-section { padding: 70px 0; }
-    .avisos-grid { grid-template-columns: 1fr; }
-  .nav-menu { display: none; }
-  .nav-menu.open {
-    display: flex;
-    flex-direction: column;
-    position: absolute;
-    top: 100%; left: 0; right: 0;
-    background: var(--white);
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--gray-200);
-    gap: 10px;
-    align-items: flex-start;
-    box-shadow: var(--shadow-md);
   }
-  .nav-menu.open .submenu {
-    position: static; opacity: 1; visibility: visible;
-    transform: none; margin: 6px 0 0 12px;
-    box-shadow: none; border: 0; padding: 0;
-    background: var(--gray-50);
-  }
-  .nav-phone { display: none; }
-  .nav-toggle { display: block; }
-  .footer-grid { grid-template-columns: 1fr 1fr; }
-  .sub-hero { padding: 50px 0 60px; }
-  .sub-hero-ctas { flex-direction: column; align-items: stretch; width: 100%; }
-  .blog-grid { grid-template-columns: 1fr; }
-  .partner-card { width: 160px; }
-}
 @media (max-width: 520px) {
   .nav-cta span.hide-sm { display: none; }
   .footer-grid { grid-template-columns: 1fr; }
