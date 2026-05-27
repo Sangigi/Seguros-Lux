@@ -261,6 +261,23 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   }
   .whatsapp-float:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(37,211,102,0.55); }
 
+  @media (max-width: 520px) {
+    .footer-grid { grid-template-columns: 1fr; }
+    .footer-bottom { flex-direction: column; text-align: center; }
+    .sub-hero-ctas { flex-direction: column; align-items: stretch; }
+    .cta-final-actions { flex-direction: column; align-items: stretch; }
+  }
+/* ========== REASONS GRID (Por qué un seguro) ========== */
+  /* 1. PRIMERO va la regla general (Computadoras = 3 columnas) */
+  .reasons-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  /* 2. DESPUÉS va el Media Query (Móviles) */
   @media (max-width: 900px) {
     .benefits-grid { grid-template-columns: repeat(2, 1fr); }
     .form-row { grid-template-columns: 1fr; }
@@ -268,7 +285,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     .footer-grid { grid-template-columns: 1fr 1fr; }
     .sub-hero .container { padding-top: 60px; padding-bottom: 70px; }
     
-    /* AQUÍ AGREGAS LA NUEVA REGLA */
+    /* En móviles, cambia a 1 columna */
     .reasons-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 520px) {
@@ -277,14 +294,6 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     .sub-hero-ctas { flex-direction: column; align-items: stretch; }
     .cta-final-actions { flex-direction: column; align-items: stretch; }
   }
-  /* ========== REASONS GRID (Por qué un seguro) ========== */
-.reasons-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-  max-width: 960px;
-  margin: 0 auto;
-}
 </style>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18175049842"></script>
