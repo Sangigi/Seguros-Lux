@@ -558,18 +558,15 @@ footer ul li a:hover { color: var(--accent); }
 
 /* ========== RESPONSIVE ========== */
 @media (max-width: 900px) {
-    .hero-inner { grid-template-columns: 1fr; padding: 60px 24px 40px; gap: 40px; }
-    
-    /* 1. Cambiamos el contenedor a flex vertical y permitimos que crezca de forma natural */
+    .hero-inner { grid-template-columns: 1fr; padding: 60px 24px 100px; gap: 40px; }
     .hero-visual { 
       height: auto; 
       display: flex; 
       flex-direction: column; 
       gap: 16px; 
       align-items: center; 
+      padding-bottom: 20px;
     }
-    
-    /* 2. Neutralizamos el posicionamiento absoluto y las rotaciones para que se apilen bien */
     .glass-card {
       position: relative !important;
       top: auto !important;
@@ -578,10 +575,9 @@ footer ul li a:hover { color: var(--accent); }
       bottom: auto !important;
       transform: none !important;
       width: 100% !important;
-      max-width: 360px; /* Tamaño ideal para que se lea perfecto en cualquier celular */
+      max-width: 360px; 
       margin: 0 auto;
     }
-
     .reasons-grid, .seguros-grid, .testi-grid, .contacto-grid { grid-template-columns: 1fr; }
     .benefits-mini { grid-template-columns: repeat(2, 1fr); }
     .beneficios { border-radius: 28px 28px 0 0; padding: 70px 0 60px; }
