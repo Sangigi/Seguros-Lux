@@ -61,10 +61,14 @@ class Router
 
     /**
      * Normaliza separadores de ruta — soluciona el problema de XAMPP en Windows
-     * donde ROOT . '/App/...' genera rutas con \ y / mezclados.
+     * forzando el uso de barras estándar (/) y limpiando duplicados.
      */
     public static function normalizePath(string $path): string
     {
-        return str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
+        // 1. Convertir todas las barras invertidas de Windows (\) a barras normales (/)
+        $path = str_replace('\\', '/', $path);
+        
+        // 2. Limpiar barras dobles consecutivas por si acaso (ej. // -> /)
+        return preg_replace('#/+#', '/', $path);
     }
 }
