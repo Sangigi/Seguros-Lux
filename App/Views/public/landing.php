@@ -272,11 +272,11 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   }
   .contacto-card h3 { font-family: var(--font-display); font-size: 20px; color: var(--primary); margin-bottom: 8px; }
   .contacto-card p { color: var(--gray-600); font-size: 14px; margin-bottom: 16px; }
-  .contacto-card a.link {
-    font-weight: 700; color: var(--accent-dark); font-size: 16px;
-    border-bottom: 2px solid var(--accent); padding-bottom: 2px;
-  }
-  .contacto-card a.link:hover { color: var(--primary); }
+  .contacto-card .link {
+  font-weight: 700; color: var(--accent-dark); font-size: 16px;
+  border-bottom: 2px solid var(--accent); padding-bottom: 2px;
+}
+.contacto-card:hover .link { color: var(--primary); }
 
   /* ========== AVISOS LEGALES ========== */
   .avisos { padding: 70px 0; background: var(--white); }
@@ -360,7 +360,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         55 4123 2311
       </a>
-      <a href="/formulario" class="nav-cta">
+      <a href="tel:+525541232311" class="nav-cta">
         <span class="hide-sm">Cotizar</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
       </a>
@@ -389,7 +389,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         Así protegemos tu patrimonio, tu familia y tu salud.
       </p>
       <div class="hero-ctas">
-        <a href="/formulario" class="btn btn-primary">Cotiza tu seguro gratis</a>
+        <a href="tel:+525541232311" class="btn btn-primary">Cotiza tu seguro gratis</a>
         <a href="tel:+525541232311" class="btn btn-ghost">55 4123 2311</a>
       </div>
     </div>
@@ -768,14 +768,14 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
       <p class="section-description">Siempre hay un asesor real listo para ayudarte. Contáctanos por el medio que prefieras.</p>
     </div>
     <div class="contacto-grid">
-      <div class="contacto-card reveal">
-        <div class="contacto-icon">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        </div>
-        <h3>Teléfono</h3>
-        <p>Línea directa para emergencias y atención general.</p>
-        <a href="tel:+525541232311" class="link">55 4123 2311</a>
-      </div>
+      <a href="tel:+525541232311" class="contacto-card reveal" style="display: block; text-decoration: none; color: inherit; cursor: pointer;">
+  <div class="contacto-icon">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+  </div>
+  <h3>Teléfono</h3>
+  <p>Línea directa para emergencias y atención general.</p>
+  <span class="link">55 4123 2311</span>
+</a>
     </div>
   </div>
 </section>
