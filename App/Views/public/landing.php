@@ -254,7 +254,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   /* ========== CONTACTO ========== */
   .contacto-section { padding: 100px 0; background: var(--gray-50); }
   .contacto-grid {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+    display: grid; grid-template-columns: repeat(1, 1fr); gap: 24px;
     max-width: 1000px; margin: 0 auto;
   }
   .contacto-card {
