@@ -15,7 +15,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/landing.css">
-<link rel="icon" type="image/png" sizes="32x32" href="/images/logo.png">
+<link rel="icon" type="image/png" href="/images/logo.png" sizes="any">
 <link rel="stylesheet" href="css/nav-submenus.css">
 <style>
   /* ========== HERO CON IMAGEN ========== */
