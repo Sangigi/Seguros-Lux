@@ -331,7 +331,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 <!-- NAV -->
 <nav class="nav">
   <div class="nav-inner">
-    <a href="/" class="nav-logo">Seguros<span>Lux</span></a>
+    <a href="/" class="nav-logo"><img src="/images/logo.png" alt="Seguros Lux" style="height:44px;width:auto;display:block;"></a>
     <ul class="nav-menu">
       <li><a href="/">Inicio</a></li>
       <li><a href="#beneficios">Beneficios</a></li>
@@ -393,8 +393,8 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         <a href="tel:+525541232311" class="btn btn-ghost">55 4123 2311</a>
       </div>
     </div>
-    <div class="hero-visual" aria-hidden="true">
-      <div class="glass-card gc-1">
+    <div class="hero-visual">
+      <a href="tel:+525541232311" class="glass-card gc-1">
         <div class="icon-box">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -403,8 +403,8 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         </div>
         <h4>Seguro de Vida</h4>
         <p>Estamos contigo cuando la vida lo exige.</p>
-      </div>
-      <div class="glass-card gc-2">
+      </a>
+      <a href="tel:+525541232311" class="glass-card gc-2">
         <div class="icon-box">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -417,8 +417,8 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         </div>
         <h4>Especialistas en vehículos</h4>
         <p>Coberturas pensadas para todo tipo de vehículos.</p>
-      </div>
-      <div class="glass-card gc-3">
+      </a>
+      <a href="tel:+525541232311" class="glass-card gc-3">
         <div class="icon-box">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -428,7 +428,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         </div>
         <h4>Gastos Médicos Mayores</h4>
         <p>Atención médica oportuna cuando más lo necesitas.</p>
-      </div>
+      </a>
     </div>
   </div>
 </section>
@@ -443,15 +443,15 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     </div>
 
     <div class="reasons-grid">
-      <div class="reason-card reveal">
+      <a href="tel:+525541232311" class="reason-card reveal">
         <div class="reason-number">01</div>
         <div class="reason-icon">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
         <h3>Atención personal</h3>
         <p>Un asesor real que te conoce por tu nombre desde el primer día. Sin bots: un solo contacto que te acompaña siempre.</p>
-      </div>
-      <div class="reason-card reveal">
+      </a>
+      <a href="tel:+525541232311" class="reason-card reveal">
         <div class="reason-number">02</div>
         <div class="reason-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
@@ -465,15 +465,15 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         </div>
         <h3>Especialistas en vehículos</h3>
         <p>Conocemos la vida sobre el camino. Coberturas diseñadas para todo tipo de vehículos, con protección integral y asistencia vial inmediata.</p>
-      </div>
-      <div class="reason-card reveal">
+      </a>
+      <a href="tel:+525541232311" class="reason-card reveal">
         <div class="reason-number">03</div>
         <div class="reason-icon">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </div>
         <h3>Respuesta rápida</h3>
         <p>Los imprevistos no esperan. Por eso te atendemos por teléfono o WhatsApp, cualquier día y a cualquier hora.</p>
-      </div>
+      </a>
     </div>
 
     <div class="benefits-mini">
@@ -517,7 +517,8 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   </a>
 </section>
 
-<!-- SEGUROS -->
+<!-- SEGUROS (oculto a solicitud) -->
+<?php if (false): ?>
 <section class="seguros" id="seguros">
   <div class="container">
     <div class="section-header center reveal">
@@ -587,6 +588,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     </div>
   </div>
 </section>
+<?php endif; ?>
 
 <!-- TESTIMONIOS -->
 <section class="testimonios">
@@ -634,6 +636,8 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   </div>
 </section>
 
+<!-- Partners + Blog (ocultos a solicitud) -->
+<?php if (false): ?>
 <!-- Partners Section -->
 <section class="partners" id="aseguradoras">
   <div class="container">
@@ -708,6 +712,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   </div>
 </section>
 <!-- FIN SECCIÓN BLOG -->
+<?php endif; ?>
 
 <!-- FAQ -->
 <section class="faq-section" id="faq">
@@ -771,22 +776,6 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         <p>Línea directa para emergencias y atención general.</p>
         <a href="tel:+525541232311" class="link">55 4123 2311</a>
       </div>
-      <div class="contacto-card reveal">
-        <div class="contacto-icon">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347M12 2C6.48 2 2 6.48 2 12c0 1.77.46 3.45 1.27 4.9L2 22l5.25-1.38C8.66 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2z"/></svg>
-        </div>
-        <h3>WhatsApp</h3>
-        <p>Escríbenos y recibe respuesta inmediata.</p>
-        <a href="https://wa.me/5215514605959" class="link">Enviar mensaje</a>
-      </div>
-      <div class="contacto-card reveal">
-        <div class="contacto-icon">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        </div>
-        <h3>Correo electrónico</h3>
-        <p>Para consultas detalladas y documentación.</p>
-        <a href="mailto:info@seguroslux.mx" class="link">info@seguroslux.mx</a>
-      </div>
     </div>
   </div>
 </section>
@@ -826,10 +815,12 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     <h2>Protege lo que más <em>importa hoy</em></h2>
     <p>Completa nuestro formulario rápido y recibe una cotización personalizada rápida. Sin compromiso, sin letra pequeña.</p>
     <div class="cta-final-actions">
+      <?php if (false): ?>
       <a href="/formulario" class="btn btn-primary">
         Llenar Formulario
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
       </a>
+      <?php endif; ?>
       <a href="tel:+525541232311" class="btn btn-ghost">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         Llamar Ahora
@@ -843,7 +834,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   <div class="container">
     <div class="footer-grid">
       <div class="footer-about">
-        <div class="footer-logo">Seguros<span>Lux</span></div>
+        <div class="footer-logo"><img src="/images/logo.png" alt="Seguros Lux" style="height:52px;width:auto;"></div>
         <p>Protegiendo lo que más importa desde 2010. Tu tranquilidad es nuestra prioridad.</p>
         <div class="footer-contact-item">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
@@ -893,10 +884,6 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     </div>
   </div>
 </footer>
-
-<a href="https://wa.me/5215514605959" class="whatsapp-float" aria-label="WhatsApp" target="_blank">
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347M12 2C6.48 2 2 6.48 2 12c0 1.77.46 3.45 1.27 4.9L2 22l5.25-1.38C8.66 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2z"/></svg>
-</a>
 
 <script src="js/landing.js" defer></script>
 </body>
