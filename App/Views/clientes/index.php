@@ -403,7 +403,7 @@ $pageTitle = 'Clientes';
                 </div>
                 <?php else: ?>
                 <div class="table-container">
-                    <table class="data-table" id="clientesTable" data-pag="15">
+                    <table class="data-table" id="clientesTable" data-pag="10">
                         <thead>
                             <tr>
                                 <th style="width:40px;text-align:center;">#</th>
