@@ -431,6 +431,12 @@ button.sidebar-link {
         </a>
         <?php endforeach; ?>
 
+        <div class="sidebar-section-label" style="margin-top:8px;">Clientes</div>
+        <a href="/clientes" class="sidebar-link <?php echo _navActive('/clientes', $_uri); ?>">
+            <i class="bi bi-people-fill"></i>
+            Todos los Clientes
+        </a>
+
         <div class="sidebar-section-label" style="margin-top:8px;">Acciones rápidas</div>
         <a href="/admin?tab=emision" class="sidebar-link">
             <i class="bi bi-upload"></i>
