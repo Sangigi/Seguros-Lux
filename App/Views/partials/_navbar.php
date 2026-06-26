@@ -431,10 +431,6 @@ button.sidebar-link {
         </a>
         <?php endforeach; ?>
 
-        <?php foreach ($_adminTabs as $tabKey => $tab): ?>
-            <a href="/admin?tab=<?= $tabKey ?>" class="...">...</a>
-        <?php endforeach; ?>
-
         <div class="sidebar-section-label" style="margin-top:8px;">Clientes</div>
         <a href="/clientes" class="sidebar-link <?php echo _navActive('/clientes', $_uri); ?>">
             <i class="bi bi-people-fill"></i>
@@ -469,50 +465,11 @@ button.sidebar-link {
         </a>
         <?php endforeach; ?>
 
-        <!-- <div class="sidebar-section-label" style="margin-top:8px;">Mi trabajo (Asesor)</div>
-        <a href="/dashboard" class="sidebar-link <?php echo _navActive('/dashboard', $_uri); ?>">
-            <i class="bi bi-grid-1x2-fill"></i>
-            Dashboard
-        </a>
+        <div class="sidebar-section-label" style="margin-top:8px;">Clientes</div>
         <a href="/clientes" class="sidebar-link <?php echo _navActive('/clientes', $_uri); ?>">
             <i class="bi bi-people-fill"></i>
-            Clientes
+            Todos los Clientes
         </a>
-        <a href="/cotizaciones" class="sidebar-link <?php echo _navActive('/cotizaciones', $_uri); ?>">
-            <i class="bi bi-file-earmark-text-fill"></i>
-            Cotizaciones
-        </a>
-        <a href="/citas" class="sidebar-link <?php echo _navActive('/citas', $_uri); ?>">
-            <i class="bi bi-calendar2-check-fill"></i>
-            Citas
-        </a> -->
-
-        <!-- Notificaciones para superadmin también -->
-        <!-- <button type="button"
-                class="sidebar-link <?php echo $_sidebarNotifCount > 0 ? 'has-alert' : ''; ?>"
-                id="sidebarNotifToggle"
-                aria-expanded="false"
-                aria-controls="sidebarNotifPanel">
-            <i class="bi bi-bell-fill"></i>
-            Avisos
-            <?php if ($_sidebarNotifCount > 0): ?>
-                <span class="nav-badge" id="sidebarNotifBadge"><?php echo $_sidebarNotifCount > 99 ? '99+' : $_sidebarNotifCount; ?></span>
-            <?php endif; ?>
-        </button>
-        <div id="sidebarNotifPanel" class="crm-notif-panel" hidden data-initial-count="<?php echo (int) $_sidebarNotifCount; ?>">
-            <div class="crm-notif-actions">
-                <button type="button" id="sidebarNotifMarkAll">✓ Marcar leídas</button>
-                <button type="button" id="sidebarNotifReload">↺ Actualizar</button>
-                <button type="button" id="sidebarNotifClearAll" style="color:#fca5a5;border-color:rgba(239,68,68,.3);">🗑 Limpiar todo</button>
-            </div>
-            <div id="sidebarNotifList" style="font-size:12px;color:rgba(255,255,255,.5);padding:10px;text-align:center;">Cargando…</div>
-        </div> -->
-
-        <!-- <div class="sidebar-section-label" style="margin-top:8px;">Acciones</div>
-        <a href="/crear-cotizacion" class="sidebar-link <?php echo _navActive('/crear-cotizacion', $_uri); ?>">
-            <i class="bi bi-plus-circle-fill"></i>
-            Nueva Cotización
-        </a> -->
 
         <?php endif; ?>
 
