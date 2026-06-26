@@ -371,16 +371,16 @@ $pageTitle = 'Clientes';
                         <option value="<?php echo htmlspecialchars(strtolower($ciudad)); ?>"><?php echo htmlspecialchars($ciudad); ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <?php if ($esCoordinador && !empty($listaAsesores)): ?>
-                    <select class="filter-select" id="filterAsesor" onchange="window.location.href='/clientes?asesor_id='+this.value<?php echo $ramo ? "+'&ramo='+'$ramo'" : ''; ?>">
-                        <option value="todos" <?php echo !$filtroAsesorId ? 'selected' : ''; ?>>Todos los asesores</option>
-                        <?php foreach ($listaAsesores as $as): ?>
-                        <option value="<?php echo $as['id']; ?>" <?php echo $filtroAsesorId == $as['id'] ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars(trim($as['nombre_completo'])); ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <?php endif; ?>
+                   <?php if ($esCoordinador && !empty($listaAsesores)): ?>
+<select class="filter-select" id="filterAsesor">
+    <option value="todos" <?php echo !$filtroAsesorId ? 'selected' : ''; ?>>Todos los asesores</option>
+    <?php foreach ($listaAsesores as $as): ?>
+    <option value="<?php echo $as['id']; ?>" <?php echo $filtroAsesorId == $as['id'] ? 'selected' : ''; ?>>
+        <?php echo htmlspecialchars(trim($as['nombre_completo'])); ?>
+    </option>
+    <?php endforeach; ?>
+</select>
+<?php endif; ?>
                     <input type="date" class="filter-select" id="filterFecha" title="Filtrar por fecha de registro" style="cursor:pointer;">
                     <button class="btn btn-outline" id="btnLimpiarFecha" style="display:none;white-space:nowrap;">✕ Fecha</button>
                 </div>
@@ -436,6 +436,7 @@ $pageTitle = 'Clientes';
                                 data-estado="<?php echo $cliente['estado_cliente']; ?>"
                                 data-ciudad="<?php echo htmlspecialchars(strtolower($cliente['ciudad'] ?? '')); ?>"
                                 data-fecha="<?php echo $fechaISO; ?>"
+                                data-asesor="<?php echo $cliente['agente_id']; ?>"
                                 data-id="<?php echo $cliente['id']; ?>">
                                 <td style="text-align:center;font-size:12px;color:var(--text-muted);font-weight:600;"><?php echo $i+1; ?></td>
                                 <td>
@@ -488,5 +489,81 @@ require __DIR__ . '/../partials/_modales_clientes.php';
 </script>
 <script src="/js/crm-events.js" nonce="<?= $cspNonce ?>"></script>
 <script src="/js/modales.js"    nonce="<?= $cspNonce ?>"></script>
+    <script nonce="<?= $cspNonce ?>">
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Lógica de Filtrado Completa
+    const searchInput = document.getElementById('searchInput');
+    const filterEstado = document.getElementById('filterEstado');
+    const filterCiudad = document.getElementById('filterCiudad');
+    const filterAsesor = document.getElementById('filterAsesor');
+    const tbody = document.getElementById('clientesTableBody');
+    const countLabel = document.getElementById('clientesCount');
+
+    function applyFilters() {
+        if (!tbody) return;
+        const txt = (searchInput?.value || '').toLowerCase();
+        const est = filterEstado?.value || 'todos';
+        const ciu = filterCiudad?.value || 'todos';
+        const ase = filterAsesor?.value || 'todos';
+
+        let visibles = 0;
+        tbody.querySelectorAll('tr').forEach(tr => {
+            const matchTxt = !txt || (tr.dataset.nombre || '').includes(txt);
+            const matchEst = est === 'todos' || tr.dataset.estado === est;
+            const matchCiu = ciu === 'todos' || tr.dataset.ciudad === ciu;
+            const matchAse = ase === 'todos' || String(tr.dataset.asesor) === String(ase);
+
+            if (matchTxt && matchEst && matchCiu && matchAse) {
+                tr.style.display = '';
+                visibles++;
+            } else {
+                tr.style.display = 'none';
+            }
+        });
+        if (countLabel) countLabel.textContent = visibles + ' clientes';
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    filterEstado?.addEventListener('change', applyFilters);
+    filterCiudad?.addEventListener('change', applyFilters);
+    filterAsesor?.addEventListener('change', applyFilters);
+
+    // 2. Lógica para Eliminar Cliente
+    document.addEventListener('click', function(e) {
+        const btnEliminar = e.target.closest('button[data-action="eliminar"]');
+        if (btnEliminar) {
+            e.preventDefault();
+            e.stopPropagation(); // Prevenir conflictos con otros listeners
+
+            if (!confirm('¿Estás seguro de que deseas eliminar este cliente? Esta acción no se puede deshacer.')) return;
+
+            const id = btnEliminar.dataset.id;
+            const fd = new FormData();
+            fd.append('accion', 'eliminar');
+            fd.append('id', id);
+
+            // Inyección crucial del Token CSRF
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+            if (csrfToken) fd.append('csrf_token', csrfToken);
+
+            fetch('', { 
+                method: 'POST', 
+                body: fd,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d.ok) {
+                    btnEliminar.closest('tr').remove();
+                    applyFilters(); // Recalcular totales y refrescar vista
+                } else {
+                    alert(d.msg || 'Error al eliminar el cliente');
+                }
+            })
+            .catch(() => alert('Error de conexión.'));
+        }
+    }, true); 
+});
+</script>
 </body>
 </html>
