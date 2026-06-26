@@ -149,6 +149,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['accion'])) {
     }
 }
 
+// ── Determinar modo vista ─────────────────────────────────────────────────────
+$rol             = SessionManager::getRole();
+$esCoordinador   = in_array($rol, ['coordinador', 'administrador', 'superadmin'], true);
+
 // ── Lectura ───────────────────────────────────────────────────────────────────
 $db = \Database\Connection::getConnection();
 
@@ -159,23 +163,68 @@ if ($ramo) {
     $ramoParam = [$ramo];
 }
 
-$stmt = $db->prepare(
-    "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
-            c.correo, c.telefono, c.ciudad,
-            c.ramo,
-            c.marca, c.modelo, c.anio_vehiculo, c.tipo_vehiculo,
-            c.giro_empresa, c.num_empleados,
-            c.asegurado, c.estado_cliente, c.fecha_registro
-     FROM clientes c
-     WHERE c.agente_id = ? {$ramoWhere}
-     ORDER BY c.nombre ASC, c.apellido_paterno ASC"
-);
-$stmt->execute(array_merge([$agenteId], $ramoParam));
+// Filtro de asesor (solo coordinadores pueden cambiar esto)
+$filtroAsesorId = null;
+if ($esCoordinador && isset($_GET['asesor_id']) && $_GET['asesor_id'] !== 'todos') {
+    $filtroAsesorId = (int)$_GET['asesor_id'];
+}
+
+if ($esCoordinador) {
+    // Coordinador: ve TODOS los clientes, con info del asesor asignado
+    $agenteWhere = '';
+    $agenteParam = [];
+    if ($filtroAsesorId) {
+        $agenteWhere = 'AND c.agente_id = ?';
+        $agenteParam = [$filtroAsesorId];
+    }
+
+    $stmt = $db->prepare(
+        "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
+                c.correo, c.telefono, c.ciudad,
+                c.ramo, c.agente_id,
+                c.marca, c.modelo, c.anio_vehiculo, c.tipo_vehiculo,
+                c.giro_empresa, c.num_empleados,
+                c.asegurado, c.estado_cliente, c.fecha_registro,
+                CONCAT(a.nombre,' ',COALESCE(a.apellido,'')) AS asesor_nombre
+         FROM clientes c
+         LEFT JOIN agentes a ON a.id = c.agente_id
+         WHERE 1=1 {$ramoWhere} {$agenteWhere}
+         ORDER BY c.fecha_registro DESC"
+    );
+    $stmt->execute(array_merge($ramoParam, $agenteParam));
+
+    // Lista de asesores para filtro dropdown
+    $stAsesores = $db->query(
+        "SELECT id, CONCAT(nombre,' ',COALESCE(apellido,'')) AS nombre_completo
+         FROM agentes WHERE rol IN ('asesor','agente') AND COALESCE(activo,1)=1
+         ORDER BY nombre ASC"
+    );
+    $listaAsesores = $stAsesores->fetchAll(\PDO::FETCH_ASSOC);
+
+} else {
+    // Asesor: solo sus clientes (comportamiento original)
+    $stmt = $db->prepare(
+        "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
+                c.correo, c.telefono, c.ciudad,
+                c.ramo,
+                c.marca, c.modelo, c.anio_vehiculo, c.tipo_vehiculo,
+                c.giro_empresa, c.num_empleados,
+                c.asegurado, c.estado_cliente, c.fecha_registro,
+                '' AS asesor_nombre
+         FROM clientes c
+         WHERE c.agente_id = ? {$ramoWhere}
+         ORDER BY c.nombre ASC, c.apellido_paterno ASC"
+    );
+    $stmt->execute(array_merge([$agenteId], $ramoParam));
+    $listaAsesores = [];
+}
+
 $clientes = $stmt->fetchAll();
 
 foreach ($clientes as &$c) {
-    $c['asegurado'] = ($c['asegurado'] === 'si');
-    $c['ramo_label'] = $ramos_info[$c['ramo'] ?? 'autos']['emoji'] ?? '📋';
+    $c['asegurado']   = ($c['asegurado'] === 'si');
+    $c['ramo_label']  = $ramos_info[$c['ramo'] ?? 'autos']['emoji'] ?? '📋';
+    $c['asesor_nombre'] = trim($c['asesor_nombre'] ?? '—');
 }
 unset($c);
 
@@ -196,10 +245,17 @@ $estados_cliente = [
     'perdido'        => ['label'=>'Perdido',          'class'=>'badge-neutral'],
 ];
 
-$ramoCountStmt = $db->prepare(
-    "SELECT ramo, COUNT(*) AS total FROM clientes WHERE agente_id = ? GROUP BY ramo"
-);
-$ramoCountStmt->execute([$agenteId]);
+// Conteos por ramo (según modo)
+if ($esCoordinador) {
+    $ramoCountStmt = $db->query(
+        "SELECT ramo, COUNT(*) AS total FROM clientes GROUP BY ramo"
+    );
+} else {
+    $ramoCountStmt = $db->prepare(
+        "SELECT ramo, COUNT(*) AS total FROM clientes WHERE agente_id = ? GROUP BY ramo"
+    );
+    $ramoCountStmt->execute([$agenteId]);
+}
 $ramoConteos = array_column($ramoCountStmt->fetchAll(\PDO::FETCH_ASSOC), 'total', 'ramo');
 
 $pageTitle = 'Clientes';
@@ -243,16 +299,23 @@ $pageTitle = 'Clientes';
                                 <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                             </svg>
                         </span>
-                        Gestión de Clientes
+                        <?php echo $esCoordinador ? 'Todos los Clientes' : 'Gestión de Clientes'; ?>
                         <?php if ($ramo): ?>
                         <span style="font-size:14px;font-weight:400;color:var(--text-muted);margin-left:8px;">
                             — <?php echo ($ramos_info[$ramo]['emoji']??'').' '.($ramos_info[$ramo]['label']??$ramo); ?>
                         </span>
                         <?php endif; ?>
                     </h1>
-                    <p class="page-subtitle">Administra y da seguimiento a todos tus clientes</p>
+                    <p class="page-subtitle">
+                        <?php echo $esCoordinador
+                            ? 'Vista global — todos los asesores y ramos'
+                            : 'Administra y da seguimiento a todos tus clientes'; ?>
+                    </p>
                 </div>
                 <div class="page-actions">
+                    <?php if ($esCoordinador): ?>
+                    <a href="/admin?tab=asesores" class="btn btn-outline">👥 Ver Asesores</a>
+                    <?php endif; ?>
                     <button class="btn btn-primary" data-open-modal="modalNuevoCliente">+ Nuevo Cliente</button>
                 </div>
             </div>
@@ -308,6 +371,16 @@ $pageTitle = 'Clientes';
                         <option value="<?php echo htmlspecialchars(strtolower($ciudad)); ?>"><?php echo htmlspecialchars($ciudad); ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <?php if ($esCoordinador && !empty($listaAsesores)): ?>
+                    <select class="filter-select" id="filterAsesor" onchange="window.location.href='/clientes?asesor_id='+this.value<?php echo $ramo ? "+'&ramo='+'$ramo'" : ''; ?>">
+                        <option value="todos" <?php echo !$filtroAsesorId ? 'selected' : ''; ?>>Todos los asesores</option>
+                        <?php foreach ($listaAsesores as $as): ?>
+                        <option value="<?php echo $as['id']; ?>" <?php echo $filtroAsesorId == $as['id'] ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars(trim($as['nombre_completo'])); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php endif; ?>
                     <input type="date" class="filter-select" id="filterFecha" title="Filtrar por fecha de registro" style="cursor:pointer;">
                     <button class="btn btn-outline" id="btnLimpiarFecha" style="display:none;white-space:nowrap;">✕ Fecha</button>
                 </div>
@@ -335,6 +408,9 @@ $pageTitle = 'Clientes';
                             <tr>
                                 <th style="width:40px;text-align:center;">#</th>
                                 <th>Cliente</th>
+                                <?php if ($esCoordinador): ?>
+                                <th>Asesor</th>
+                                <?php endif; ?>
                                 <th>Estado</th>
                                 <th>Registro</th>
                                 <th>Acciones</th>
@@ -356,7 +432,7 @@ $pageTitle = 'Clientes';
                                     $detalle = trim(ucfirst($cliente['marca'] ?? '').' '.($cliente['modelo'] ?? '').(isset($cliente['anio_vehiculo']) && $cliente['anio_vehiculo'] ? ' · '.$cliente['anio_vehiculo'] : ''));
                                 }
                             ?>
-                            <tr data-nombre="<?php echo htmlspecialchars(strtolower($nombreCompleto.' '.$cliente['correo'].' '.($cliente['marca']??'').' '.($cliente['modelo']??'').' '.($cliente['giro_empresa']??''))); ?>"
+                            <tr data-nombre="<?php echo htmlspecialchars(strtolower($nombreCompleto.' '.$cliente['correo'].' '.($cliente['marca']??'').' '.($cliente['modelo']??'').' '.($cliente['giro_empresa']??'').' '.($cliente['asesor_nombre']??''))); ?>"
                                 data-estado="<?php echo $cliente['estado_cliente']; ?>"
                                 data-ciudad="<?php echo htmlspecialchars(strtolower($cliente['ciudad'] ?? '')); ?>"
                                 data-fecha="<?php echo $fechaISO; ?>"
@@ -371,6 +447,11 @@ $pageTitle = 'Clientes';
                                         </div>
                                     </div>
                                 </td>
+                                <?php if ($esCoordinador): ?>
+                                <td style="font-size:12px;color:var(--text-secondary);">
+                                    <?php echo htmlspecialchars($cliente['asesor_nombre'] ?: '—'); ?>
+                                </td>
+                                <?php endif; ?>
                                 <td><span class="badge <?php echo $estadoInfo['class']; ?>"><?php echo $estadoInfo['label']; ?></span></td>
                                 <td style="font-size:12px;color:var(--text-secondary);"><?php echo date('d/m/Y', strtotime($cliente['fecha_registro'])); ?></td>
                                 <td>
@@ -379,6 +460,9 @@ $pageTitle = 'Clientes';
                                         <button class="btn btn-sm btn-outline" data-action="nota" data-id="<?php echo $cliente['id']; ?>" title="Nota">📝</button>
                                         <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="btn btn-sm btn-primary" title="Cotización">📋</a>
                                         <button class="btn btn-sm btn-success" data-action="cita" data-id="<?php echo $cliente['id']; ?>" title="Cita">📅</button>
+                                        <?php if ($esCoordinador): ?>
+                                        <button class="btn btn-sm btn-danger" data-action="eliminar" data-id="<?php echo $cliente['id']; ?>" title="Eliminar">🗑</button>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
