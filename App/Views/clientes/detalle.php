@@ -244,7 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $nuevo=trim($_POST['estado']??'');
         $validos=['nuevo','sin_contactar','contactado','con_cotizacion','cerrado','perdido'];
         if (!in_array($nuevo,$validos,true)) { echo json_encode(['ok'=>false,'msg'=>'Estado inválido.']); exit; }
-        $clienteModel->updateEstado($clienteId,$agenteId,$nuevo);
+        $clienteModel->updateEstado($clienteId,$agenteId,$nuevo,$esCoordinadorVista);
         $historialModel->registrar($clienteId,$agenteId,'cambio_estado',"Estado cambiado a '{$nuevo}'",'');
         echo json_encode(['ok'=>true]); exit;
     }
