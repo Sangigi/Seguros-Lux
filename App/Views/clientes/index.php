@@ -206,7 +206,7 @@ if ($esCoordinador) {
     $stmt = $db->prepare(
         "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
                 c.correo, c.telefono, c.ciudad,
-                c.ramo,
+                c.ramo, c.agente_id,
                 c.marca, c.modelo, c.anio_vehiculo, c.tipo_vehiculo,
                 c.giro_empresa, c.num_empleados,
                 c.asegurado, c.estado_cliente, c.fecha_registro,
