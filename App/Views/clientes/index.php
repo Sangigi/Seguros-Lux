@@ -626,6 +626,85 @@ document.addEventListener('DOMContentLoaded', () => {
 
     actualizarVista(); // Arrancar la tabla en página 1 al abrir la web
 });
+        // Función para paginar y filtrar la lista de clientes
+function initPaginacionClientes() {
+    const list = document.getElementById('clientesList');
+    const pgContainer = document.getElementById('pgClientes');
+    const searchInput = document.getElementById('srchCl');
+
+    // Si no estamos en la pestaña de asesores con un cliente seleccionado, salimos
+    if (!list || !pgContainer) return;
+
+    // Obtener todos los elementos (filas de clientes)
+    const allItems = Array.from(list.getElementsByClassName('cb-row'));
+    let filteredItems = [...allItems];
+    
+    // Configuración: Cuántos clientes quieres ver por página
+    const itemsPerPage = 10; 
+    let currentPage = 1;
+
+    // Renderiza los clientes que corresponden a la página actual
+    function renderPage(page) {
+        currentPage = page;
+        const start = (page - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+
+        // Ocultar todos los elementos de la lista primero
+        allItems.forEach(item => {
+            item.style.display = 'none';
+        });
+
+        // Mostrar únicamente los elementos filtrados que tocan en esta página
+        filteredItems.slice(start, end).forEach(item => {
+            item.style.display = 'flex'; // Se usa flex porque tu clase .cb-row lo requiere
+        });
+
+        renderButtons();
+    }
+
+    // Genera los botones de la numeración
+    function renderButtons() {
+        const pageCount = Math.ceil(filteredItems.length / itemsPerPage);
+        pgContainer.innerHTML = ''; // Limpiar botones anteriores
+
+        // Si hay una página o menos, no mostramos botones
+        if (pageCount <= 1) return;
+
+        for (let i = 1; i <= pageCount; i++) {
+            const btn = document.createElement('button');
+            // Usando las clases CSS que ya tienes en tu <style>
+            btn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
+            btn.textContent = i;
+            btn.onclick = (e) => {
+                e.preventDefault();
+                renderPage(i); // Cambiar a la página seleccionada
+            };
+            pgContainer.appendChild(btn);
+        }
+    }
+
+    // Activar la búsqueda en vivo y recalcular páginas
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const term = this.value.toLowerCase().trim();
+            
+            // Filtrar usando el atributo data-n que ya pusiste en PHP
+            filteredItems = allItems.filter(item => {
+                const text = item.getAttribute('data-n') || '';
+                return text.includes(term);
+            });
+            
+            // Al buscar, regresar siempre a la página 1
+            renderPage(1); 
+        });
+    }
+
+    // Iniciar mostrando la primera página
+    renderPage(1);
+}
+
+// Ejecutar cuando el DOM termine de cargar
+document.addEventListener('DOMContentLoaded', initPaginacionClientes);
 </script>
 </body>
 </html>
