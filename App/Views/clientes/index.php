@@ -471,6 +471,8 @@ $pageTitle = 'Clientes';
                         </tbody>
                     </table>
                 </div>
+
+                <div class="pagination" id="paginationClientes" style="display:flex; gap:4px; justify-content:center; padding:16px 0; flex-wrap:wrap;"></div>
                 <?php endif; ?>
             </div>
         </section>
@@ -491,78 +493,138 @@ require __DIR__ . '/../partials/_modales_clientes.php';
 <script src="/js/modales.js"    nonce="<?= $cspNonce ?>"></script>
     <script nonce="<?= $cspNonce ?>">
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Lógica de Filtrado Completa
-    const searchInput = document.getElementById('searchInput');
+    const ITEMS_POR_PAGINA = 15;
+    let paginaActual = 1;
+
+    const searchInput  = document.getElementById('searchInput');
     const filterEstado = document.getElementById('filterEstado');
     const filterCiudad = document.getElementById('filterCiudad');
     const filterAsesor = document.getElementById('filterAsesor');
-    const tbody = document.getElementById('clientesTableBody');
-    const countLabel = document.getElementById('clientesCount');
+    const tbody        = document.getElementById('clientesTableBody');
+    const countLabel   = document.getElementById('clientesCount');
+    const pagContainer = document.getElementById('paginationClientes');
 
-    function applyFilters() {
+    function actualizarVista() {
         if (!tbody) return;
         const txt = (searchInput?.value || '').toLowerCase();
         const est = filterEstado?.value || 'todos';
         const ciu = filterCiudad?.value || 'todos';
         const ase = filterAsesor?.value || 'todos';
 
-        let visibles = 0;
-        tbody.querySelectorAll('tr').forEach(tr => {
+        const todasLasFilas = Array.from(tbody.querySelectorAll('tr'));
+        const filasCoincidentes = [];
+
+        // 1. Filtrar coincidencias
+        todasLasFilas.forEach(tr => {
             const matchTxt = !txt || (tr.dataset.nombre || '').includes(txt);
             const matchEst = est === 'todos' || tr.dataset.estado === est;
             const matchCiu = ciu === 'todos' || tr.dataset.ciudad === ciu;
             const matchAse = ase === 'todos' || String(tr.dataset.asesor) === String(ase);
 
             if (matchTxt && matchEst && matchCiu && matchAse) {
-                tr.style.display = '';
-                visibles++;
+                filasCoincidentes.push(tr);
             } else {
-                tr.style.display = 'none';
+                tr.style.display = 'none'; 
             }
         });
-        if (countLabel) countLabel.textContent = visibles + ' clientes';
+
+        if (countLabel) countLabel.textContent = filasCoincidentes.length + ' clientes';
+
+        // 2. Calcular páginas
+        const totalPaginas = Math.max(1, Math.ceil(filasCoincidentes.length / ITEMS_POR_PAGINA));
+        if (paginaActual > totalPaginas) paginaActual = totalPaginas;
+
+        const inicio = (paginaActual - 1) * ITEMS_POR_PAGINA;
+        const fin    = inicio + ITEMS_POR_PAGINA;
+
+        // 3. Mostrar solo el "trozo" de la página actual
+        filasCoincidentes.forEach((tr, index) => {
+            tr.style.display = (index >= inicio && index < fin) ? '' : 'none';
+        });
+
+        renderizarBotones(totalPaginas);
     }
 
-    searchInput?.addEventListener('input', applyFilters);
-    filterEstado?.addEventListener('change', applyFilters);
-    filterCiudad?.addEventListener('change', applyFilters);
-    filterAsesor?.addEventListener('change', applyFilters);
+    function renderizarBotones(totalPaginas) {
+        if (!pagContainer) return;
+        pagContainer.innerHTML = '';
 
-    // 2. Lógica para Eliminar Cliente
+        if (totalPaginas <= 1) return; // Si solo hay 1 página, ocultamos la barra
+
+        const crearBoton = (texto, pagDestino, disabled = false, esActivo = false) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `page-btn ${esActivo ? 'active' : ''}`;
+            btn.textContent = texto;
+            
+            if (disabled) {
+                btn.disabled = true;
+                btn.style.opacity = '0.35';
+                btn.style.cursor = 'not-allowed';
+            } else {
+                btn.addEventListener('click', () => {
+                    paginaActual = pagDestino;
+                    actualizarVista();
+                    document.getElementById('clientesTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            }
+            return btn;
+        };
+
+        // Botón "Anterior"
+        pagContainer.appendChild(crearBoton('‹', paginaActual - 1, paginaActual === 1));
+
+        // Generación de números inteligente (con puntos suspensivos "...")
+        for (let i = 1; i <= totalPaginas; i++) {
+            if (i === 1 || i === totalPaginas || Math.abs(i - paginaActual) <= 1) {
+                pagContainer.appendChild(crearBoton(i, i, false, i === paginaActual));
+            } else if (Math.abs(i - paginaActual) === 2) {
+                const dot = document.createElement('span');
+                dot.textContent = '…';
+                dot.style.cssText = 'align-self:center; color:var(--text-muted); padding:0 4px;';
+                pagContainer.appendChild(dot);
+            }
+        }
+
+        // Botón "Siguiente"
+        pagContainer.appendChild(crearBoton('›', paginaActual + 1, paginaActual === totalPaginas));
+    }
+
+    // Al escribir o cambiar un filtro, regresamos obligatoriamente a la Página 1
+    function alFiltrar() { paginaActual = 1; actualizarVista(); }
+
+    searchInput?.addEventListener('input', alFiltrar);
+    filterEstado?.addEventListener('change', alFiltrar);
+    filterCiudad?.addEventListener('change', alFiltrar);
+    filterAsesor?.addEventListener('change', alFiltrar);
+
+    // Acción Eliminar Cliente (AJAX seguro)
     document.addEventListener('click', function(e) {
         const btnEliminar = e.target.closest('button[data-action="eliminar"]');
-        if (btnEliminar) {
-            e.preventDefault();
-            e.stopPropagation(); // Prevenir conflictos con otros listeners
+        if (!btnEliminar) return;
 
-            if (!confirm('¿Estás seguro de que deseas eliminar este cliente? Esta acción no se puede deshacer.')) return;
+        e.preventDefault();
+        e.stopPropagation();
 
-            const id = btnEliminar.dataset.id;
-            const fd = new FormData();
-            fd.append('accion', 'eliminar');
-            fd.append('id', id);
+        if (!confirm('¿Eliminar este cliente definitivamente?')) return;
 
-            // Inyección crucial del Token CSRF
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-            if (csrfToken) fd.append('csrf_token', csrfToken);
+        const fd = new FormData();
+        fd.append('accion', 'eliminar');
+        fd.append('id', btnEliminar.dataset.id);
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        if (csrf) fd.append('csrf_token', csrf);
 
-            fetch('', { 
-                method: 'POST', 
-                body: fd,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
+        fetch('', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(r => r.json())
             .then(d => {
                 if (d.ok) {
                     btnEliminar.closest('tr').remove();
-                    applyFilters(); // Recalcular totales y refrescar vista
-                } else {
-                    alert(d.msg || 'Error al eliminar el cliente');
-                }
-            })
-            .catch(() => alert('Error de conexión.'));
-        }
-    }, true); 
+                    actualizarVista(); // Recalcula la página mágicamente
+                } else alert(d.msg || 'Error');
+            });
+    }, true);
+
+    actualizarVista(); // Arrancar la tabla en página 1 al abrir la web
 });
 </script>
 </body>
