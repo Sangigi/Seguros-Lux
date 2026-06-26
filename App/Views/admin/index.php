@@ -1965,8 +1965,67 @@ window._adminCotId=null;
 
 function abrirDocumentosAdmin(cotId){if(!cotId)return;document.getElementById('adminDocsFolio').textContent='...';document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);">⏳ Cargando...</div>';openModal('modalAdminDocs');const fd=new FormData();fd.append('accion','get_documentos_admin');fd.append('cotizacion_id',cotId);fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(!d.ok){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error al cargar documentos.</div>';return;}document.getElementById('adminDocsFolio').textContent=d.folio||'#'+cotId;if(!d.docs?.length){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:48px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-size:15px;font-weight:600;">Sin documentos adjuntos</div></div>';return;}const cards=d.docs.map(doc=>{const bi=doc.en_idrive?'<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">☁️ iDrive</span>':'<span style="font-size:10px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 8px;border-radius:99px;">Local</span>';const th=doc.es_imagen&&doc.url_local?`<div style="height:110px;border-radius:7px;overflow:hidden;margin-bottom:10px;cursor:pointer;" data-href="${doc.url_local}"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`:`<div style="height:110px;background:var(--bg-secondary);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;">${doc.es_pdf||doc.url_local?'📄':'📎'}</div>`;const bd=doc.url_local?`<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="flex:1;text-align:center;font-size:11px;">⬇ Descargar</a>`:`<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;">${doc.en_idrive?'Solo en ☁️ iDrive':'No disponible'}</span>`;return `<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;display:flex;flex-direction:column;">${th}<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">${doc.tipo_label}</div><div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px;" title="${doc.nombre_orig}">${doc.nombre_orig}</div><div style="display:flex;align-items:center;gap:8px;">${bi}${bd}</div></div>`;}).join('');document.getElementById('adminDocsContent').innerHTML=`<p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">${d.docs.length} documento${d.docs.length!==1?'s':''}</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;">${cards}</div>`;document.querySelectorAll('#adminDocsContent [data-href]').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.href,'_blank')));}).catch(()=>{document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error de conexión.</div>';});}
 
-// ── Paginación clientes del asesor ────────────────────────────────────────────
-(function(){const list=document.getElementById('clientesList'),pg=document.getElementById('pgClientes');if(!list||!pg)return;const PP=10;let cp=1;function vis(){return[...list.querySelectorAll('.cb-row')].filter(r=>!r.classList.contains('cl-hidden'));}function renderCl(){const v=vis(),tp=Math.max(1,Math.ceil(v.length/PP));if(cp>tp)cp=tp;[...list.querySelectorAll('.cb-row')].forEach(r=>{if(r.classList.contains('cl-hidden')){r.style.display='none';return;}const i=v.indexOf(r);r.style.display=(i>=(cp-1)*PP&&i<cp*PP)?'':'none';});if(tp<=1){pg.innerHTML='';return;}let h=pagBtn('‹',cp-1,'_cl',cp===1);for(let i=1;i<=tp;i++){if(i===1||i===tp||Math.abs(i-cp)<=1)h+=pagBtn(i,i,'_cl',false,i===cp);else if(Math.abs(i-cp)===2)h+='<span class="page-btn" style="border:none;cursor:default;">…</span>';}h+=pagBtn('›',cp+1,'_cl',cp===tp);pg.innerHTML=h;}window.goClPg=p=>{cp=Math.max(1,p);renderCl();};window._renderCl=renderCl;renderCl();})();
+// ── Paginación clientes del asesor (CORREGIDA) ──────────────────────────────
+(function(){
+    const list = document.getElementById('clientesList');
+    const pg = document.getElementById('pgClientes');
+    if(!list || !pg) return;
+    
+    const PP = 10; // Límite exacto de 10 por página
+    let cp = 1;
+    
+    // Obtener los clientes que coinciden con el buscador
+    function vis(){
+        return [...list.querySelectorAll('.cb-row')].filter(r => !r.classList.contains('cl-hidden'));
+    }
+    
+    function renderCl(){
+        const v = vis();
+        const tp = Math.max(1, Math.ceil(v.length / PP));
+        if(cp > tp) cp = Math.max(1, tp);
+        
+        // Iterar sobre las filas y mostrar solo las de la página actual
+        [...list.querySelectorAll('.cb-row')].forEach(r => {
+            if(r.classList.contains('cl-hidden')){
+                r.style.display = 'none';
+                return;
+            }
+            const i = v.indexOf(r);
+            // Usamos 'flex' porque las filas con clase .cb-row se rompen si usamos ''
+            r.style.display = (i >= (cp - 1) * PP && i < cp * PP) ? 'flex' : 'none';
+        });
+        
+        // Renderizar los botones usando la función nativa del CRM (pagBtn)
+        if(tp <= 1){
+            pg.innerHTML = '';
+            return;
+        }
+        
+        let h = pagBtn('‹', cp - 1, '_cl', cp === 1);
+        for(let i = 1; i <= tp; i++){
+            if(i === 1 || i === tp || Math.abs(i - cp) <= 1) {
+                h += pagBtn(i, i, '_cl', false, i === cp);
+            } else if(Math.abs(i - cp) === 2) {
+                h += '<span class="page-btn" style="border:none;cursor:default;">…</span>';
+            }
+        }
+        h += pagBtn('›', cp + 1, '_cl', cp === tp);
+        pg.innerHTML = h;
+    }
+    
+    // Conectar ESTRICTAMENTE con el sistema global 'adm-page' de tu código original
+    window['_p__cl'] = {
+        go: function(p) {
+            cp = p;
+            renderCl();
+        }
+    };
+    
+    // Conectar con el buscador para que se recalcule al teclear
+    window._renderCl = renderCl;
+    
+    renderCl();
+})();
 
 // ── Paginación actividad ──────────────────────────────────────────────────────
 (function(){const feed=document.getElementById('actFeed'),pag=document.getElementById('actPag');if(!feed||!pag)return;const items=[...feed.querySelectorAll('.act-item')],pp=10;let cp=1;const pages=()=>Math.max(1,Math.ceil(items.length/pp));function renderFeed(){const p=pages();items.forEach((el,i)=>{el.style.display=(i>=(cp-1)*pp&&i<cp*pp)?'':'none';});if(p<=1){pag.innerHTML='';return;}let h=pagBtn('‹',cp-1,'_act',cp===1);for(let i=1;i<=p;i++)h+=pagBtn(i,i,'_act',false,i===cp);h+=pagBtn('›',cp+1,'_act',cp===p);pag.innerHTML=h;}window.aFeed=p=>{cp=Math.max(1,Math.min(p,pages()));renderFeed();};renderFeed();})();
