@@ -27,6 +27,7 @@ set_exception_handler(function(\Throwable $e) {
 $agenteId               = SessionManager::getAgentId();
 $agenteData             = SessionManager::getAgentData();
 $rolAgente              = $agenteData['rol'] ?? 'asesor';
+$esCoordinadorVista     = in_array($rolAgente, ['coordinador', 'administrador', 'superadmin'], true);
 
 // Le damos el poder al asesor (y a todos) de manejar las pólizas
 $puedeGestionarPolizas  = true; 
@@ -468,8 +469,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             try {
                 $db = \Database\Connection::getConnection();
                 // Leer extra actual (color, placas, vin, rines, gps, uso) guardado en detalle_adaptaciones como JSON
-                $stAct = $db->prepare('SELECT detalle_adaptaciones FROM clientes WHERE id = ? AND agente_id = ?');
-                $stAct->execute([$clienteId, $agenteId]);
+                if ($esCoordinadorVista) {
+                    $stAct = $db->prepare('SELECT detalle_adaptaciones FROM clientes WHERE id = ?');
+                    $stAct->execute([$clienteId]);
+                } else {
+                    $stAct = $db->prepare('SELECT detalle_adaptaciones FROM clientes WHERE id = ? AND agente_id = ?');
+                    $stAct->execute([$clienteId, $agenteId]);
+                }
                 $rowAct = $stAct->fetch(\PDO::FETCH_ASSOC);
                 $prevExtra = [];
                 if (!empty($rowAct['detalle_adaptaciones'])) {
@@ -492,9 +498,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($campos)));
                 $vals = array_values($campos);
                 $vals[] = $clienteId;
-                $vals[] = $agenteId;
-                $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")
-                   ->execute($vals);
+                if ($esCoordinadorVista) {
+                    $db->prepare("UPDATE clientes SET {$sets} WHERE id = ?")
+                       ->execute($vals);
+                } else {
+                    $vals[] = $agenteId;
+                    $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")
+                       ->execute($vals);
+                }
                 echo json_encode(['ok'=>true]); exit;
             } catch(\Throwable $e) {
                 echo json_encode(['ok'=>false,'msg'=>'Error: '.$e->getMessage()]); exit;
@@ -548,9 +559,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $sets = implode(', ', array_map(fn($k) => "`{$k}` = ?", array_keys($campos)));
             $vals = array_values($campos);
             $vals[] = $clienteId;
-            $vals[] = $agenteId;
-            $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")
-               ->execute($vals);
+            if ($esCoordinadorVista) {
+                $db->prepare("UPDATE clientes SET {$sets} WHERE id = ?")
+                   ->execute($vals);
+            } else {
+                $vals[] = $agenteId;
+                $db->prepare("UPDATE clientes SET {$sets} WHERE id = ? AND agente_id = ?")
+                   ->execute($vals);
+            }
             $historialModel->registrar($clienteId, $agenteId, 'nota', 'Datos del cliente actualizados', '');
             echo json_encode(['ok'=>true]); exit;
         } catch(\Throwable $e) {
@@ -578,10 +594,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 exit;
             }
 
-            $stC = $db->prepare('SELECT c.id, c.folio, c.compania, c.cliente_id, cl.nombre, cl.apellido_paterno
-                                  FROM cotizaciones c JOIN clientes cl ON cl.id = c.cliente_id
-                                  WHERE c.id = ? AND c.agente_id = ?');
-            $stC->execute([$cotId, $agenteId]);
+            if ($esCoordinadorVista) {
+                $stC = $db->prepare('SELECT c.id, c.folio, c.compania, c.cliente_id, cl.nombre, cl.apellido_paterno
+                                      FROM cotizaciones c JOIN clientes cl ON cl.id = c.cliente_id
+                                      WHERE c.id = ?');
+                $stC->execute([$cotId]);
+            } else {
+                $stC = $db->prepare('SELECT c.id, c.folio, c.compania, c.cliente_id, cl.nombre, cl.apellido_paterno
+                                      FROM cotizaciones c JOIN clientes cl ON cl.id = c.cliente_id
+                                      WHERE c.id = ? AND c.agente_id = ?');
+                $stC->execute([$cotId, $agenteId]);
+            }
             $datCot = $stC->fetch(\PDO::FETCH_ASSOC);
             if (!$datCot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
             
@@ -724,7 +747,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 }
 
 // ── Datos ─────────────────────────────────────────────────────────────────────
-$cliente=$clienteModel->getCompleto($clienteId,$agenteId);
+$cliente=$clienteModel->getCompleto($clienteId,$agenteId,$esCoordinadorVista);
 if (!$cliente) { header('Location: /clientes'); exit; }
 
 $cliente['asegurado']       =($cliente['asegurado']==='si');
