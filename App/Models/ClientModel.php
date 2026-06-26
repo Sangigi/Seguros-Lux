@@ -390,12 +390,15 @@ class ClientModel extends BaseModel
 
     // ── Estados ───────────────────────────────────────────────────────────────
 
-    public function updateEstado(int $id, int $agenteId, string $estado): bool
+    public function updateEstado(int $id, int $agenteId, string $estado, bool $esCoordinador = false): bool
     {
-        $stmt = $this->db()->prepare(
-            'UPDATE clientes SET estado_cliente = ? WHERE id = ? AND agente_id = ?'
-        );
-        $stmt->execute([$estado, $id, $agenteId]);
+        if ($esCoordinador) {
+            $stmt = $this->db()->prepare('UPDATE clientes SET estado_cliente = ? WHERE id = ?');
+            $stmt->execute([$estado, $id]);
+        } else {
+            $stmt = $this->db()->prepare('UPDATE clientes SET estado_cliente = ? WHERE id = ? AND agente_id = ?');
+            $stmt->execute([$estado, $id, $agenteId]);
+        }
         return $stmt->rowCount() > 0;
     }
 
