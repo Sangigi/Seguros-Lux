@@ -129,10 +129,17 @@ class ClientModel extends BaseModel
         return $stmt->fetchAll();
     }
 
-    public function getCompleto(int $id, int $agenteId): ?array
+    public function getCompleto(int $id, int $agenteId, bool $esCoordinador = false): ?array
     {
-        $stmt = $this->db()->prepare('SELECT * FROM clientes WHERE id = ? AND agente_id = ?');
-        $stmt->execute([$id, $agenteId]);
+        if ($esCoordinador) {
+            // El coordinador puede ver cualquier cliente, solo filtramos por ID
+            $stmt = $this->db()->prepare('SELECT * FROM clientes WHERE id = ?');
+            $stmt->execute([$id]);
+        } else {
+            // El asesor normal solo ve sus propios clientes
+            $stmt = $this->db()->prepare('SELECT * FROM clientes WHERE id = ? AND agente_id = ?');
+            $stmt->execute([$id, $agenteId]);
+        }
         return $stmt->fetch() ?: null;
     }
 
