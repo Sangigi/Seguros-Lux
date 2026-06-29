@@ -110,7 +110,7 @@ if ($token === '') {
         curl_close($ch);
 
         if ($response === false || $httpCode >= 400) {
-            error_log("[MetaLeadsService] Graph API error (HTTP {$httpCode}): " . substr((string)$response, 0, 500));
+            error_log("[MetaLeadsService] Graph API error (HTTP {$httpCode}) para leadgen_id={$leadgenId}: " . substr((string)$response, 0, 500));
             return null;
         }
 
