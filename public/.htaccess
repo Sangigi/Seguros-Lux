@@ -49,12 +49,14 @@ RewriteRule ^ index.php [QSA,L]
 </FilesMatch>
 
 # Bloquear acceso directo a cualquier archivo PHP fuera del front-controller
-# EXCEPTO los webhooks de Telegram y WhatsApp
+# EXCEPTO los webhooks de Telegram, WhatsApp, Meta y el diagnóstico
 <IfModule mod_rewrite.c>
     RewriteCond %{REQUEST_URI} !^/blog/
     RewriteCond %{REQUEST_URI} !^/index\.php$
     RewriteCond %{REQUEST_URI} !^/telegram/telegram_webhook\.php$
     RewriteCond %{REQUEST_URI} !^/whatsapp/whatsapp_webhook\.php$
+    RewriteCond %{REQUEST_URI} !^/meta/meta_webhook\.php$
+    RewriteCond %{REQUEST_URI} !^/diagnostico\.php$
     RewriteCond %{REQUEST_FILENAME} -f
     RewriteRule \.php$ - [F,L]
 </IfModule>
