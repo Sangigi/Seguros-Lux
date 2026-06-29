@@ -8,6 +8,83 @@
     const reloadBtn   = document.getElementById('sidebarNotifReload');
     const clearAllBtn = document.getElementById('sidebarNotifClearAll');
 
+    // ── Tiempo real (polling ligero) ─────────────────────────────────────
+    // Cada POLL_INTERVAL_MS se consulta /api/notificaciones SOLO para el
+    // contador (sin pedir la lista completa de nuevo si el panel está
+    // cerrado). Si llega un lead nuevo, se actualiza el badge, se reproduce
+    // un aviso sonoro corto y, si el panel está abierto, se refresca la lista.
+    const POLL_INTERVAL_MS = 8000;
+    let lastKnownUnread = parseInt(panel.dataset.initialCount || '0', 10) || 0;
+    let pollTimer = null;
+
+    function playChime() {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            const ctx = new AudioCtx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = 880;
+            gain.gain.value = 0.08;
+            osc.connect(gain).connect(ctx.destination);
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+            osc.stop(ctx.currentTime + 0.35);
+        } catch (_e) { /* navegadores que bloquean audio sin interacción: ignorar */ }
+    }
+
+    function flashTitleBriefly() {
+        const original = document.title;
+        if (document.title.startsWith('🔔 ')) return;
+        document.title = '🔔 ' + original;
+        setTimeout(() => { document.title = original; }, 4000);
+    }
+
+    async function pollUnreadCount() {
+        try {
+            const r = await fetch('/api/notificaciones', { credentials: 'same-origin' });
+            const d = await r.json();
+            if (!d.ok) return;
+
+            const unread = typeof d.unread === 'number' ? d.unread : 0;
+            setBadge(unread);
+
+            if (unread > lastKnownUnread) {
+                playChime();
+                if (document.hidden) flashTitleBriefly();
+                // Si el panel ya está abierto, refrescar la lista visible
+                // para que el lead nuevo aparezca sin que el asesor tenga
+                // que cerrar y volver a abrir el panel.
+                if (!panel.hidden) renderItems(d.items || []);
+            }
+            lastKnownUnread = unread;
+        } catch (_e) {
+            // Silencioso: un fallo de red puntual no debe interrumpir el ciclo.
+        }
+    }
+
+    function startPolling() {
+        if (pollTimer) return;
+        pollTimer = setInterval(pollUnreadCount, POLL_INTERVAL_MS);
+    }
+
+    function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    // Pausar el polling cuando la pestaña no es visible para no gastar
+    // ciclos/datos de quien tiene el CRM abierto en segundo plano, y
+    // reanudar (con una consulta inmediata) al volver a primer plano.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopPolling();
+        } else {
+            pollUnreadCount();
+            startPolling();
+        }
+    });
+
     function csrf() {
         const i = document.querySelector('#formLogout input[name="csrf_token"]');
         return i ? i.value : '';
@@ -229,5 +306,13 @@
     markAllBtn?.addEventListener('click',  (e) => { e.stopPropagation(); marcarTodas(); });
     reloadBtn?.addEventListener('click',   (e) => { e.stopPropagation(); cargar(); });
     clearAllBtn?.addEventListener('click', (e) => { e.stopPropagation(); limpiarTodo(); });
+
+    // ── Arranque del tiempo real ──────────────────────────────────────────
+    // Primera consulta inmediata (sin esperar el primer intervalo) y luego
+    // ciclo cada POLL_INTERVAL_MS mientras la pestaña esté visible.
+    if (!document.hidden) {
+        pollUnreadCount();
+        startPolling();
+    }
 
 })();
