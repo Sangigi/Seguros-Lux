@@ -28,37 +28,47 @@ declare(strict_types=1);
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-// ── 1. Raíz del proyecto ──────────────────────────────────────────────────────
-define('META_PROJECT_ROOT', dirname(__DIR__, 2));
-
-$metaEnvFile = META_PROJECT_ROOT . '/.env.php';
-if (is_file($metaEnvFile)) {
-    require_once $metaEnvFile;
+// ── 1. Bootstrap: sólo si se llama directamente (sin pasar por index.php) ────
+// Cuando index.php ya arrancó, ROOT y el autoloader ya están disponibles.
+if (!defined('ROOT')) {
+    // Llamada directa al archivo (raro, pero posible en debug).
+    $metaProjectRoot = dirname(__DIR__, 2);
+    if (is_file($metaProjectRoot . '/.env.php')) {
+        require_once $metaProjectRoot . '/.env.php';
+    }
+    $metaAutoloader = $metaProjectRoot . '/vendor/autoload.php';
+    if (file_exists($metaAutoloader)) {
+        require_once $metaAutoloader;
+    }
+    if (file_exists($metaProjectRoot . '/Core/Autoloader.php')) {
+        require_once $metaProjectRoot . '/Core/Autoloader.php';
+    }
 }
-
-$_metaAutoloaderEarly = META_PROJECT_ROOT . '/vendor/autoload.php';
-if (file_exists($_metaAutoloaderEarly)) require_once $_metaAutoloaderEarly;
-require_once META_PROJECT_ROOT . '/Core/Autoloader.php';
 
 use App\Security\SecurityLogger;
 use App\Services\MetaLeadsService;
-use Database\Connection;
 
-$logFile = __DIR__ . '/meta.log';
-$rawBody = file_get_contents('php://input');
+// ── 2. Log de debug ───────────────────────────────────────────────────────────
+// Actívalo temporalmente con WEBHOOK_DEBUG_LOG=1 en .env.php para diagnosticar.
+$logFile   = __DIR__ . '/meta.log';
+$debugLog  = filter_var(getenv('WEBHOOK_DEBUG_LOG') ?: '0', FILTER_VALIDATE_BOOLEAN);
+$rawBody   = file_get_contents('php://input');
 
-$metaDebugLog = filter_var(getenv('WEBHOOK_DEBUG_LOG') ?: '0', FILTER_VALIDATE_BOOLEAN);
-
-$metaWebhookLog = static function (string $message) use ($logFile, $metaDebugLog): void {
-    if (!$metaDebugLog) {
-        return;
-    }
-    file_put_contents($logFile, date('Y-m-d H:i:s') . ' ' . $message . "\n", FILE_APPEND);
+$metaLog = static function (string $message) use ($logFile, $debugLog): void {
+    // Siempre loguear errores críticos; el flag solo controla el modo verbose.
+    file_put_contents($logFile, date('Y-m-d H:i:s') . ' ' . $message . "\n", FILE_APPEND | LOCK_EX);
 };
 
-$metaWebhookLog($_SERVER['REQUEST_METHOD'] . "\n" . $rawBody . "\n\n");
+// Log verbose solo si está activado
+$metaVerbose = static function (string $message) use ($metaLog, $debugLog): void {
+    if ($debugLog) {
+        $metaLog($message);
+    }
+};
 
-// ── 2. Verificación GET (registro del webhook en Meta) ───────────────────────
+$metaVerbose($_SERVER['REQUEST_METHOD'] . "\n" . $rawBody . "\n\n");
+
+// ── 3. Verificación GET (registro del webhook en Meta) ────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $verifyToken = getenv('META_VERIFY_TOKEN') ?: ($_ENV['META_VERIFY_TOKEN'] ?? '');
     if ($verifyToken === '') {
@@ -73,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $token     = $_GET['hub_verify_token'] ?? '';
     $challenge = $_GET['hub_challenge']    ?? '';
 
-    $metaWebhookLog(
+    $metaVerbose(
         "GET verification\n"
         . "  mode=[{$mode}] token=[{$token}] expected=[" . ($verifyToken !== '' ? '(set)' : '(empty)') . "]\n"
         . '  params: ' . json_encode($_GET) . "\n\n"
@@ -85,20 +95,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         exit;
     }
 
+    $metaLog("GET RECHAZADO — verify_token vacío o no coincide. mode=[{$mode}]\n");
     http_response_code(403);
     echo 'Forbidden';
     exit;
 }
 
-// ── 3. Solo aceptar POST a partir de aquí ─────────────────────────────────────
+// ── 4. Solo aceptar POST a partir de aquí ────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     exit;
 }
 
-// ── 4. Verificación de firma HMAC-SHA256 ──────────────────────────────────────
-// Meta firma cada notificación con HMAC-SHA256 del cuerpo usando el App Secret.
-// Referencia: https://developers.facebook.com/docs/graph-api/webhooks/getting-started#validate-payloads
+// ── 5. Verificación de firma HMAC-SHA256 ─────────────────────────────────────
 $appSecret = getenv('META_APP_SECRET') ?: ($_ENV['META_APP_SECRET'] ?? '');
 if ($appSecret === '') {
     try {
@@ -109,7 +118,7 @@ if ($appSecret === '') {
 }
 
 if ($appSecret === '') {
-    error_log('meta_webhook: META_APP_SECRET no está configurado — rechazando POST.');
+    $metaLog("ERROR CRÍTICO: meta_app_secret no está configurado — rechazando POST.\n");
     http_response_code(500);
     echo json_encode(['ok' => false, 'msg' => 'Configuración incompleta.']);
     exit;
@@ -117,32 +126,27 @@ if ($appSecret === '') {
 
 $sigHeader = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
 if (!str_starts_with($sigHeader, 'sha256=')) {
-    $metaWebhookLog("HMAC: header X-Hub-Signature-256 ausente o malformado.\n\n");
+    $metaLog("HMAC: header X-Hub-Signature-256 ausente o malformado. IP=" . ($_SERVER['REMOTE_ADDR'] ?? '') . "\n");
     SecurityLogger::log('meta_hmac_missing', ['ip' => $_SERVER['REMOTE_ADDR'] ?? '']);
     http_response_code(403);
     echo 'Forbidden';
     exit;
 }
 
-$receivedHash = substr($sigHeader, 7); // quitar "sha256="
+$receivedHash = substr($sigHeader, 7);
 $expectedHash = hash_hmac('sha256', $rawBody, $appSecret);
 
 if (!hash_equals($expectedHash, $receivedHash)) {
-    $metaWebhookLog("HMAC: firma inválida. Recibida={$receivedHash}\n\n");
+    $metaLog("HMAC: firma inválida. IP=" . ($_SERVER['REMOTE_ADDR'] ?? '') . "\n");
     SecurityLogger::log('meta_hmac_invalid', ['ip' => $_SERVER['REMOTE_ADDR'] ?? '']);
     http_response_code(403);
     echo 'Forbidden';
     exit;
 }
 
-$metaWebhookLog("HMAC: firma válida.\n\n");
+$metaVerbose("HMAC: firma válida.\n\n");
 
-// ── 5. Decodificar payload y extraer leads ────────────────────────────────────
-// Formato típico:
-// { "object": "page", "entry": [{ "id": "<page_id>",
-//     "changes": [{ "field": "leadgen",
-//       "value": { "leadgen_id": "...", "form_id": "...", "page_id": "..." }
-//     }] }] }
+// ── 6. Decodificar payload y extraer leads ────────────────────────────────────
 $payload = json_decode($rawBody, true);
 $entries = $payload['entry'] ?? [];
 
@@ -162,35 +166,39 @@ foreach ($entries as $entry) {
     }
 }
 
-// Nada que procesar (puede ser un ping de verificación de Meta) — responder 200.
+// Nada que procesar (ping de verificación de Meta) — responder 200.
 if (empty($leadsAEncolar)) {
+    $metaVerbose("POST recibido sin leads leadgen (posible ping). Payload: " . $rawBody . "\n");
     http_response_code(200);
     echo json_encode(['ok' => true]);
     exit;
 }
 
-// ── 6. Responder 200 INMEDIATAMENTE ───────────────────────────────────────────
-// Meta exige respuesta rápida (<20s). Procesamos el/los lead(s) después de
-// cerrar la conexión HTTP para no hacer esperar a Meta mientras llamamos a
-// Graph API, escribimos en BD y enviamos email/WhatsApp.
+$metaLog("POST recibido: " . count($leadsAEncolar) . " lead(s) a procesar.\n");
+
+// ── 7. Responder 200 INMEDIATAMENTE ──────────────────────────────────────────
+// Meta exige respuesta rápida (<20s). Procesamos los leads después de cerrar
+// la conexión HTTP para no hacer esperar a Meta.
 http_response_code(200);
 echo json_encode(['ok' => true]);
 
 if (function_exists('fastcgi_finish_request')) {
-    // Envía la respuesta ya mismo y sigue ejecutando en background (PHP-FPM).
     fastcgi_finish_request();
 } else {
-    // Sin FPM no podemos cerrar la conexión antes; igualmente seguimos,
-    // el navegador/Meta ya recibió el código 200 en el buffer de salida.
     if (function_exists('flush')) {
         flush();
     }
 }
 
-// ── 7. Procesar cada lead recibido ────────────────────────────────────────────
+// ── 8. Procesar cada lead recibido ───────────────────────────────────────────
 foreach ($leadsAEncolar as [$leadgenId, $formId, $pageId]) {
-    MetaLeadsService::procesarLead($leadgenId, $formId, $pageId);
+    try {
+        MetaLeadsService::procesarLead($leadgenId, $formId, $pageId);
+        $metaLog("Lead procesado: leadgen_id={$leadgenId} form_id={$formId}\n");
+    } catch (\Throwable $e) {
+        $metaLog("ERROR procesando lead {$leadgenId}: " . $e->getMessage() . "\n");
+    }
 }
 
-$metaWebhookLog('Procesados ' . count($leadsAEncolar) . " lead(s).\n\n");
+$metaLog('Fin. Procesados ' . count($leadsAEncolar) . " lead(s).\n\n");
 exit;
