@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Services\MailQueue;
 use App\Security\RateLimiter;
 use App\Security\SecurityLogger;
+use App\Models\NotificacionModel;
 use Database\Connection;
 
 $__crmAutoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
@@ -92,6 +93,75 @@ class VidaSolicitudController
         $numUnidades = trim($input['num_unidades']   ?? '');
         $tipoFlota   = trim($input['tipo_flota']     ?? '');
 
+        // ── Formulario propio de campaña vehicular (seguroslux.mx/campana-vehicular) ─
+        // Usa nombres de campo distintos a los del formulario interno de "autos".
+        // Si vienen, se traducen aquí sin afectar al formulario interno existente.
+        $vehiculoCampana = trim($input['vehiculo']     ?? ''); // auto | moto | flotilla
+        $tieneSeguro     = trim($input['tiene_seguro'] ?? ''); // si | no | cotizando
+        $intencion       = trim($input['intencion']    ?? ''); // contratar | renovar | comparar
+        $vencimientoSel  = trim($input['vencimiento']  ?? ''); // este-mes | 1-3-meses | ...
+        $formaPago       = trim($input['pago']         ?? ''); // contado | meses-3 | ...
+
+        if ($vehiculoCampana !== '') {
+            // El formulario de campaña no manda 'ramo' explícito: si llenaron
+            // 'vehiculo', asumimos que es una solicitud de autos.
+            if (!isset($input['ramo']) || $input['ramo'] === '') {
+                $ramo = 'autos';
+            }
+            if ($cp === '' && isset($input['codigo_postal'])) {
+                $cp = trim((string) $input['codigo_postal']);
+            }
+            // Mapear "flotilla" del select al campo tipo_vehiculo interno.
+            if ($tipoVeh === '') {
+                $tipoVeh = match ($vehiculoCampana) {
+                    'flotilla' => 'van',   // tipo_vehiculo enum no tiene "flotilla"; van es lo más cercano
+                    'moto'     => 'moto',
+                    default    => 'auto',
+                };
+            }
+            // 'flotilla' además dispara el flujo de ramo empresas si el usuario
+            // seleccionó explícitamente esa opción (varios vehículos = empresa).
+            if ($vehiculoCampana === 'flotilla' && (!isset($input['ramo']) || $input['ramo'] === '')) {
+                $ramo = 'empresas';
+            }
+            // El detalle de la campaña (qué tan urgido está, cómo quiere pagar,
+            // etc.) no tiene columnas propias todavía: se anexa a "comentarios"
+            // para que el asesor lo vea íntegro sin perder información.
+            $detalleCampana = array_filter([
+                $tieneSeguro    !== '' ? 'Seguro actual: ' . match ($tieneSeguro) {
+                    'si'        => 'sí tiene',
+                    'no'        => 'no tiene',
+                    'cotizando' => 'está cotizando con otra aseguradora',
+                    default     => $tieneSeguro,
+                } : null,
+                $intencion      !== '' ? 'Quiere: ' . match ($intencion) {
+                    'contratar' => 'contratar nuevo seguro',
+                    'renovar'   => 'renovar su seguro actual',
+                    'comparar'  => 'comparar opciones',
+                    default     => $intencion,
+                } : null,
+                $vencimientoSel !== '' ? 'Vencimiento de su póliza actual: ' . match ($vencimientoSel) {
+                    'este-mes'    => 'este mes',
+                    '1-3-meses'   => 'en 1 a 3 meses',
+                    'mas-3-meses' => 'en más de 3 meses',
+                    'no-se'       => 'no sabe / no aplica',
+                    default       => $vencimientoSel,
+                } : null,
+                $formaPago      !== '' ? 'Forma de pago preferida: ' . match ($formaPago) {
+                    'contado'    => 'de contado',
+                    'meses-3'    => '3 meses sin intereses',
+                    'meses-6'    => '6 meses sin intereses',
+                    'meses-12'   => '12 meses sin intereses',
+                    'meses-mas'  => 'más de 12 meses',
+                    'no-decido'  => 'aún no decide',
+                    default      => $formaPago,
+                } : null,
+            ]);
+            if ($detalleCampana) {
+                $comentarios = trim($comentarios . ($comentarios ? "\n" : '') . implode(' · ', $detalleCampana));
+            }
+        }
+
         // ── Validación básica ─────────────────────────────────────────────────
         if (!$nombre || !$telefono) {
             http_response_code(400);
@@ -116,16 +186,16 @@ class VidaSolicitudController
                 $db = Connection::getConnection();
                 $stmtCl = $db->prepare("SELECT id FROM clientes WHERE correo = ? LIMIT 1");
                 $stmtCl->execute([$correo]);
-                $clienteId = $stmtCl->fetchColumn();
+                $clienteIdExistente = $stmtCl->fetchColumn();
 
-                if ($clienteId) {
+                if ($clienteIdExistente) {
                     $stmtC = $db->prepare(
                         "SELECT COUNT(*) FROM citas
                          WHERE cliente_id = ?
                            AND estado IN ('programada','pendiente')
                            AND fecha >= CURDATE()"
                     );
-                    $stmtC->execute([$clienteId]);
+                    $stmtC->execute([$clienteIdExistente]);
                     $citasActivas = (int)$stmtC->fetchColumn();
 
                     if ($citasActivas >= self::MAX_CITAS) {
@@ -148,7 +218,7 @@ class VidaSolicitudController
         }
 
         // ── Guardar en CRM (tabla clientes) con agente por menor carga ─────────
-        $agenteAsignado = self::guardarEnCRM(
+        [$agenteAsignado, $clienteId, $esNuevo] = self::guardarEnCRM(
             nombre: $nombre, correo: $correo, telefono: $telefono, nacimiento: $nacimiento,
             ramo: $ramo, tipoVeh: $tipoVeh, marca: $marca, submarca: $submarca,
             modelo: $modelo, version: $version, anio: $anio, domicilio: $domicilio, cp: $cp,
@@ -156,6 +226,14 @@ class VidaSolicitudController
             empresa: $empresa, giroEmp: $giroEmp, empleados: $empleados, servicios: $servicios,
             comentarios: $comentarios, numUnidades: $numUnidades, tipoFlota: $tipoFlota
         );
+
+        // ── Avisar en tiempo real al asesor que le cayó el cliente ─────────────
+        // Solo para leads nuevos (si ya existía el correo, no se duplica el aviso).
+        // El navbar del CRM hace polling cada 8s, así que el asesor lo ve casi
+        // de inmediato sin tener que recargar la página.
+        if ($esNuevo && $agenteAsignado) {
+            self::notificarAsesorAsignado($agenteAsignado, $clienteId, $nombre, $telefono, $ramo, $vehiculoCampana);
+        }
 
         // ── Guardar en vida_solicitudes (log histórico) ────────────────────────
         self::guardarEnSolicitudes(
@@ -206,6 +284,23 @@ class VidaSolicitudController
                 if ($asesorPhone) {
                     self::waSendText($asesorPhone, $msg, $waPid, $waToken);
                 }
+
+                // Además del aviso al ATC general (arriba), se manda el mismo
+                // mensaje directo al celular del asesor que quedó asignado,
+                // si lo tiene registrado en su perfil.
+                if ($esNuevo && $agenteAsignado) {
+                    try {
+                        $dbAsesor = Connection::getConnection();
+                        $telAsesor = $dbAsesor->prepare('SELECT telefono FROM agentes WHERE id = ? LIMIT 1');
+                        $telAsesor->execute([$agenteAsignado]);
+                        $telAsesorValor = $telAsesor->fetchColumn();
+                        if ($telAsesorValor) {
+                            self::waSendText((string) $telAsesorValor, $msg, $waPid, $waToken);
+                        }
+                    } catch (\Throwable $e) {
+                        error_log('WA notify asesor error: ' . $e->getMessage());
+                    }
+                }
             }
         } catch (\Throwable $e) {
             error_log('WA notify error: ' . $e->getMessage());
@@ -220,6 +315,9 @@ class VidaSolicitudController
 
     // ── Guardar en tabla clientes (CRM) con agente por menor carga ────────────
 
+    /**
+     * @return array{0:int,1:int,2:bool} [agenteId, clienteId, esNuevo]
+     */
     private static function guardarEnCRM(
         string $nombre, string $correo, string $telefono, string $nacimiento,
         string $ramo, string $tipoVeh, string $marca, string $submarca,
@@ -227,7 +325,7 @@ class VidaSolicitudController
         string $edadGmm, string $depGmm, string $hospitales,
         string $empresa, string $giroEmp, string $empleados, string $servicios,
         string $comentarios, string $numUnidades, string $tipoFlota
-    ): int {
+    ): array {
         try {
             $db = Connection::getConnection();
 
@@ -237,7 +335,7 @@ class VidaSolicitudController
                 $st->execute([$correo]);
                 $existente = $st->fetch(\PDO::FETCH_ASSOC);
                 if ($existente) {
-                    return (int)($existente['agente_id'] ?? 0);
+                    return [(int)($existente['agente_id'] ?? 0), (int)$existente['id'], false];
                 }
             }
 
@@ -246,7 +344,7 @@ class VidaSolicitudController
                 "SELECT a.id
                  FROM agentes a
                  LEFT JOIN clientes c ON c.agente_id = a.id
-                 WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
+                 WHERE a.rol = 'asesor' AND COALESCE(a.activo,1) = 1
                  GROUP BY a.id
                  ORDER BY COUNT(c.id) ASC
                  LIMIT 1"
@@ -256,7 +354,7 @@ class VidaSolicitudController
 
             if (!$agenteId) {
                 error_log('[VidaSolicitudController] No hay agentes activos para asignar.');
-                return 0;
+                return [0, 0, true];
             }
 
             // Descomponer nombre completo (los formularios públicos usan un solo campo)
@@ -299,11 +397,51 @@ class VidaSolicitudController
             $places = implode(', ', array_fill(0, count($datos), '?'));
             $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
 
-            return $agenteId;
+            $clienteId = (int) $db->lastInsertId();
+
+            return [$agenteId, $clienteId, true];
 
         } catch (\Throwable $e) {
             error_log('[VidaSolicitudController] Error guardando en CRM: ' . $e->getMessage());
-            return 0;
+            return [0, 0, true];
+        }
+    }
+
+    // ── Notificación in-app al asesor asignado (tiempo casi real) ─────────────
+    //
+    // El navbar del CRM (public/js/notificaciones-navbar.js) consulta
+    // /api/notificaciones cada 8 segundos, así que el asesor ve aparecer
+    // este aviso —con sonido y badge— sin tener que recargar la página.
+
+    private static function notificarAsesorAsignado(
+        int $agenteId, int $clienteId, string $nombre, string $telefono,
+        string $ramo, string $vehiculoCampana
+    ): void {
+        try {
+            $ramoLabel = match ($ramo) {
+                'gmm'      => 'Gastos Médicos Mayores',
+                'empresas' => 'Seguros Empresariales',
+                'autos'    => match ($vehiculoCampana) {
+                    'moto'     => 'Seguro de Moto',
+                    'flotilla' => 'Seguro de Flotilla',
+                    default    => 'Seguro de Auto',
+                },
+                default    => 'Seguro de Vida',
+            };
+
+            $titulo  = '🆕 Nuevo cliente asignado — ' . $ramoLabel;
+            $mensaje = trim($nombre) . ($telefono ? ' · ' . $telefono : '')
+                     . '. Te fue asignado automáticamente, contáctalo cuanto antes.';
+
+            (new NotificacionModel())->crear(
+                $agenteId,
+                'sistema',
+                $titulo,
+                $mensaje,
+                $clienteId ? "cliente:{$clienteId}" : null
+            );
+        } catch (\Throwable $e) {
+            error_log('[VidaSolicitudController] Error creando notificación in-app: ' . $e->getMessage());
         }
     }
 
@@ -354,14 +492,14 @@ class VidaSolicitudController
                 "INSERT INTO vida_solicitudes
                     (nombre, correo, telefono, fecha_preferida, ramo, edad, dependientes,
                      comentarios, marca, modelo, version, anio, tipo_vehiculo,
-                     domicilio, cp, hospitales)
+                     domicilio, cp, hospitales, submarca)
                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([
                 $nombre, $correo ?: null, $telefono, $fechaPref, $ramo,
                 $edadGmm ?: null, $depGmm ?: 0, $comentarios ?: null,
-                $marca ?: null, $submarca ?: null, $modelo ?: null, $version ?: null,
+                $marca ?: null, $modelo ?: null, $version ?: null,
                 $anio ?: null, $tipoVeh ?: null, $domicilio ?: null, $cp ?: null,
-                $hospitales ?: null,
+                $hospitales ?: null, $submarca ?: null,
             ]);
         } catch (\Throwable $e) {
             error_log('[VidaSolicitudController] DB error vida_solicitudes: ' . $e->getMessage());
