@@ -49,11 +49,14 @@ class MetaLeadsService
                 return;
             }
 
-            $token = self::config('meta_page_access_token');
-            if ($token === '') {
-                error_log('[MetaLeadsService] meta_page_access_token no configurado.');
-                return;
-            }
+            $token = getenv('META_PAGE_ACCESS_TOKEN') ?: $_ENV['META_PAGE_ACCESS_TOKEN'] ?? '';
+if ($token === '') {
+    $token = self::config('meta_page_access_token');
+}
+if ($token === '') {
+    error_log('[MetaLeadsService] meta_page_access_token no configurado.');
+    return;
+}
 
             $datosLead = self::descargarLead($leadgenId, $token);
             if ($datosLead === null) {
