@@ -93,6 +93,8 @@ $router->add('GET', '/chat', fn() => require view('partials/_chat.php'));
 $router->add('POST', '/telegram/webhook', fn() => require view('public/telegram_bot.php'));
 $router->add('GET',  '/whatsapp/webhook', fn() => require ROOT . '/public/whatsapp/whatsapp_webhook.php');
 $router->add('POST', '/whatsapp/webhook', fn() => require ROOT . '/public/whatsapp/whatsapp_webhook.php');
+$router->add('GET',  '/meta/webhook',     fn() => require ROOT . '/public/meta/meta_webhook.php');
+$router->add('POST', '/meta/webhook',     fn() => require ROOT . '/public/meta/meta_webhook.php');
 
 // ── App — asesor ──────────────────────────────────────────────────────────────
 $router->add('GET',  '/dashboard',        fn() => require view('dashboard/index.php'));
