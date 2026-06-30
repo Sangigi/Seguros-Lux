@@ -49,14 +49,11 @@ class MetaLeadsService
                 return;
             }
 
-            $token = getenv('META_PAGE_ACCESS_TOKEN') ?: $_ENV['META_PAGE_ACCESS_TOKEN'] ?? '';
-if ($token === '') {
-    $token = self::config('meta_page_access_token');
-}
-if ($token === '') {
-    error_log('[MetaLeadsService] meta_page_access_token no configurado.');
-    return;
-}
+            $token = self::config('meta_page_access_token');
+            if ($token === '') {
+                error_log('[MetaLeadsService] meta_page_access_token no configurado.');
+                return;
+            }
 
             $datosLead = self::descargarLead($leadgenId, $token);
             if ($datosLead === null) {
@@ -110,7 +107,7 @@ if ($token === '') {
         curl_close($ch);
 
         if ($response === false || $httpCode >= 400) {
-            error_log("[MetaLeadsService] Graph API error (HTTP {$httpCode}) para leadgen_id={$leadgenId}: " . substr((string)$response, 0, 500));
+            error_log("[MetaLeadsService] Graph API error (HTTP {$httpCode}): " . substr((string)$response, 0, 500));
             return null;
         }
 
@@ -179,7 +176,7 @@ if ($token === '') {
     /**
      * El ramo del lead se define por mapeo manual form_id → ramo guardado en
      * `configuracion` (clave meta_form_ramo_<formId>). Si no hay mapeo,
-     * cae a 'vida' por defecto, igual que el formulario propio.
+     * cae a 'autos' por defecto (el enfoque principal de campaña actual).
      */
     private static function resolverRamo(string $formId, array $campos): string
     {
@@ -189,7 +186,7 @@ if ($token === '') {
                 return $mapeo;
             }
         }
-        return $campos['empresa'] !== '' ? 'empresas' : 'vida';
+        return $campos['empresa'] !== '' ? 'empresas' : 'autos';
     }
 
     // ── Guardar en CRM con agente por menor carga ─────────────────────────────
@@ -222,7 +219,7 @@ if ($token === '') {
             "SELECT a.id
              FROM agentes a
              LEFT JOIN clientes c ON c.agente_id = a.id
-             WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
+             WHERE a.rol = 'asesor' AND COALESCE(a.activo,1) = 1
              GROUP BY a.id
              ORDER BY COUNT(c.id) ASC
              LIMIT 1"
@@ -358,7 +355,7 @@ if ($token === '') {
 
             (new NotificacionModel())->crear(
                 $agenteId,
-                'lead_meta',
+                'sistema',
                 $titulo,
                 $mensaje,
                 (string) $clienteId
