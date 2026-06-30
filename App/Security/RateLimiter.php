@@ -19,37 +19,37 @@ class RateLimiter
     // ── API pública ──────────────────────────────────────────────────────────
 
     /** true → rechazar el intento (límite superado). */
-    public static function tooManyAttempts(string $correo, string $ip): bool
-    {
+    public static function tooManyAttempts(
+        string $correo,
+        string $ip,
+        int $maxAttempts = self::MAX_ATTEMPTS,
+        int $windowSec = self::WINDOW_SEC
+    ): bool {
         $data = self::read(self::key($correo, $ip));
         if ($data === null) return false;
 
         // Ventana expirada → resetear
-        if ((time() - $data['first_at']) > self::WINDOW_SEC) {
+        if ((time() - $data['first_at']) > $windowSec) {
             self::erase(self::key($correo, $ip));
             return false;
         }
 
-        return $data['attempts'] >= self::MAX_ATTEMPTS;
+        return $data['attempts'] >= $maxAttempts;
     }
 
     /** Registra un intento fallido. */
-    public static function hit(string $correo, string $ip): void
+    public static function hit(string $correo, string $ip, int $windowSec = self::WINDOW_SEC): void
     {
         $k    = self::key($correo, $ip);
         $data = self::read($k);
 
-        if ($data === null || (time() - $data['first_at']) > self::WINDOW_SEC) {
+        if ($data === null || (time() - $data['first_at']) > $windowSec) {
             $data = ['attempts' => 1, 'first_at' => time()];
         } else {
             $data['attempts']++;
-            // Lockout extensible: reinicia la ventana en cada intento durante el bloqueo
-            if ($data['attempts'] >= self::MAX_ATTEMPTS) {
-                $data['first_at'] = time();
-            }
         }
 
-        self::store($k, $data);
+        self::store($k, $data, $windowSec);
 
         SecurityLogger::log('login_failed', [
             'correo'   => self::maskEmail($correo),
@@ -116,10 +116,10 @@ class RateLimiter
         return self::fileRead($key);
     }
 
-    private static function store(string $key, array $data): void
+    private static function store(string $key, array $data, int $windowSec = self::WINDOW_SEC): void
     {
         if ($redis = self::redis()) {
-            $redis->setex($key, self::WINDOW_SEC, json_encode($data));
+            $redis->setex($key, $windowSec, json_encode($data));
             return;
         }
         self::fileWrite($key, $data);
