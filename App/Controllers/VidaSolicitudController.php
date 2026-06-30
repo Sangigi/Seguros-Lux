@@ -42,10 +42,21 @@ class VidaSolicitudController
         }
 
         // ── Rate limiting por IP (formulario público, sin sesión) ─────────────
-        // Reutiliza el RateLimiter existente: clave fija 'publica' + IP.
-        // Límite: 5 solicitudes / 15 min por IP. Mismo comportamiento que el login.
+        // IMPORTANTE: el RateLimiter original fue diseñado para bloquear fuerza
+        // bruta de login (5 intentos fallidos / 15 min, clave correo+IP). Antes,
+        // este endpoint lo reutilizaba con la clave fija 'publica', lo que
+        // significa que TODAS las personas que llenan el formulario desde la
+        // misma IP (oficina, WiFi compartido, NAT de un operador móvil, el
+        // webview de Facebook/Instagram Ads) comparten el mismo contador.
+        // Con tráfico de campaña era fácil que la 6ª persona en 15 minutos
+        // recibiera 429 y el formulario "no guardara nada" sin que se notara,
+        // porque cada submit exitoso también sumaba al contador de bloqueo.
+        //
+        // Fix: clave propia ('lead_form') + límite mucho más alto, pensado
+        // para anuncios (muchas personas distintas, misma IP compartida), no
+        // para bloquear intentos fallidos de un solo usuario.
         $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-        if (RateLimiter::tooManyAttempts('publica', $ip)) {
+        if (RateLimiter::tooManyAttempts('lead_form', $ip, maxAttempts: 30, windowSec: 600)) {
             SecurityLogger::log('public_form_rate_limited', ['ip' => $ip]);
             http_response_code(429);
             echo json_encode([
@@ -54,7 +65,7 @@ class VidaSolicitudController
             ]);
             return;
         }
-        RateLimiter::hit('publica', $ip);
+        RateLimiter::hit('lead_form', $ip);
 
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
