@@ -374,27 +374,58 @@ class VidaSolicitudController
             $apellidoPaterno = $partes[1] ?? '';
             $apellidoMaterno = $partes[2] ?? '';
 
+            // IMPORTANTE: la tabla `clientes` en producción tiene muchas columnas
+            // NOT NULL sin DEFAULT (apellido_paterno, apellido_materno,
+            // fecha_nacimiento, correo, sexo, estado_civil, calle, colonia,
+            // ciudad, estado, codigo_postal, marca, modelo, anio_vehiculo,
+            // recien_comprado, asegurado, tiempo_compra, fecha_cita, hora_cita).
+            // Los formularios públicos (campaña vehicular, vida, gmm, empresas)
+            // no piden todos esos datos. Antes, cuando faltaba alguno, el INSERT
+            // lanzaba una excepción de "Column cannot be null" que el catch de
+            // abajo silenciaba — el usuario veía "solicitud enviada" pero el
+            // cliente JAMÁS se guardaba en la tabla `clientes`.
+            //
+            // Fix: se rellenan TODAS las columnas NOT NULL con un valor por
+            // defecto razonable cuando el dato no vino en el formulario, para
+            // que el INSERT nunca falle por esta causa. Los placeholders usan
+            // 'Pendiente' / fechas neutras para que sea evidente en el CRM que
+            // el asesor debe completar esa info al contactar al cliente.
             $datos = [
-                'nombre'           => $primerNombre,
-                'apellido_paterno' => $apellidoPaterno,
-                'apellido_materno' => $apellidoMaterno,
-                'correo'           => $correo ?: null,
-                'telefono'         => $telefono,
-                'fecha_nacimiento' => $nacimiento ?: null,
-                'codigo_postal'    => $cp ?: null,
-                'ramo'             => $ramo,
-                'agente_id'        => $agenteId,
-                'estado_cliente'   => 'nuevo',
-                'asegurado'        => 'no',
+                'nombre'              => $primerNombre,
+                'apellido_paterno'    => $apellidoPaterno !== '' ? $apellidoPaterno : 'Pendiente',
+                'apellido_materno'    => $apellidoMaterno !== '' ? $apellidoMaterno : 'Pendiente',
+                'fecha_nacimiento'    => $nacimiento ?: '2000-01-01',
+                'correo'              => $correo ?: '0@pendiente.com',
+                'telefono'            => $telefono,
+                'sexo'                => 'masculino', // placeholder: no se pregunta en formularios públicos
+                'estado_civil'        => 'Pendiente',
+                'calle'               => $domicilio ?: 'Pendiente',
+                'colonia'             => 'Pendiente',
+                'ciudad'              => 'Pendiente',
+                'estado'              => 'cdmx', // placeholder válido del ENUM; se ajusta al contactar
+                'codigo_postal'       => $cp ?: '00000',
+                'marca'               => $marca ?: 'Pendiente',
+                'modelo'              => $modelo ?: 'Pendiente',
+                'submarca'            => $submarca ?: null,
+                'version'             => $version ?: null,
+                'anio_vehiculo'       => $anio ? (int)$anio : (int)date('Y'),
+                'tipo_vehiculo'       => in_array($tipoVeh, ['auto','suv_camioneta','pickup','moto','deportivo','electrico','van','otro'], true)
+                                            ? $tipoVeh : 'auto',
+                'recien_comprado'     => 'no',
+                'asegurado'           => 'no',
+                'tiempo_compra'       => 'solo_cotizando',
+                'fecha_cita'          => date('Y-m-d', strtotime('+2 days')),
+                'hora_cita'           => '10:00:00',
+                'ramo'                => $ramo,
+                'agente_id'           => $agenteId,
+                'estado_cliente'      => 'nuevo',
             ];
 
             if ($ramo === 'autos') {
-                $modeloCompleto      = trim("{$submarca} {$modelo} {$version}");
-                $datos['marca']         = $marca          ?: null;
-                $datos['modelo']        = $modeloCompleto ?: null;
-                $datos['anio_vehiculo'] = $anio           ? (int)$anio : null;
-                $datos['tipo_vehiculo'] = $tipoVeh        ?: null;
-                $datos['calle']         = $domicilio      ?: null;
+                $modeloCompleto = trim("{$submarca} {$modelo} {$version}");
+                if ($modeloCompleto !== '') {
+                    $datos['modelo'] = $modeloCompleto;
+                }
             }
 
             if ($ramo === 'empresas') {
