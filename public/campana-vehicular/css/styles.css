@@ -133,29 +133,11 @@ ul { list-style: none; }
 .navbar-logo {
   display: flex;
   align-items: center;
-  gap: 10px;
   text-decoration: none;
 }
 .navbar-logo img {
   height: 40px;
   width: auto;
-}
-.navbar-logo-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gold-dark);
-}
-.navbar-logo span:not(.navbar-logo-fallback) {
-  font-family: 'Playfair Display', serif;
-  font-size: 1.4rem;
-  font-weight: 900;
-  color: var(--navy);
-  letter-spacing: -0.01em;
-}
-.navbar-logo span:not(.navbar-logo-fallback) em {
-  font-style: normal;
-  color: var(--gold-dark);
 }
 .navbar-cta {
   display: flex;
