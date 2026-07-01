@@ -6,6 +6,7 @@ use App\Services\MailQueue;
 use App\Security\RateLimiter;
 use App\Security\SecurityLogger;
 use App\Models\NotificacionModel;
+use App\Models\ClientModel;
 use Database\Connection;
 
 $__crmAutoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
@@ -237,6 +238,29 @@ class VidaSolicitudController
             empresa: $empresa, giroEmp: $giroEmp, empleados: $empleados, servicios: $servicios,
             comentarios: $comentarios, numUnidades: $numUnidades, tipoFlota: $tipoFlota
         );
+
+        // ── Guardar el detalle de la solicitud como nota del cliente ───────────
+        // Antes, todo lo que el cliente contestaba en el formulario (si ya
+        // tiene seguro, qué quiere hacer, cuándo vence su póliza, cómo prefiere
+        // pagar, etc.) solo se mandaba por correo/WhatsApp y se perdía: la
+        // tabla `clientes` no tiene columnas para esos datos y nunca quedaban
+        // guardados en el CRM. Ahora se guarda como nota (tabla `notas`, mismo
+        // sistema que usan los asesores manualmente) para que quede en el
+        // historial del cliente sin importar el ramo o el formulario de origen.
+        if ($clienteId && $comentarios !== '') {
+            try {
+                $origenLabel = $vehiculoCampana !== ''
+                    ? 'Formulario campaña vehicular (seguroslux.mx/campana-vehicular)'
+                    : 'Formulario público de cotización';
+                (new ClientModel())->addNota(
+                    $clienteId,
+                    $agenteAsignado ?: 0,
+                    "📋 {$origenLabel}:\n{$comentarios}"
+                );
+            } catch (\Throwable $e) {
+                error_log('[VidaSolicitudController] Error guardando nota del cliente: ' . $e->getMessage());
+            }
+        }
 
         // ── Avisar en tiempo real al asesor que le cayó el cliente ─────────────
         // Solo para leads nuevos (si ya existía el correo, no se duplica el aviso).
