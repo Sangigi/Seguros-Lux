@@ -170,7 +170,8 @@ class VidaSolicitudController
                 } : null,
             ]);
             if ($detalleCampana) {
-                $comentarios = trim($comentarios . ($comentarios ? "\n" : '') . implode(' · ', $detalleCampana));
+                $listaDetalle = implode("\n", array_map(static fn($linea) => "• {$linea}", $detalleCampana));
+                $comentarios = trim($comentarios . ($comentarios ? "\n" : '') . $listaDetalle);
             }
         }
 
