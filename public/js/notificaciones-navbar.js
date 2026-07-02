@@ -76,11 +76,18 @@
     function clienteUrlDesdeReferencia(referencia) {
         if (!referencia) return null;
         const ref = String(referencia).trim();
-        // La referencia puede ser un id de cliente puro ("123") o traer
-        // prefijo de otro tipo de recurso ("cotizacion:123"). Solo armamos
-        // el link cuando es un id de cliente directo.
-        if (/^\d+$/.test(ref)) return '/cliente/' + ref;
-        return null;
+        // La referencia llega en distintos formatos según quién crea la
+        // notificación: id puro ("123"), prefijo de cliente ("cliente:123")
+        // o de otro recurso ("cotizacion:123"). Solo armamos el link cuando
+        // se puede identificar claramente un id de cliente.
+        let id = null;
+        if (/^\d+$/.test(ref)) {
+            id = ref;
+        } else {
+            const m = ref.match(/^cliente:(\d+)$/i);
+            if (m) id = m[1];
+        }
+        return id ? '/cliente/' + id : null;
     }
 
     function showNotifToast(item) {
@@ -322,6 +329,8 @@
             row.addEventListener('click', (e) => {
                 if (e.target === delBtn || delBtn.contains(e.target)) return;
                 if (!leida) marcarLeidaVisual(id, row);
+                const url = clienteUrlDesdeReferencia(it.referencia);
+                if (url) window.location.href = url;
             });
 
             listEl.appendChild(row);
