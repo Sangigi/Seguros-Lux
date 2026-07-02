@@ -1509,7 +1509,7 @@ $pageTitle=$nombreCompleto;
                     <div class="card-body">
                         <?php foreach ($notas as $nota): ?>
                         <div style="padding:10px 0;border-bottom:1px solid var(--border-color,#e5e7eb);font-size:13px;">
-                            <div><?php echo htmlspecialchars($nota['texto']); ?></div>
+                            <div style="white-space:pre-line;"><?php echo nl2br(htmlspecialchars($nota['texto'])); ?></div>
                             <div style="font-size:11px;color:var(--text-muted);margin-top:8px;"><?php echo date('d/m/Y H:i',strtotime($nota['fecha'])); ?><?php if (!empty($nota['agente_nombre'])): ?> · <?php echo htmlspecialchars($nota['agente_nombre']); ?><?php endif; ?></div>
                         </div>
                         <?php endforeach; ?>
