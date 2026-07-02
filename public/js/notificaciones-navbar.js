@@ -16,6 +16,10 @@
     const POLL_INTERVAL_MS = 8000;
     let lastKnownUnread = parseInt(panel.dataset.initialCount || '0', 10) || 0;
     let pollTimer = null;
+    // Ids de notificaciones ya mostradas como toast, para no repetir la
+    // tira si el polling vuelve a traer el mismo item (p. ej. al refrescar
+    // la lista con el panel abierto).
+    const toastedIds = new Set();
 
     function playChime() {
         try {
@@ -41,6 +45,111 @@
         setTimeout(() => { document.title = original; }, 4000);
     }
 
+    // ── Tira lateral (toast) de nuevo cliente/lead ───────────────────────
+    // Cuando el polling detecta que subió el contador de no leídas, se
+    // muestra una tira deslizante en el borde derecho de la pantalla con
+    // el título/mensaje de la(s) notificación(es) nueva(s). Se apila si
+    // llegan varias casi al mismo tiempo y se autodescarta sola.
+    const TOAST_DURATION_MS = 7000;
+    let toastContainer = null;
+
+    function getToastContainer() {
+        if (toastContainer && document.body.contains(toastContainer)) return toastContainer;
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'notifToastContainer';
+        toastContainer.style.cssText = [
+            'position:fixed',
+            'bottom:20px',
+            'right:20px',
+            'z-index:99999',
+            'display:flex',
+            'flex-direction:column-reverse', // los nuevos entran arriba de los previos, sin brincar los que ya están
+            'gap:10px',
+            'max-width:340px',
+            'width:calc(100% - 40px)',
+            'pointer-events:none',
+        ].join(';');
+        document.body.appendChild(toastContainer);
+        return toastContainer;
+    }
+
+    function clienteUrlDesdeReferencia(referencia) {
+        if (!referencia) return null;
+        const ref = String(referencia).trim();
+        // La referencia puede ser un id de cliente puro ("123") o traer
+        // prefijo de otro tipo de recurso ("cotizacion:123"). Solo armamos
+        // el link cuando es un id de cliente directo.
+        if (/^\d+$/.test(ref)) return '/cliente/' + ref;
+        return null;
+    }
+
+    function showNotifToast(item) {
+        const container = getToastContainer();
+        const url = clienteUrlDesdeReferencia(item.referencia);
+
+        const toast = document.createElement('div');
+        toast.className = 'notif-toast';
+        toast.style.cssText = [
+            'pointer-events:auto',
+            'cursor:pointer',
+            'background:linear-gradient(135deg,#1e293b,#0f172a)',
+            'border:1px solid rgba(243,195,50,.35)',
+            'border-left:4px solid #f3c332',
+            'border-radius:10px',
+            'padding:12px 14px',
+            'box-shadow:0 8px 24px rgba(0,0,0,.35)',
+            'color:#fff',
+            'font-family:inherit',
+            'transform:translateX(120%)',
+            'opacity:0',
+            'transition:transform .35s ease,opacity .35s ease',
+        ].join(';');
+
+        toast.innerHTML =
+            '<div style="display:flex;align-items:flex-start;gap:8px;">' +
+                '<span style="font-size:16px;line-height:1;flex-shrink:0;">🔔</span>' +
+                '<div style="flex:1;min-width:0;">' +
+                    '<div style="font-size:13px;font-weight:700;color:#f3c332;">' + escapeHtml(item.titulo || 'Nuevo aviso') + '</div>' +
+                    '<div style="font-size:12px;margin-top:3px;line-height:1.35;color:rgba(255,255,255,.9);">' + escapeHtml(item.mensaje || '') + '</div>' +
+                    (url ? '<div style="margin-top:6px;font-size:11px;font-weight:600;color:#93c5fd;">Ver cliente →</div>' : '') +
+                '</div>' +
+                '<button type="button" aria-label="Cerrar" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:13px;cursor:pointer;flex-shrink:0;line-height:1;padding:2px;">✕</button>' +
+            '</div>';
+
+        container.appendChild(toast);
+
+        // Entrada animada
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                toast.style.transform = 'translateX(0)';
+                toast.style.opacity   = '1';
+            });
+        });
+
+        let dismissTimer = null;
+        function dismiss() {
+            if (dismissTimer) clearTimeout(dismissTimer);
+            toast.style.transform = 'translateX(120%)';
+            toast.style.opacity   = '0';
+            setTimeout(() => toast.remove(), 350);
+        }
+
+        dismissTimer = setTimeout(dismiss, TOAST_DURATION_MS);
+
+        toast.addEventListener('click', (e) => {
+            const closeBtn = e.target.closest('button');
+            if (closeBtn) { dismiss(); return; }
+            // Click en la tira: si hay cliente asociado, ir directo a su
+            // detalle; si no, abrir el panel de notificaciones.
+            if (url) {
+                window.location.href = url;
+                return;
+            }
+            dismiss();
+            if (panel.hidden) btn.click();
+        });
+    }
+
     async function pollUnreadCount() {
         try {
             const r = await fetch('/api/notificaciones', { credentials: 'same-origin' });
@@ -57,6 +166,22 @@
                 // para que el lead nuevo aparezca sin que el asesor tenga
                 // que cerrar y volver a abrir el panel.
                 if (!panel.hidden) renderItems(d.items || []);
+
+                // Tira lateral: mostrar las notificaciones nuevas no leídas
+                // que aún no se hayan mostrado como toast (recién llegadas).
+                const nuevos = (d.items || []).filter((it) => {
+                    const noLeida = Number(it.leida) !== 1;
+                    return noLeida && !toastedIds.has(Number(it.id));
+                });
+                // Mostrar como máximo las más recientes que expliquen el
+                // incremento del contador, en orden cronológico.
+                nuevos
+                    .slice(0, unread - lastKnownUnread)
+                    .reverse()
+                    .forEach((it) => {
+                        toastedIds.add(Number(it.id));
+                        showNotifToast(it);
+                    });
             }
             lastKnownUnread = unread;
         } catch (_e) {
