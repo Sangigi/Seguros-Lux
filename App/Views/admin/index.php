@@ -629,6 +629,7 @@ $reporte     = $agentModel->getReporteFinanciero();
 $agLista     = $agentModel->getTodos();
 $asesores    = $agentModel->getSoloAsesores();
 $pipeline    = $agentModel->getPipeline();
+$leadMetrics = $agentModel->getLeadMetrics();
 $actividad   = $agentModel->getActividadEquipo(60, $filtroActAgente);
 $evolucion   = $agentModel->getEvolucionGlobal($filtroAgente);
 $vehiculos   = $agentModel->getTopVehiculos($filtroAgente);
@@ -780,6 +781,111 @@ function closeModal(id){document.getElementById(id)?.classList.remove('active');
     </div>
     <?php endforeach; ?>
 </div>
+
+<?php
+// ── Leads / clientes nuevos: totales por periodo + antes-y-después por asesor ─
+$lm  = $leadMetrics['totales'];
+$pct = static function (int $ahora, int $antes): string {
+    if ($antes === 0) return $ahora > 0 ? '+100%' : '±0%';
+    $d = round((($ahora - $antes) / $antes) * 100);
+    return ($d > 0 ? '+' : '') . $d . '%';
+};
+$badge = static function (int $ahora, int $antes): string {
+    if ($ahora > $antes) return 'success';
+    if ($ahora < $antes) return 'danger';
+    return 'neutral';
+};
+$arrow = static function (int $ahora, int $antes): string {
+    if ($ahora > $antes) return '▲';
+    if ($ahora < $antes) return '▼';
+    return '▬';
+};
+?>
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-header">
+        <h3 class="card-title">🆕 Leads / Clientes Nuevos</h3>
+        <span style="font-size:12px;color:var(--text-muted);">Control de entrada de leads por periodo y por asesor</span>
+    </div>
+    <div class="card-body">
+        <div class="kpi4" style="margin-bottom:20px;">
+            <div class="stat-card accent">
+                <div class="stat-card-value"><?php echo $lm['hoy']; ?></div>
+                <div class="stat-card-label">Hoy</div>
+                <div class="badge badge-<?php echo $badge($lm['hoy'], $lm['ayer']); ?>" style="margin-top:6px;font-size:11px;">
+                    <?php echo $arrow($lm['hoy'], $lm['ayer']); ?> vs. ayer (<?php echo $lm['ayer']; ?>)
+                </div>
+            </div>
+            <div class="stat-card info">
+                <div class="stat-card-value"><?php echo $lm['semana']; ?></div>
+                <div class="stat-card-label">Esta Semana</div>
+                <div class="badge badge-<?php echo $badge($lm['semana'], $lm['semana_pasada']); ?>" style="margin-top:6px;font-size:11px;">
+                    <?php echo $arrow($lm['semana'], $lm['semana_pasada']); ?> vs. semana pasada (<?php echo $lm['semana_pasada']; ?>)
+                </div>
+            </div>
+            <div class="stat-card warning">
+                <div class="stat-card-value"><?php echo $lm['quincena']; ?></div>
+                <div class="stat-card-label">Quincena Actual</div>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-card-value"><?php echo $lm['mes']; ?></div>
+                <div class="stat-card-label">Este Mes</div>
+                <div class="badge badge-<?php echo $badge($lm['mes'], $lm['mes_pasado']); ?>" style="margin-top:6px;font-size:11px;">
+                    <?php echo $arrow($lm['mes'], $lm['mes_pasado']); ?> vs. mes pasado (<?php echo $lm['mes_pasado']; ?>)
+                </div>
+            </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+        <table class="adt">
+            <thead>
+                <tr>
+                    <th>Asesor</th>
+                    <th>Ayer</th>
+                    <th>Hoy</th>
+                    <th>Δ diario</th>
+                    <th>Semana pasada</th>
+                    <th>Esta semana</th>
+                    <th>Δ semanal</th>
+                    <th>Mes</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($leadMetrics['por_asesor'] as $la): ?>
+                <?php
+                $ayerN = (int) $la['ayer']; $hoyN = (int) $la['hoy'];
+                $semP  = (int) $la['semana_pasada']; $semA = (int) $la['semana'];
+                ?>
+                <tr>
+                    <td><div style="display:flex;align-items:center;gap:8px;">
+                        <div class="ava"><?php echo strtoupper(substr($la['nombre'],0,1).substr($la['apellido'],0,1)); ?></div>
+                        <span style="font-weight:600;"><?php echo htmlspecialchars($la['nombre'].' '.$la['apellido']); ?></span>
+                    </div></td>
+                    <td><?php echo $ayerN; ?></td>
+                    <td><strong><?php echo $hoyN; ?></strong></td>
+                    <td>
+                        <span class="badge badge-<?php echo $badge($hoyN, $ayerN); ?>" style="font-size:11px;">
+                            <?php echo $arrow($hoyN, $ayerN); ?> <?php echo $pct($hoyN, $ayerN); ?>
+                        </span>
+                    </td>
+                    <td><?php echo $semP; ?></td>
+                    <td><strong><?php echo $semA; ?></strong></td>
+                    <td>
+                        <span class="badge badge-<?php echo $badge($semA, $semP); ?>" style="font-size:11px;">
+                            <?php echo $arrow($semA, $semP); ?> <?php echo $pct($semA, $semP); ?>
+                        </span>
+                    </td>
+                    <td><?php echo (int) $la['mes']; ?></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (empty($leadMetrics['por_asesor'])): ?>
+                <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:20px;">Sin asesores activos.</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
     <div class="card">
         <div class="card-header"><h3 class="card-title">Distribución por Ramo</h3></div>
