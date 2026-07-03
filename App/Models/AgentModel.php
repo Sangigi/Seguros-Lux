@@ -356,6 +356,55 @@ class AgentModel extends BaseModel
         return $this->db()->query($sql)->fetchAll();
     }
 
+    /**
+     * Métricas de leads/clientes nuevos para el panel de coordinación:
+     * totales por periodo (hoy, semana, quincena, mes) y un comparativo
+     * "antes vs. ahora" por asesor (ayer vs. hoy, semana pasada vs. esta
+     * semana) para detectar caídas o subidas de actividad a tiempo.
+     *
+     * Todo en una sola consulta agregada (nada de N+1 por asesor) usando
+     * SUM(CASE ...) por rango de fecha sobre fecha_registro.
+     */
+    public function getLeadMetrics(): array
+    {
+        $sql = "SELECT a.id, a.nombre, a.apellido,
+                       -- Totales del periodo actual
+                       SUM(DATE(c.fecha_registro) = CURDATE())                                              AS hoy,
+                       SUM(DATE(c.fecha_registro) = CURDATE() - INTERVAL 1 DAY)                              AS ayer,
+                       SUM(YEARWEEK(c.fecha_registro,1) = YEARWEEK(CURDATE(),1))                             AS semana,
+                       SUM(YEARWEEK(c.fecha_registro,1) = YEARWEEK(CURDATE(),1) - 1)                         AS semana_pasada,
+                       SUM(
+                           (DAY(CURDATE()) <= 15 AND DATE(c.fecha_registro) BETWEEN DATE_FORMAT(CURDATE(),'%Y-%m-01') AND DATE_FORMAT(CURDATE(),'%Y-%m-15'))
+                           OR
+                           (DAY(CURDATE()) > 15 AND DATE(c.fecha_registro) BETWEEN DATE_FORMAT(CURDATE(),'%Y-%m-16') AND LAST_DAY(CURDATE()))
+                       )                                                                                     AS quincena,
+                       SUM(YEAR(c.fecha_registro)=YEAR(CURDATE()) AND MONTH(c.fecha_registro)=MONTH(CURDATE())) AS mes,
+                       SUM(YEAR(c.fecha_registro)=YEAR(CURDATE() - INTERVAL 1 MONTH) AND MONTH(c.fecha_registro)=MONTH(CURDATE() - INTERVAL 1 MONTH)) AS mes_pasado
+                FROM agentes a
+                LEFT JOIN clientes c ON c.agente_id = a.id
+                WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
+                GROUP BY a.id, a.nombre, a.apellido
+                ORDER BY hoy DESC, semana DESC";
+
+        $porAsesor = $this->db()->query($sql)->fetchAll();
+
+        // Totales del equipo completo (suma de la tabla anterior).
+        $totales = [
+            'hoy' => 0, 'ayer' => 0, 'semana' => 0, 'semana_pasada' => 0,
+            'quincena' => 0, 'mes' => 0, 'mes_pasado' => 0,
+        ];
+        foreach ($porAsesor as $row) {
+            foreach ($totales as $k => $v) {
+                $totales[$k] += (int) ($row[$k] ?? 0);
+            }
+        }
+
+        return [
+            'totales'    => $totales,
+            'por_asesor' => $porAsesor,
+        ];
+    }
+
     public function getClientesPorAsesor(int $agenteId): array
     {
         $stmt = $this->db()->prepare(
