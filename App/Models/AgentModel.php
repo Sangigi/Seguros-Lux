@@ -452,7 +452,46 @@ class AgentModel extends BaseModel
         ];
     }
 
-    public function getClientesPorAsesor(int $agenteId): array
+    public function getOrigenClientesMes(): array
+    {
+        $resultado = ['formulario' => 0, 'manual' => 0];
+
+        // Buckets: "formulario" = landing propia / campañas / Meta Ads.
+        //          "manual"     = alta manual del asesor, o registros
+        //          sin `origen` clasificado (histórico / columna ausente).
+        $formularioTags = ['formulario', 'formulario_propio', 'formulario_campana', 'meta_lead_ads'];
+
+        try {
+            $stmt = $this->db()->query(
+                "SELECT origen, COUNT(*) AS total
+                 FROM clientes
+                 WHERE YEAR(fecha_registro) = YEAR(CURDATE()) AND MONTH(fecha_registro) = MONTH(CURDATE())
+                 GROUP BY origen"
+            );
+            foreach ($stmt->fetchAll() as $row) {
+                $origen = $row['origen'] ?? null;
+                if ($origen !== null && in_array($origen, $formularioTags, true)) {
+                    $resultado['formulario'] += (int) $row['total'];
+                } else {
+                    $resultado['manual'] += (int) $row['total'];
+                }
+            }
+        } catch (\Throwable) {
+            // La columna `origen` puede no existir en instalaciones antiguas;
+            // en ese caso no se puede distinguir el origen, se reporta todo
+            // como alta manual para no inventar datos.
+            try {
+                $stmt = $this->db()->query(
+                    "SELECT COUNT(*) AS total FROM clientes
+                     WHERE YEAR(fecha_registro) = YEAR(CURDATE()) AND MONTH(fecha_registro) = MONTH(CURDATE())"
+                );
+                $resultado['manual'] = (int) ($stmt->fetch()['total'] ?? 0);
+            } catch (\Throwable) {}
+        }
+
+        return $resultado;
+    }
+
     {
         $stmt = $this->db()->prepare(
             "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
