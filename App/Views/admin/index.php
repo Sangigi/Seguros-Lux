@@ -2,709 +2,2171 @@
 declare(strict_types=1);
 
 use App\Security\SessionManager;
-use App\Models\{CitaModel, ClientModel, HistorialModel};
+use App\Models\{AgentModel, CotizacionModel};
+use Database\Connection;
 
-SessionManager::requireAuth('/login');
+// Capturar cualquier excepción PHP en peticiones AJAX y devolver JSON legible
+// SIN filtrar detalles internos (stack trace, nombre de archivo, mensaje de BD).
+set_exception_handler(function(\Throwable $e) {
+    // Registrar siempre el detalle completo en el log del servidor
+    error_log('[admin exception] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
 
-$agenteId     = SessionManager::getAgentId();
-$ramo         = SessionManager::getRamo();
-$citaModel    = new CitaModel();
-$clienteModel = new ClientModel();
-$historialModel = new HistorialModel();
+    if (!headers_sent()) header('Content-Type: application/json');
+    $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+    if ($isPost) {
+        // JSON: solo un mensaje genérico, nunca detalles de BD o rutas internas
+        echo json_encode([
+            'ok'  => false,
+            'msg' => 'Error interno del servidor. Inténtalo de nuevo.',
+        ]);
+    } else {
+        // Vista HTML (navegación normal): mensaje genérico sin stacktrace
+        echo '<div style="background:#fee2e2;color:#7f1d1d;padding:20px;font-family:monospace;border-radius:8px;margin:20px;">
+              <b>Error interno.</b> Consulta el log del servidor para más detalles.</div>';
+    }
+    exit;
+});
 
-// ── AJAX ──────────────────────────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
-    header('Content-Type: application/json');
+SessionManager::requireRole('coordinador', '/login');
 
-    if ($_POST['accion'] === 'crear') {
-        $pCliente    = (int)($_POST['cliente_id']  ?? 0);
-        $pTipo       = trim($_POST['tipo']         ?? 'llamada');
-        $pFecha      = trim($_POST['fecha']        ?? '');
-        $pHora       = trim($_POST['hora']         ?? '');
-        $pComentarios= trim($_POST['comentarios']  ?? '');
+$agenteId    = SessionManager::getAgentId();
+$agente      = SessionManager::getAgentData();
+$isSuperadmin= SessionManager::isSuperadmin();
+$_agenteRol  = $agente['rol'] ?? 'coordinador';
 
-        if (!$pCliente || !$pFecha || !$pHora) {
-            echo json_encode(['ok'=>false,'msg'=>'Faltan campos requeridos.']); exit;
+$agentModel  = new AgentModel();
+$cotModel    = new CotizacionModel();
+
+// ── PASO 5 — PDF Checklist Emisión ────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf_checklist') {
+    $cotId = (int)($_GET['cotizacion_id'] ?? 0);
+    if (!$cotId) { header('Location: /admin?tab=emision'); exit; }
+
+    $db = Connection::getConnection();
+
+    $stCot = $db->prepare(
+        "SELECT c.id, c.folio, c.ramo, c.compania, c.tipo_cobertura,
+                c.periodicidad,
+                CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',COALESCE(cl.apellido_materno,'')) AS cliente_nombre,
+                CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre,
+                -- Detectar si es renovación por folio terminado en -R o tipo_cobertura que empiece con Renovación
+                (CASE WHEN c.folio LIKE '%-R' OR c.tipo_cobertura LIKE 'Renovación%' THEN 1 ELSE 0 END) AS es_renovacion,
+                -- Número de póliza anterior (extraído del tipo_cobertura \"Renovación - XXXXX\")
+                TRIM(REPLACE(c.tipo_cobertura, 'Renovación - ', '')) AS num_poliza_anterior
+         FROM cotizaciones c
+         JOIN clientes cl ON cl.id = c.cliente_id
+         JOIN agentes  a  ON a.id  = c.agente_id
+         WHERE c.id = ?"
+    );
+    $stCot->execute([$cotId]);
+    $cot = $stCot->fetch(\PDO::FETCH_ASSOC);
+    if (!$cot) { header('Location: /admin?tab=emision'); exit; }
+
+    $stDocs = $db->prepare(
+        "SELECT tipo_documento, nombre_original, nombre_archivo, subido_en
+         FROM cotizacion_archivos
+         WHERE cotizacion_id = ? AND eliminado_en IS NULL
+         ORDER BY subido_en ASC"
+    );
+    $stDocs->execute([$cotId]);
+    $docs = $stDocs->fetchAll(\PDO::FETCH_ASSOC);
+    $docsMap = [];
+    foreach ($docs as $d) {
+        $docsMap[$d['tipo_documento']] = $d;
+    }
+    if (!isset($docsMap['comprobante_pago'])) {
+        $syn = CotizacionModel::syntheticComprobantePagoDesdeTablaPagos($db, $cotId);
+        if ($syn) {
+            $docsMap['comprobante_pago'] = $syn;
         }
-        if (!$citaModel->clientePerteneceAAgente($pCliente, $agenteId)) {
-            echo json_encode(['ok'=>false,'msg'=>'Cliente no encontrado.']); exit;
-        }
-
-        $pMeetLink = trim($_POST['meet_link'] ?? '');
-        // FIX ramo: usar el ramo enviado por el formulario; cae al ramo de sesión si no viene
-        $pRamo = trim($_POST['ramo'] ?? '') ?: $ramo;
-        $nuevaId = $citaModel->crear($pCliente, $agenteId, $pTipo, $pFecha, $pHora, $pComentarios, $pRamo);
-        if ($pMeetLink && $nuevaId) {
-            \Database\Connection::getConnection()
-                ->prepare('UPDATE citas SET comentarios = CONCAT(COALESCE(comentarios,""), "\n🎥 Meet: ", ?) WHERE id = ?')
-                ->execute([$pMeetLink, $nuevaId]);
-        }
-        $historialModel->registrar($pCliente, $agenteId, 'cita', 'Cita programada — '.ucfirst($pTipo), "$pFecha a las $pHora. $pComentarios");
-        echo json_encode(['ok'=>true,'id'=>$nuevaId]); exit;
     }
 
-    if ($_POST['accion'] === 'estado') {
-        $pCitaId = (int)($_POST['cita_id'] ?? 0);
-        $pEstado = trim($_POST['estado']   ?? '');
-        if (!$pCitaId || !in_array($pEstado, ['programada','completada','cancelada'], true)) {
-            echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit;
+    if (!isset($docsMap['comprobante_pago'])) {
+        $stComp2 = $db->prepare(
+            "SELECT nombre_original, nombre_archivo, creado_en AS subido_en
+             FROM cotizacion_comprobantes_pago
+             WHERE cotizacion_id = ? AND eliminado_en IS NULL
+             ORDER BY creado_en DESC LIMIT 1"
+        );
+        $stComp2->execute([$cotId]);
+        $comp2 = $stComp2->fetch(\PDO::FETCH_ASSOC);
+        if ($comp2) {
+            $docsMap['comprobante_pago'] = $comp2;
         }
-        $ok = $citaModel->updateEstado($pCitaId, $agenteId, $pEstado);
-        echo json_encode(['ok'=>$ok]); exit;
     }
+    
+    $stCk = $db->prepare(
+        "SELECT doc_tipo, estado, nota, actualizado_en AS revisado_en
+         FROM emi_checklist
+         WHERE cotizacion_id = ?"
+    );
+    $stCk->execute([$cotId]);
+    $ck = $stCk->fetchAll(\PDO::FETCH_ASSOC);
+    $ckMap = [];
+    foreach ($ck as $c) $ckMap[$c['doc_tipo']] = $c;
 
-    echo json_encode(['ok'=>false,'msg'=>'Acción desconocida.']); exit;
-}
+    $esRenovacion = !empty($cot['es_renovacion']);
+    $numPolizaAnterior = $cot['num_poliza_anterior'] ?? '';
+    // Si es renovación, el cliente ya tiene sus documentos personales de la emisión anterior
+    // Solo se requiere la póliza nueva y el comprobante de pago
+    $REQS_NUEVA = [
+        'autos'          => ['ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2','comprobante_pago'],
+        'vida'           => ['ine','comprobante_dom','comprobante_pago'],
+        'gastos_medicos' => ['ine','comprobante_dom','comprobante_pago'],
+    ];
+    $REQS_RENOVACION = [
+        'autos'          => ['comprobante_pago'],
+        'vida'           => ['comprobante_pago'],
+        'gastos_medicos' => ['comprobante_pago'],
+    ];
+    $REQS = $esRenovacion ? $REQS_RENOVACION : $REQS_NUEVA;
+    $tipoLabel = [
+        'ine'=>'INE','comprobante_dom'=>'Comprobante de domicilio','tarjeta_circulacion'=>'Tarjeta de circulación',
+        'foto_coche_1'=>'Foto vehículo 1','foto_coche_2'=>'Foto vehículo 2','foto_coche_3'=>'Foto vehículo 3',
+        'foto_coche_4'=>'Foto vehículo 4','foto_coche_5'=>'Foto vehículo 5',
+        'comprobante_pago'=>'Comprobante de pago','constancia_fiscal'=>'Constancia fiscal',
+    ];
+    $ramo = $cot['ramo'] ?: 'autos';
+    $requeridos = $REQS[$ramo] ?? $REQS['autos'];
+    $all = array_values(array_unique(array_merge($requeridos, array_keys($docsMap))));
 
-// ── Mes activo ────────────────────────────────────────────────────────────
-$hoy     = new DateTime();
-$anio    = isset($_GET['anio']) ? (int)$_GET['anio'] : (int)$hoy->format('Y');
-$mes     = isset($_GET['mes'])  ? (int)$_GET['mes']  : (int)$hoy->format('n');
-if ($mes<1)  { $mes=12; $anio--; }
-if ($mes>12) { $mes=1;  $anio++; }
-
-$diasEnMes = cal_days_in_month(CAL_GREGORIAN, $mes, $anio);
-$fechaIni  = sprintf('%04d-%02d-01',   $anio, $mes);
-$fechaFin  = sprintf('%04d-%02d-%02d', $anio, $mes, $diasEnMes);
-$primerDia = new DateTime("$anio-$mes-01");
-$diaSemana = (int)$primerDia->format('w');
-
-$nombresMes  = [1=>'Enero',2=>'Febrero',3=>'Marzo',4=>'Abril',5=>'Mayo',6=>'Junio',7=>'Julio',8=>'Agosto',9=>'Septiembre',10=>'Octubre',11=>'Noviembre',12=>'Diciembre'];
-$mesesCortos = [1=>'Ene',2=>'Feb',3=>'Mar',4=>'Abr',5=>'May',6=>'Jun',7=>'Jul',8=>'Ago',9=>'Sep',10=>'Oct',11=>'Nov',12=>'Dic'];
-
-// ── Filtro de ramo opcional (GET ?ramo=) — null = todos ───────────────────
-$ramosValidos   = ['autos','vida','gastos_medicos','empresas'];
-$ramoFiltro     = in_array($_GET['ramo'] ?? '', $ramosValidos, true) ? $_GET['ramo'] : null;
-$ramoLabels = [
-    'autos'          => ['icon'=>'🚗', 'label'=>'Autos',       'color'=>'#0ea5e9'],
-    'vida'           => ['icon'=>'❤️', 'label'=>'Vida',        'color'=>'#c9a227'],
-    'gastos_medicos' => ['icon'=>'🏥', 'label'=>'GMM',         'color'=>'#10b981'],
-    'empresas'       => ['icon'=>'🏢', 'label'=>'Empresas',    'color'=>'#8b5cf6'],
-];
-
-$citas        = $citaModel->getByMesYRamo($agenteId, $fechaIni, $fechaFin, $ramoFiltro);
-$proximas     = $citaModel->getProximasYRamo($agenteId, $ramoFiltro);
-$stats        = $citaModel->getStatsByMes($agenteId, $fechaIni, $fechaFin, $ramoFiltro);
-$clientesList = $clienteModel->getParaSelector($agenteId);
-
-$citasPorDia = [];
-foreach ($citas as $c) {
-    $dia = (int)date('j', strtotime($c['fecha']));
-    $citasPorDia[$dia][] = $c;
-}
-
-$mesPrev = $mes===1?12:$mes-1; $anioPrev = $mes===1?$anio-1:$anio;
-$mesSig  = $mes===12?1:$mes+1; $anioSig  = $mes===12?$anio+1:$anio;
-
-$citasJSON = json_encode($citas);
-$pageTitle = 'Citas';
-
-// ── Respuesta AJAX para navegación de mes sin recarga ─────────────────────
-if (isset($_GET['_ajax'])) {
-    header('Content-Type: application/json');
-    $hoyParts = explode('-', $hoy->format('Y-m-d'));
-    echo json_encode([
-        'diasEnMes' => $diasEnMes,
-        'primerDia' => $diaSemana,
-        'hoy'       => $hoy->format('Y-m-d'),
-        'citas'     => $citas,
-        'proximas'  => $proximas,
-        'stats'     => [
-            'total'       => (int)$stats['total'],
-            'programadas' => (int)$stats['programadas'],
-            'completadas' => (int)$stats['completadas'],
-            'canceladas'  => (int)$stats['canceladas'],
-        ],
-    ]);
+    header('Content-Type: text/html; charset=utf-8');
+    ?>
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/logo.png">
+    <title>Checklist <?= $esRenovacion ? 'Renovación' : 'de Emisión' ?> — <?= htmlspecialchars($cot['folio'] ?? ('#'.$cotId)) ?></title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1e293b; background: #f8fafc; }
+        .toolbar-screen { background: #0a0f1c; padding: 10px 32px; display: flex; gap: 12px; align-items: center; border-bottom: 3px solid #f3c332; }
+        .toolbar-screen button { padding: 8px 20px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; transition: opacity .15s; }
+        .toolbar-screen button:hover { opacity: .85; }
+        .btn-print { background: #f3c332; color: #0a0f1c; }
+        .btn-back  { background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.2) !important; }
+        .toolbar-screen span { font-size: 11px; color: rgba(255,255,255,.5); margin-left: 8px; }
+        .doc-header { background: linear-gradient(135deg, #0a0f1c 0%, #1a2744 100%); padding: 28px 40px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+        .brand { display: flex; align-items: center; gap: 16px; }
+        .brand-text h1 { font-size: 22px; font-weight: 900; color: #fff; letter-spacing: -.5px; }
+        .brand-text p { font-size: 11px; color: rgba(255,255,255,.45); letter-spacing: .8px; text-transform: uppercase; margin-top: 2px; }
+        .doc-meta { text-align: right; }
+        .doc-meta .folio-badge { display: inline-block; background: #f3c332; color: #0a0f1c; font-family: 'Courier New', monospace; font-size: 14px; font-weight: 900; padding: 6px 16px; border-radius: 6px; letter-spacing: .5px; margin-bottom: 6px; }
+        .doc-meta p { font-size: 11px; color: rgba(255,255,255,.55); line-height: 1.6; }
+        .info-strip { background: #fff; border-bottom: 2px solid #f3c332; padding: 16px 40px; display: flex; gap: 40px; flex-wrap: wrap; }
+        .info-strip .item { display: flex; flex-direction: column; gap: 2px; }
+        .info-strip .label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .6px; }
+        .info-strip .value { font-size: 13px; font-weight: 600; color: #0f172a; }
+        .content { padding: 28px 40px; }
+        .section-title { font-size: 11px; font-weight: 800; color: #f3c332; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 2px solid #f3c332; display: flex; align-items: center; gap: 8px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+        thead tr { background: linear-gradient(90deg, #0a0f1c, #1a2744); }
+        thead th { padding: 11px 14px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: rgba(255,255,255,.85); }
+        tbody tr:nth-child(even) { background: #f8fafc; }
+        tbody tr:hover { background: #fef9e7; }
+        tbody td { padding: 10px 14px; border-bottom: 1px solid #e2e8f0; font-size: 12px; vertical-align: middle; }
+        tbody tr:last-child td { border-bottom: none; }
+        .pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; }
+        .pill-ok   { background: #dcfce7; color: #166534; }
+        .pill-pend { background: #f1f5f9; color: #334155; }
+        .pill-rej  { background: #fff7ed; color: #9a3412; }
+        .pill-miss { background: #fee2e2; color: #991b1b; }
+        .req-star  { color: #dc2626; font-weight: 900; margin-left: 3px; }
+        .doc-footer { margin: 0 40px 24px; padding: 14px 0; border-top: 2px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .doc-footer span { font-size: 10px; color: #94a3b8; }
+        .doc-footer .gold { color: #b8960a; font-weight: 700; }
+        .progress-bar-wrap { background: #f1f5f9; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .progress-stat { display: flex; flex-direction: column; align-items: center; }
+        .progress-stat .num { font-size: 22px; font-weight: 900; color: #0a0f1c; line-height: 1; }
+        .progress-stat .lbl { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+        .progress-bar-outer { flex: 1; min-width: 120px; height: 8px; background: #e2e8f0; border-radius: 99px; overflow: hidden; }
+        .progress-bar-inner { height: 100%; background: linear-gradient(90deg, #f3c332, #e0a800); border-radius: 99px; }
+        @media print { body { background: #fff; } .toolbar-screen { display: none !important; } .doc-header, thead tr, .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @page { margin: 8mm; size: A4 portrait; } }
+    </style>
+</head>
+<body>
+<div class="toolbar-screen">
+    <button class="btn-back"  id="emiCkBack">← Volver</button>
+    <button class="btn-print" id="emiCkPrint">🖨️ Guardar como PDF</button>
+    <span>Imprimir → Destino: «Guardar como PDF»</span>
+</div>
+<script src="/js/emi_checklist_pdf.js" defer></script>
+<div class="doc-header">
+    <div class="brand">
+        <div style="background:none;box-shadow:none;padding:0;width:auto;height:auto;">
+            <img src="/images/logo_blanco.png" alt="LuxSeguros" style="height:52px;width:auto;object-fit:contain;">
+        </div>
+        <div class="brand-text">
+            <h1>Seguros Lux · EIRA</h1>
+            <p>Sistema de Gestión de Seguros</p>
+        </div>
+    </div>
+    <div class="doc-meta">
+        <div class="folio-badge"><?= htmlspecialchars($cot['folio'] ?? ('#'.$cotId)) ?></div>
+        <p><?= $esRenovacion ? '🔄 Checklist de Renovación' : 'Checklist de Emisión' ?></p>
+        <p>Generado: <?= date('d/m/Y H:i') ?></p>
+        <p>Coordinador: <?= htmlspecialchars(($agente['nombre'] ?? '') . ' ' . ($agente['apellido'] ?? '')) ?></p>
+    </div>
+</div>
+<?php if ($esRenovacion): ?>
+<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 40px;display:flex;align-items:center;gap:12px;font-size:13px;color:#92400e;">
+    <span style="font-size:18px;">🔄</span>
+    <div>
+        <strong>Renovación de póliza</strong> — Esta emisión es una renovación.
+        <?php if ($numPolizaAnterior && strpos($numPolizaAnterior, 'Renovación') === false): ?>
+        Póliza anterior: <span style="font-family:'Courier New',monospace;font-weight:800;background:rgba(0,0,0,.08);padding:2px 8px;border-radius:4px;"><?= htmlspecialchars($numPolizaAnterior) ?></span>.
+        <?php endif; ?>
+        Los documentos del cliente (INE, domicilio, etc.) ya obran en el expediente de la emisión original.
+    </div>
+</div>
+<?php endif; ?>
+<div class="info-strip">
+    <div class="item"><span class="label">Cliente</span><span class="value"><?= htmlspecialchars($cot['cliente_nombre']) ?></span></div>
+    <div class="item"><span class="label">Asesor</span><span class="value"><?= htmlspecialchars($cot['asesor_nombre']) ?></span></div>
+    <div class="item"><span class="label">Ramo</span><span class="value"><?= ucfirst(str_replace('_',' ', htmlspecialchars($ramo))) ?></span></div>
+    <div class="item"><span class="label">Compañía</span><span class="value"><?= htmlspecialchars($cot['compania'] ?? '—') ?></span></div>
+    <div class="item">
+        <span class="label"><?= $esRenovacion ? 'Tipo' : 'Tipo de cobertura' ?></span>
+        <span class="value" style="<?= $esRenovacion ? 'color:#d97706;font-weight:800;' : '' ?>">
+            <?php if ($esRenovacion): ?>
+                🔄 Renovación
+                <?php if ($numPolizaAnterior && strpos($numPolizaAnterior, 'Renovación') === false): ?>
+                <br><span style="font-size:11px;font-weight:600;font-family:'Courier New',monospace;color:#92400e;">Póliza ant.: <?= htmlspecialchars($numPolizaAnterior) ?></span>
+                <?php endif; ?>
+            <?php else: ?>
+                <?= htmlspecialchars($cot['tipo_cobertura'] ?? '—') ?>
+            <?php endif; ?>
+        </span>
+    </div>
+    <div class="item"><span class="label">Periodicidad</span><span class="value"><?= ucfirst(htmlspecialchars($cot['periodicidad'] ?? '—')) ?></span></div>
+</div>
+<div class="content">
+    <?php
+    $totalReq  = count($requeridos);
+    $presentes = count(array_filter($requeridos, fn($t) => isset($docsMap[$t])));
+    $okCount = count(array_filter($all, fn($t) => isset($docsMap[$t]) && ($ckMap[$t]['estado'] ?? 'ok') !== 'rechazado'));
+    $pct = $totalReq > 0 ? round($presentes / $totalReq * 100) : 0;
+    ?>
+    <div class="progress-bar-wrap">
+        <div class="progress-stat"><span class="num"><?= $presentes ?>/<?= $totalReq ?></span><span class="lbl">Docs requeridos</span></div>
+        <div class="progress-bar-outer"><div class="progress-bar-inner" style="width:<?= $pct ?>%;"></div></div>
+        <div class="progress-stat"><span class="num" style="color:#16a34a;"><?= $okCount ?></span><span class="lbl">Marcados OK</span></div>
+        <div class="progress-stat"><span class="num" style="color:#dc2626;"><?= count(array_filter($all, fn($t) => ($ckMap[$t]['estado'] ?? '') === 'rechazado')) ?></span><span class="lbl">Con observaciones</span></div>
+    </div>
+    <div class="section-title">Documentos del Expediente</div>
+    <table>
+        <thead><tr><th>Documento</th><th>Req.</th><th>Archivo subido</th><th>Fecha subida</th><th>Estado revisión</th><th>Nota del coordinador</th></tr></thead>
+        <tbody>
+        <?php foreach ($all as $tipo):
+            $isReq  = in_array($tipo, $requeridos, true);
+            $doc    = $docsMap[$tipo] ?? null;
+            $ckr    = $ckMap[$tipo]   ?? null;
+            $estado = $ckr['estado']  ?? 'pendiente';
+            $hasDoc = (bool)$doc;
+            $label  = $tipoLabel[$tipo] ?? $tipo;
+            if (!$hasDoc && $isReq)        { $pillClass='pill-miss'; $pillTxt='⚠ Falta'; }
+            elseif (!$hasDoc)              { $pillClass='pill-pend'; $pillTxt='—'; }
+            elseif ($estado==='rechazado') { $pillClass='pill-rej';  $pillTxt='⚠ Obs.'; }
+            else                           { $pillClass='pill-ok';   $pillTxt='✓ Subido'; }
+        ?>
+            <tr>
+                <td><strong><?= htmlspecialchars($label) ?></strong><?php if ($isReq): ?><span class="req-star">*</span><?php endif; ?></td>
+                <td><?= $isReq ? '<span style="color:red;font-weight:800;">●</span>' : '<span style="color:#cbd5e1;">○</span>' ?></td>
+                <td style="font-size:11px;color:#475569;max-width:160px;word-break:break-word;"><?= $hasDoc ? htmlspecialchars($doc['nombre_original'] ?? $doc['nombre_archivo'] ?? '—') : '<em style="color:#94a3b8;">No subido</em>' ?></td>
+                <td style="font-size:11px;white-space:nowrap;color:#64748b;"><?= !empty($doc['subido_en']) ? date('d/m/Y H:i', strtotime($doc['subido_en'])) : '—' ?></td>
+                <td><span class="pill <?= $pillClass ?>"><?= $pillTxt ?></span></td>
+                <td style="font-size:11px;color:#64748b;"><?= !empty($ckr['nota']) ? htmlspecialchars($ckr['nota']) : '<span style="color:#cbd5e1;">—</span>' ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+<div class="doc-footer">
+    <span>EIRA · <span class="gold">Seguros Lux</span> — Documento generado el <?= date('d/m/Y H:i') ?></span>
+    <span style="color:#dc2626;font-size:9px;">● Requerido &nbsp;</span>
+    <span>Confidencial — Uso interno</span>
+</div>
+</body>
+</html>
+    <?php
     exit;
 }
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── AJAX ──────────────────────────────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
+    header('Content-Type: application/json');
+    $a      = $_POST['accion'];
+    $db     = Connection::getConnection();
+    $soloSA = ['crear_agente','cambiar_rol','eliminar_agente','reactivar_agente','eliminar_cotizacion'];
+
+    if (in_array($a, $soloSA, true) && !$isSuperadmin) {
+        echo json_encode(['ok'=>false,'msg'=>'Solo el superadmin puede realizar esta acción.']); exit;
+    }
+
+    // ── MÓDULO EMISIÓN ────────────────────────────────────────────────────────
+    if (str_starts_with($a, 'emi_')) {
+        require __DIR__ . '/_ajax_emision.php';
+        echo json_encode(['ok'=>false,'msg'=>'Acción de emisión no reconocida.']);
+        exit;
+    }
+
+    // ── Historial de pólizas (coordinador / SA) ────────────────────────────────
+    if ($a === 'get_polizas_resumen') {
+        $filtroAsesor = (int)($_POST['asesor_id'] ?? 0);
+        $sql = 'SELECT p.id, p.cliente_id, p.cotizacion_id, p.agente_id,
+                       p.compania, p.numero_poliza, p.fecha_inicio, p.fecha_fin,
+                       p.frecuencia_renovacion, p.estado, p.notas,
+                       p.nombre_original, p.subido_en, p.eliminado_en,
+                       CONCAT(c.nombre," ",c.apellido_paterno) AS cliente_nombre,
+                       c.id AS cliente_id_ref,
+                       CONCAT(a.nombre," ",a.apellido) AS asesor_nombre,
+                       DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes,
+                       CASE
+                           WHEN cot.estado = "pagado"           THEN 1
+                           WHEN cot.estado_pago = "confirmado"  THEN 1
+                           WHEN ccp.id IS NOT NULL              THEN 1
+                           WHEN cp.id IS NOT NULL               THEN 1
+                           ELSE 0
+                       END AS pago_confirmado,
+                       COALESCE(ccp.metodo_pago, cot.metodo_pago) AS metodo_pago,
+                       COALESCE(ccp.creado_en, cp.creado_en)      AS fecha_pago
+                FROM polizas p
+                JOIN clientes c   ON c.id  = p.cliente_id
+                JOIN agentes  a   ON a.id  = p.agente_id
+                LEFT JOIN cotizaciones                cot ON cot.id  = p.cotizacion_id
+                LEFT JOIN cotizacion_comprobantes_pago ccp ON ccp.cotizacion_id = p.cotizacion_id AND ccp.eliminado_en IS NULL
+                LEFT JOIN (SELECT cotizacion_id, MAX(id) AS max_id FROM cotizacion_pagos GROUP BY cotizacion_id) cpmax
+                          ON cpmax.cotizacion_id = p.cotizacion_id
+                LEFT JOIN cotizacion_pagos cp ON cp.id = cpmax.max_id';
+                
+        // ▶ APLICAR EL TOGGLE DE PAPELERA AQUÍ
+        $verEliminadas = !empty($_POST['ver_eliminadas']) && $isSuperadmin;
+        $sql .= ' WHERE ' . ($verEliminadas ? 'p.eliminado_en IS NOT NULL' : 'p.eliminado_en IS NULL');
+        
+        $params = [];
+        if ($filtroAsesor) { $sql .= ' AND p.agente_id = ?'; $params[] = $filtroAsesor; }
+        $sql .= ' ORDER BY p.fecha_fin ASC LIMIT 500';
+        try {
+            $st = $db->prepare($sql);
+            $st->execute($params);
+            $polizas = $st->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log('[admin/polizas PDO] ' . $e->getMessage());
+            echo json_encode(['ok'=>false, 'msg'=>'Error al consultar pólizas.']);
+            exit;
+        } catch (Throwable $e) {
+            error_log('[admin/polizas] ' . $e->getMessage());
+            echo json_encode(['ok'=>false, 'msg'=>'Error interno.']);
+            exit;
+        }
+        $pagadas    = array_values(array_filter($polizas, fn($p) => !empty($p['pago_confirmado'])));
+        $pendientes = array_values(array_filter($polizas, fn($p) => empty($p['pago_confirmado']) && ($p['estado'] ?? '') !== 'vencida'));
+        $vencer     = array_values(array_filter($polizas, fn($p) => is_numeric($p['dias_restantes']) && (int)$p['dias_restantes'] >= 0 && (int)$p['dias_restantes'] <= 30));
+        echo json_encode([
+            'ok'         => true,
+            'total'      => count($polizas),
+            'pagadas'    => count($pagadas),
+            'pendientes' => count($pendientes),
+            'por_vencer' => count($vencer),
+            'polizas'    => array_values($polizas),
+        ]);
+        exit;
+    }
+
+    // ── Router de acciones POST ──────────────────────────────────────────────────
+
+    if ($a === 'editar_agente_nombre') {
+        $tid    = (int)($_POST['agente_id'] ?? 0);
+        $nombre = trim($_POST['nombre'] ?? '');
+        $apell  = trim($_POST['apellido'] ?? '');
+        if (!$tid || !$nombre) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
+        $puedeEditar = $isSuperadmin || ($_agenteRol === 'coordinador' && $agentModel->getRol($tid) === 'asesor');
+        if (!$puedeEditar) { echo json_encode(['ok'=>false,'msg'=>'Sin permiso.']); exit; }
+        $db->prepare('UPDATE agentes SET nombre=?, apellido=? WHERE id=?')->execute([$nombre, $apell, $tid]);
+        echo json_encode(['ok'=>true]);
+
+    } elseif ($a === 'cambiar_password_agente') {
+        $tid = (int)($_POST['agente_id'] ?? 0);
+        $pw  = trim($_POST['password'] ?? '');
+        if (!$tid || strlen($pw) < 6) { echo json_encode(['ok'=>false,'msg'=>'Contraseña mínimo 6 caracteres.']); exit; }
+        $puedeEditar = $isSuperadmin || ($_agenteRol === 'coordinador' && $agentModel->getRol($tid) === 'asesor');
+        if (!$puedeEditar) { echo json_encode(['ok'=>false,'msg'=>'Sin permiso.']); exit; }
+        $db->prepare('UPDATE agentes SET contrasena=? WHERE id=?')->execute([password_hash($pw, PASSWORD_BCRYPT), $tid]);
+        echo json_encode(['ok'=>true]);
+
+    } elseif ($a === 'get_historial_coordinador') {
+        if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Acceso denegado.']); exit; }
+        $tid   = (int)($_POST['agente_id'] ?? 0);
+        $limit = min((int)($_POST['limit'] ?? 50), 200);
+        if (!$tid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        try {
+            $st = $db->prepare(
+                "SELECT h.tipo, h.titulo, h.descripcion,
+                        COALESCE(h.fecha, NOW()) AS fecha_registro,
+                        c.folio,
+                        CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
+                 FROM historial_coordinador h
+                 LEFT JOIN cotizaciones c  ON c.id  = h.cotizacion_id
+                 LEFT JOIN clientes    cl ON cl.id = h.cliente_id
+                 WHERE h.coordinador_id = ?
+                 ORDER BY h.fecha DESC
+                 LIMIT ?"
+            );
+            $st->execute([$tid, $limit]);
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as &$r) {
+                $r['fecha_fmt'] = $r['fecha_registro']
+                    ? date('d/m/Y H:i', strtotime($r['fecha_registro']))
+                    : '—';
+            }
+            unset($r);
+            echo json_encode(['ok'=>true,'historial'=>$rows]);
+        } catch (\Throwable $eH) {
+            error_log('[admin/historial] ' . $eH->getMessage());
+            echo json_encode(['ok'=>false,'msg'=>'Error al consultar historial.']);
+        }
+
+    } elseif ($a === 'cambiar_rol') {
+        $tid = (int)($_POST['agente_id']??0);
+        $rol = trim($_POST['rol']??'');
+        if (!$tid || !in_array($rol,['asesor','coordinador','superadmin'],true)) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
+        if ($tid === $agenteId) { echo json_encode(['ok'=>false,'msg'=>'No puedes cambiar tu propio rol.']); exit; }
+        $agentModel->cambiarRol($tid, $rol);
+        echo json_encode(['ok'=>true]);
+
+    } elseif ($a === 'crear_agente') {
+        $n=trim($_POST['nombre']??''); $ap=trim($_POST['apellido']??'');
+        $co=trim($_POST['correo']??''); $te=trim($_POST['telefono']??'');
+        $pw=trim($_POST['password']??''); $ro=trim($_POST['rol']??'asesor');
+        if (!$n||!$ap||!$co||!$pw) { echo json_encode(['ok'=>false,'msg'=>'Faltan campos obligatorios.']); exit; }
+        if (!in_array($ro,['asesor','coordinador','superadmin'],true)) $ro='asesor';
+        $id = $agentModel->crear($n,$ap,$co,$te,$pw,$ro);
+        echo json_encode(['ok'=>true,'id'=>$id]);
+
+    } elseif ($a === 'eliminar_agente') {
+        $tid=(int)($_POST['agente_id']??0);
+        if (!$tid||$tid===$agenteId) { echo json_encode(['ok'=>false,'msg'=>'No puedes desactivarte a ti mismo.']); exit; }
+        // Se reemplaza desactivar() por eliminar() para coincidir con AgentModel
+        $agentModel->eliminar($tid);
+        echo json_encode(['ok'=>true,'msg'=>'Asesor desactivado.']);
+
+    } elseif ($a === 'reactivar_agente') {
+        $tid=(int)($_POST['agente_id']??0);
+        if (!$tid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        $agentModel->reactivar($tid);
+        echo json_encode(['ok'=>true,'msg'=>'Asesor reactivado.']);
+
+    } elseif ($a === 'eliminar_cotizacion') {
+        $cid=(int)($_POST['cotizacion_id']??0);
+        if (!$cid) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        $cotModel->eliminar($cid, 0); // 0 = coordinador puede borrar cualquier cotización
+        echo json_encode(['ok'=>true]);
+
+    // ▶ NUEVO PARCHE I2: Restaurar póliza (Solo SA)
+    } elseif ($a === 'restaurar_poliza') {
+        if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Solo SA.']); exit; }
+        $pm = new \App\Models\PolizaModel();
+        $ok = $pm->restaurar((int)($_POST['poliza_id'] ?? 0));
+        echo json_encode(['ok' => $ok]);
+
+    } elseif ($a === 'forzar_estado_cotizacion') {
+        if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Solo SA.']); exit; }
+        $cotId        = (int)($_POST['cotizacion_id'] ?? 0);
+        $estado       = trim($_POST['estado']        ?? '');
+        $emisionEstado= trim($_POST['emision_estado']?? '');
+        if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        
+        // Obtener la información ANTES de forzar para poder notificar
+        $stInfo = $db->prepare("SELECT folio, agente_id, cliente_id FROM cotizaciones WHERE id = ?");
+        $stInfo->execute([$cotId]);
+        $infoCot = $stInfo->fetch(\PDO::FETCH_ASSOC);
+
+        $ok = $cotModel->forzarEstado($cotId, $estado, $emisionEstado);
+        
+        if ($ok && $infoCot) {
+            // Revertir estado del cliente si se des-pagó
+            if ($estado !== 'pagado') {
+                $db->prepare(
+                    "UPDATE clientes SET estado_cliente='con_cotizacion'
+                     WHERE id = ? AND estado_cliente = 'cerrado'"
+                )->execute([$infoCot['cliente_id']]);
+            }
+            
+            // Registrar Historial y Notificar
+            $folioDesc = $infoCot['folio'] ?? "#$cotId";
+            $msg = "El Superadmin ha forzado el estado de tu cotización a: {$estado} (Emisión: {$emisionEstado}).";
+            
+            $db->prepare(
+                "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha)
+                 VALUES (?, ?, 'cambio_estado', ?, ?, NOW())"
+            )->execute([$infoCot['cliente_id'], $agenteId, "🔧 Estado forzado: $folioDesc", $msg]);
+
+            $db->prepare(
+                "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
+                 VALUES (?, 'sistema', '🔧 Estado de cotización forzado', ?, 1, 'orange', ?, 0, NOW())"
+            )->execute([$infoCot['agente_id'], $msg, "/cliente/{$infoCot['cliente_id']}"]);
+        }
+        
+        echo json_encode(['ok' => $ok]);
+
+    } elseif ($a === 'get_documentos_admin') {
+        $cotId=(int)($_POST['cotizacion_id']??0);
+        if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        $cot=$cotModel->getById($cotId);
+        if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
+        $tipoLabel=['poliza'=>'Póliza','ine'=>'INE','comprobante_dom'=>'Comp. domicilio',
+            'tarjeta_circulacion'=>'Tarjeta circulación','constancia_fiscal'=>'Constancia fiscal',
+            'foto_coche_1'=>'Foto 1','foto_coche_2'=>'Foto 2','foto_coche_3'=>'Foto 3',
+            'foto_coche_4'=>'Foto 4','foto_coche_5'=>'Foto 5','comprobante_pago'=>'Comp. pago',
+        ];
+        $docs=array_map(function($a) use($tipoLabel,$cotId){
+            $ext=strtolower(pathinfo($a['nombre_original']??'',PATHINFO_EXTENSION));
+            $esImg=in_array($ext,['jpg','jpeg','png','gif','webp'],true);
+            $ruta=dirname(__DIR__,3).'/'.$a['ruta'];
+            return [
+                'id'          => (int)$a['id'],
+                'tipo_label'  => $tipoLabel[$a['tipo_documento']] ?? ucfirst(str_replace('_',' ',$a['tipo_documento'])),
+                'nombre_orig' => $a['nombre_original'],
+                'url_local'   => file_exists($ruta) ? '/archivo?file='.preg_replace('#^uploads/#','',$a['ruta']) : null,
+                'en_idrive'   => !empty($a['idrive_key']),
+                'es_imagen'   => $esImg,
+                'es_pdf'      => $ext==='pdf',
+            ];
+        }, $cotModel->getArchivos($cotId));
+        echo json_encode(['ok'=>true,'folio'=>$cot['folio']??'','docs'=>$docs]);
+
+    } elseif ($a === 'reasignar_clientes') {
+        $ids     = array_filter(array_map('intval', explode(',', $_POST['cliente_ids']??'')));
+        $nuevoId = (int)($_POST['nuevo_asesor_id']??0);
+        if (empty($ids)||!$nuevoId) { echo json_encode(['ok'=>false,'msg'=>'Datos incompletos.']); exit; }
+        $n = $agentModel->reasignarClientes($ids, $nuevoId);
+        echo json_encode(['ok'=>true,'reasignados'=>$n]);
+
+    } elseif ($a === 'renov_actualizar_poliza') {
+        $polizaId    = (int)($_POST['poliza_id']   ?? 0);
+        $clienteId   = (int)($_POST['cliente_id']  ?? 0);
+        $fechaInicio = trim($_POST['fecha_inicio']  ?? '');
+        $fechaFin    = trim($_POST['fecha_fin']     ?? '');
+        $frecuencia  = trim($_POST['frecuencia']    ?? 'anual');
+        $nuevoNumero = trim($_POST['nuevo_numero']  ?? '');
+        $notas       = trim($_POST['notas']         ?? '');
+        
+        if (!$polizaId || !$fechaFin) { echo json_encode(['ok'=>false,'msg'=>'Faltan datos obligatorios.']); exit; }
+        if (!in_array($frecuencia,['semanal','mensual','trimestral','anual'],true)) $frecuencia='anual';
+        
+        $db = \Database\Connection::getConnection();
+        $st = $db->prepare("SELECT id, cliente_id, notas FROM polizas WHERE id = ?");
+        $st->execute([$polizaId]);
+        $pol = $st->fetch(\PDO::FETCH_ASSOC);
+        if (!$pol) { echo json_encode(['ok' => false, 'msg' => 'Póliza no encontrada.']); exit; }
+
+        $notasOriginales = $pol['notas'] ?? '';
+        if ($notas) { $notasOriginales .= ($notasOriginales ? "\n" : "") . "[" . date('Y-m-d H:i') . "] " . $notas; }
+
+        $sets = ['estado = ?', 'fecha_fin = ?', 'frecuencia_renovacion = ?', 'renovacion_notificada = 0', 'actualizado_en = NOW()'];
+        $vals = ['vigente', $fechaFin, $frecuencia];
+        if ($fechaInicio) { $sets[] = 'fecha_inicio = ?'; $vals[] = $fechaInicio; }
+        if ($nuevoNumero) { $sets[] = 'numero_poliza = ?'; $vals[] = $nuevoNumero; }
+        
+        // Guardar comprobante
+        $archivoGuardado = false;
+        if (!empty($_FILES['nueva_poliza_archivo']['name'])) {
+            $file = $_FILES['nueva_poliza_archivo'];
+            $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, ['pdf','jpg','jpeg','png','webp'], true) && $file['error'] === UPLOAD_ERR_OK) {
+                $dir = dirname(__DIR__, 2) . '/uploads/comprobantes/' . $clienteId . '/';
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                
+                $nomArch = 'comprobante_renovacion_' . date('Ymd_His') . '.' . $ext;
+                if (move_uploaded_file($file['tmp_name'], $dir . $nomArch)) {
+                    // Marcar como pagado
+                    $sets[] = 'estado_pago = ?'; 
+                    $vals[] = 'confirmado';
+                    $sets[] = 'pago_confirmado_en = NOW()';
+                    $notasOriginales .= "\n[" . date('Y-m-d H:i') . "] Comprobante de pago subido: " . $file['name'];
+                    $archivoGuardado = true;
+                }
+            }
+        }
+        
+        if ($notasOriginales) { $sets[] = 'notas = ?'; $vals[] = trim($notasOriginales); }
+        $vals[] = $polizaId;
+        
+        $db->prepare('UPDATE polizas SET '.implode(', ', $sets).' WHERE id = ?')->execute($vals);
+        
+        if ($clienteId) {
+            $desc = 'Renovada por coordinador.' . ($nuevoNumero ? " Nueva póliza: {$nuevoNumero}." : '') . ($archivoGuardado ? ' | Comprobante adjunto.' : '');
+            $db->prepare("INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha) VALUES (?, ?, 'nota', '✅ Póliza renovada', ?, NOW())")->execute([$clienteId, $agenteId, $desc]);
+            $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'")->execute([$clienteId]);
+        }
+        echo json_encode(['ok'=>true, 'archivo_guardado'=>$archivoGuardado]);
+    } elseif ($a === 'renov_marcar_gestionada') {
+        $clienteId = (int)($_POST['cliente_id'] ?? 0);
+        $fecha     = trim($_POST['fecha'] ?? '');
+        if (!$clienteId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+        $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación' AND DATE(fecha) = DATE(?)")->execute([$clienteId, $fecha ?: date('Y-m-d')]);
+        echo json_encode(['ok'=>true]);
+
+    } else {
+        echo json_encode(['ok'=>false,'msg'=>'Acción desconocida: '.$a]);
+    }
+    exit;
+}
+
+
+// ── Datos ─────────────────────────────────────────────────────────────────────
+$tab             = $_GET['tab']      ?? 'resumen';
+$filtroAgente    = isset($_GET['agente_id'])  ? (int)$_GET['agente_id']  : null;
+$asesorSel       = isset($_GET['asesor_id'])  ? (int)$_GET['asesor_id']  : null;
+$filtroActAgente = isset($_GET['act_agente']) ? (int)$_GET['act_agente'] : null;
+
+$stats       = $agentModel->getStatsGlobales();
+$ranking     = $agentModel->getRankingAsesores();
+$reporte     = $agentModel->getReporteFinanciero();
+$agLista     = $agentModel->getTodos();
+$asesores    = $agentModel->getSoloAsesores();
+$pipeline    = $agentModel->getPipeline();
+$leadMetrics = $agentModel->getLeadMetrics();
+$origenMes   = $agentModel->getOrigenClientesMes();
+$actividad   = $agentModel->getActividadEquipo(60, $filtroActAgente);
+$evolucion   = $agentModel->getEvolucionGlobal($filtroAgente);
+$vehiculos   = $agentModel->getTopVehiculos($filtroAgente);
+$coberturas  = $agentModel->getCoberturaGlobal($filtroAgente);
+
+$clientesAsesor = $asesorSel ? $agentModel->getClientesPorAsesor($asesorSel) : [];
+$asesorInfo     = $asesorSel ? (array_values(array_filter($agLista, fn($a) => (int)$a['id']===$asesorSel))[0] ?? null) : null;
+$cotsGlobal     = $isSuperadmin ? $cotModel->getRecientsGlobal(500) : [];
+$agNombres      = array_unique(array_column($cotsGlobal, 'agente_nombre')); sort($agNombres);
+
+if (!empty($cotsGlobal) && empty(array_filter(array_column($cotsGlobal, 'fecha_fin_vigencia')))) {
+    $_ids2 = array_column($cotsGlobal, 'id');
+    if (!empty($_ids2)) {
+        $_ph2   = implode(',', array_fill(0, count($_ids2), '?'));
+        $_db2   = \Database\Connection::getConnection();
+        $_st2   = $_db2->prepare("SELECT id, fecha_fin_vigencia FROM cotizaciones WHERE id IN ($_ph2)");
+        $_st2->execute($_ids2);
+        $_vigMap2 = array_column($_st2->fetchAll(\PDO::FETCH_ASSOC), 'fecha_fin_vigencia', 'id');
+        foreach ($cotsGlobal as &$_cg) {
+            if (empty($_cg['fecha_fin_vigencia'])) { $_cg['fecha_fin_vigencia'] = $_vigMap2[$_cg['id']] ?? null; }
+        }
+        unset($_cg);
+    }
+}
+
+$ingNeto   = array_sum(array_column($reporte, 'ingreso_neto'));
+$ingMes    = array_sum(array_column($reporte, 'ingreso_mes'));
+$ventasT   = array_sum(array_column($reporte, 'ventas'));
+$totalPipe = array_sum(array_column($pipeline, 'valor_pipeline'));
+
+$db       = Connection::getConnection();
+$citasHoy = $db->query(
+    "SELECT ci.hora, ci.tipo,
+            CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente,
+            CONCAT(a.nombre,' ',a.apellido)            AS asesor
+     FROM citas ci
+     JOIN clientes cl ON cl.id = ci.cliente_id
+     JOIN agentes  a  ON a.id  = ci.agente_id
+     WHERE ci.fecha = CURDATE() AND ci.estado = 'programada' AND a.rol = 'asesor'
+     ORDER BY ci.hora ASC"
+)->fetchAll();
+
+$atcData = $db->query(
+    "SELECT clave, valor, descripcion FROM configuracion WHERE clave LIKE 'atc_%' ORDER BY clave"
+)->fetchAll();
+$atcMap  = array_column($atcData, null, 'clave');
+
+$renovacionesPendientes = $db->query(
+    "SELECT h.cliente_id, h.descripcion, h.fecha,
+            CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',COALESCE(cl.apellido_materno,'')) AS cliente_nombre,
+            cl.correo AS cliente_correo, cl.telefono AS cliente_tel,
+            CONCAT(a.nombre,' ',a.apellido) AS asesor_nombre,
+            a.id AS asesor_id,
+            p.id AS poliza_id, p.numero_poliza, p.compania,
+            p.fecha_fin, p.estado AS poliza_estado,
+            p.frecuencia_renovacion,
+            DATEDIFF(p.fecha_fin, CURDATE()) AS dias_vence
+     FROM historial_cliente h
+     JOIN clientes cl ON cl.id = h.cliente_id
+     JOIN agentes  a  ON a.id  = h.agente_id
+     LEFT JOIN polizas p ON p.cliente_id = h.cliente_id
+                        AND p.estado IN ('por_vencer','vencida')
+     WHERE h.titulo = '🔄 Solicitud de renovación'
+     ORDER BY h.fecha DESC
+     LIMIT 100"
+)->fetchAll(\PDO::FETCH_ASSOC);
+
+$pageTitle = 'Panel de Coordinación';
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <?php require __DIR__ . '/../partials/_head.php'; ?>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border-left:1px solid var(--border-color);border-top:1px solid var(--border-color);}
-        .cal-weekday{padding:10px;text-align:center;font-size:11px;font-weight:700;color:var(--text-secondary);background:#f8fafc;text-transform:uppercase;letter-spacing:.5px;border-right:1px solid var(--border-color);border-bottom:1px solid var(--border-color);}
-        .cal-day{min-height:110px;padding:8px;border-right:1px solid var(--border-color);border-bottom:1px solid var(--border-color);cursor:pointer;transition:background var(--transition-fast);}
-        .cal-day:hover{background:#f8fafc;}
-        .cal-day.other-month{background:#fafafa;color:var(--text-muted);}
-        .cal-day.today{background:#eff6ff;}
-        .cal-day-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font-weight:600;font-size:13px;margin-bottom:6px;}
-        .cal-day.today .cal-day-num{background:var(--accent-color);color:#fff;}
-        .cal-event{font-size:11px;padding:3px 7px;border-radius:4px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
-        .cal-event.llamada{background:var(--info-light);color:#1e40af;}
-        .cal-event.videollamada{background:#fef3c7;color:#92400e;}
-        .cal-event.presencial{background:#dcfce7;color:#065f46;}
-        .cal-event.completada{background:#e2e8f0;color:#475569;}
-        .cal-event.cancelada{background:#fee2e2;color:#991b1b;text-decoration:line-through;}
-        .cal-more{font-size:11px;color:var(--accent-color);font-weight:600;cursor:pointer;padding:2px 4px;}
-        .upcoming-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border-color);align-items:flex-start;}
-        .upcoming-item:last-child{border-bottom:none;}
-        .upcoming-date{min-width:46px;text-align:center;background:var(--info-light);border-radius:var(--border-radius-sm);padding:6px;}
-        .upcoming-date-day{font-size:20px;font-weight:700;color:var(--accent-color);line-height:1;}
-        .upcoming-date-mes{font-size:10px;text-transform:uppercase;color:var(--text-secondary);}
-        @media(max-width:900px){.layout-cal{grid-template-columns:1fr !important;}.cal-day{min-height:70px;}.cal-event{display:none;}}
+        .admin-tabs{display:flex;gap:2px;margin-bottom:24px;border-bottom:2px solid var(--border-color);overflow-x:auto;}
+        .admin-tab{padding:10px 16px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;color:var(--text-secondary);border-bottom:3px solid transparent;margin-bottom:-2px;display:flex;align-items:center;gap:6px;text-decoration:none;border-radius:6px 6px 0 0;transition:all .15s;white-space:nowrap;}
+        .admin-tab:hover{background:var(--bg-secondary);color:var(--text-primary);}
+        .admin-tab.active{color:var(--accent-color);border-bottom-color:var(--accent-color);background:var(--info-light);}
+        .kpi4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+        @media(max-width:900px){.kpi4{grid-template-columns:repeat(2,1fr);}}
+        .adt{width:100%;border-collapse:collapse;}
+        .adt th{font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;padding:10px 14px;border-bottom:2px solid var(--border-color);text-align:left;white-space:nowrap;}
+        .adt td{padding:11px 14px;border-bottom:1px solid var(--border-color);font-size:13px;vertical-align:middle;}
+        .adt tr:last-child td{border-bottom:none;}.adt tbody tr:hover td{background:var(--bg-secondary);}
+        .rol-tag{padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700;text-transform:uppercase;}
+        .rol-tag.asesor{background:var(--bg-secondary);color:var(--text-secondary);}
+        .rol-tag.coordinador{background:var(--info-light);color:var(--accent-color);}
+        .rol-tag.superadmin{background:#fef3c7;color:#92400e;}
+        .medal{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;}
+        .medal.gold{background:#fef3c7;color:#92400e;}.medal.silver{background:#f1f5f9;color:#475569;}.medal.bronze{background:#fef0e7;color:#7c3a00;}.medal.other{background:var(--bg-secondary);color:var(--text-muted);}
+        .fmono{font-family:'Courier New',monospace;font-size:11px;font-weight:700;color:var(--accent-color);background:var(--info-light);padding:2px 6px;border-radius:4px;white-space:nowrap;}
+        .ava{width:34px;height:34px;border-radius:50%;background:var(--info-light);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:var(--accent-color);flex-shrink:0;}
+        .cbar{height:6px;border-radius:99px;background:var(--border-color);min-width:60px;}.cfill{height:100%;border-radius:99px;background:var(--success-color);}
+        .chart-container{height:280px;position:relative;}
+        .pipe-bar{height:8px;border-radius:99px;display:flex;overflow:hidden;gap:1px;}
+        .pipe-seg{height:100%;transition:width .3s;}
+        .act-feed{display:flex;flex-direction:column;}
+        .act-item{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border-color);}
+        .act-item:last-child{border-bottom:none;}
+        .act-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+        .cb-row{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border-color);cursor:pointer;}
+        .cb-row:hover{background:var(--bg-secondary);}
+        .cb-row input[type=checkbox]{width:16px;height:16px;cursor:pointer;}
+        .pagination{display:flex;gap:4px;justify-content:center;padding:16px 0;flex-wrap:wrap;}
+        .page-btn{min-width:32px;height:32px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0 8px;}
+        .page-btn:hover{border-color:var(--accent-color);color:var(--accent-color);}.page-btn.active{background:var(--accent-color);color:#fff;border-color:var(--accent-color);}
+        .ramo-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+        .pip-num{font-size:20px;font-weight:700;}
+        .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+        .toolbar .search-bar{flex:1;min-width:200px;}
     </style>
 </head>
 <body>
+<script nonce="<?= $cspNonce ?>">
+function openModal(id){document.getElementById(id)?.classList.add('active');document.body.style.overflow='hidden';}
+function closeModal(id){document.getElementById(id)?.classList.remove('active');document.body.style.overflow='';}
+</script>
 <div class="crm-wrapper">
-    <?php require __DIR__ . '/../partials/_navbar.php'; ?>
-    <main class="main-content">
+<?php require __DIR__ . '/../partials/_navbar.php'; ?>
+<main class="main-content">
 
-        <header class="page-header">
-            <div class="page-header-content">
-                <div>
-                    <h1 class="page-title">
-                        <span class="page-title-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
-                                <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                            </svg>
-                        </span>
-                        Calendario de Citas
-                    </h1>
-                    <p class="page-subtitle" id="pageSubtitle"><?php echo $nombresMes[$mes].' '.$anio; ?></p>
-                </div>
-                <div class="page-actions">
-                    <button class="btn btn-primary" data-open-modal="modalNuevaCita">+ Nueva Cita</button>
+<header class="page-header" style="margin-bottom:20px;">
+    <div class="page-header-content">
+        <div>
+            <h1 class="page-title">
+                <span class="page-title-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+                Panel de Coordinación
+            </h1>
+            <p class="page-subtitle">
+                <?php echo $isSuperadmin ? '⭐ Superadmin' : '🛡️ Coordinador'; ?>
+                — <?php echo htmlspecialchars($agente['nombre'].' '.$agente['apellido']); ?>
+            </p>
+        </div>
+    </div>
+</header>
+
+<?php if ($tab === 'resumen'): ?>
+<div class="kpi4">
+    <?php foreach([
+        [count($asesores),              'Asesores Activos','accent'],
+        [$stats['total_clientes'],      'Clientes Totales','info'],
+        ['$'.number_format($ingNeto,0), 'Ingreso Neto Total','success'],
+        ['$'.number_format($totalPipe,0),'Pipeline Activo','warning'],
+    ] as [$v,$l,$c]): ?>
+    <div class="stat-card <?php echo $c; ?>">
+        <div class="stat-card-value"><?php echo $v; ?></div>
+        <div class="stat-card-label"><?php echo $l; ?></div>
+    </div>
+    <?php endforeach; ?>
+</div>
+
+<?php
+// ── Leads / clientes nuevos: totales por periodo + antes-y-después por asesor ─
+$lm  = $leadMetrics['totales'];
+$pct = static function (int $ahora, int $antes): string {
+    if ($antes === 0) return $ahora > 0 ? '+100%' : '±0%';
+    $d = round((($ahora - $antes) / $antes) * 100);
+    return ($d > 0 ? '+' : '') . $d . '%';
+};
+$badge = static function (int $ahora, int $antes): string {
+    if ($ahora > $antes) return 'success';
+    if ($ahora < $antes) return 'danger';
+    return 'neutral';
+};
+$arrow = static function (int $ahora, int $antes): string {
+    if ($ahora > $antes) return '▲';
+    if ($ahora < $antes) return '▼';
+    return '▬';
+};
+?>
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-header">
+        <h3 class="card-title">🆕 Leads / Clientes Nuevos</h3>
+        <span style="font-size:12px;color:var(--text-muted);">Control de entrada de leads por periodo y por asesor</span>
+    </div>
+    <div class="card-body">
+        <div class="kpi4" style="margin-bottom:20px;">
+            <div class="stat-card accent">
+                <div class="stat-card-value"><?php echo $lm['hoy']; ?></div>
+                <div class="stat-card-label">Hoy</div>
+                <div class="badge badge-<?php echo $badge($lm['hoy'], $lm['ayer']); ?>" style="margin-top:6px;font-size:11px;">
+                    <?php echo $arrow($lm['hoy'], $lm['ayer']); ?> vs. ayer (<?php echo $lm['ayer']; ?>)
                 </div>
             </div>
-        </header>
-
-        <!-- ── Tabs de ramo ────────────────────────────────────────────────── -->
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
-            <?php
-            $qBase = http_build_query(array_filter(['anio'=>$anio,'mes'=>$mes]));
-            ?>
-            <a href="?<?php echo $qBase; ?>"
-               class="btn btn-sm <?php echo $ramoFiltro === null ? 'btn-primary' : 'btn-outline'; ?>"
-               style="border-radius:99px;">📊 Todos</a>
-            <?php foreach ($ramoLabels as $slug => $info): ?>
-            <a href="?<?php echo $qBase; ?>&ramo=<?php echo $slug; ?>"
-               class="btn btn-sm <?php echo $ramoFiltro === $slug ? 'btn-primary' : 'btn-outline'; ?>"
-               style="border-radius:99px;<?php echo $ramoFiltro === $slug ? 'background:'.$info['color'].';border-color:'.$info['color'].';' : ''; ?>">
-                <?php echo $info['icon'].' '.$info['label']; ?>
-            </a>
-            <?php endforeach; ?>
+            <div class="stat-card info">
+                <div class="stat-card-value"><?php echo $lm['semana']; ?></div>
+                <div class="stat-card-label">Esta Semana</div>
+                <div class="badge badge-<?php echo $badge($lm['semana'], $lm['semana_pasada']); ?>" style="margin-top:6px;font-size:11px;">
+                    <?php echo $arrow($lm['semana'], $lm['semana_pasada']); ?> vs. semana pasada (<?php echo $lm['semana_pasada']; ?>)
+                </div>
+            </div>
+            <div class="stat-card warning">
+                <div class="stat-card-value"><?php echo $lm['quincena']; ?></div>
+                <div class="stat-card-label">Quincena Actual</div>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-card-value"><?php echo $lm['mes']; ?></div>
+                <div class="stat-card-label">Este Mes</div>
+                <div class="badge badge-<?php echo $badge($lm['mes'], $lm['mes_pasado']); ?>" style="margin-top:6px;font-size:11px;">
+                    <?php echo $arrow($lm['mes'], $lm['mes_pasado']); ?> vs. mes pasado (<?php echo $lm['mes_pasado']; ?>)
+                </div>
+            </div>
         </div>
 
-        <!-- Stats -->
-        <section class="stats-grid" style="grid-template-columns:repeat(4,1fr);">
-            <?php foreach([
-                [(int)$stats['total'],      'Total este mes',  ''],
-                [(int)$stats['programadas'],'Programadas',     'info'],
-                [(int)$stats['completadas'],'Completadas',     'success'],
-                [(int)$stats['canceladas'], 'Canceladas',      'danger'],
-            ] as [$v,$l,$c]): ?>
-            <div class="stat-card <?php echo $c; ?>">
-                <div class="stat-card-value"><?php echo $v; ?></div>
-                <div class="stat-card-label"><?php echo $l; ?></div>
+        <?php $origenTotal = $origenMes['formulario'] + $origenMes['manual']; ?>
+        <div style="border-top:1px solid var(--border-color);padding-top:16px;margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;">Origen de clientes (landing propia vs. alta manual) — <?php echo date('F'); ?></span>
+                <span style="font-size:11px;color:var(--text-muted);"><?php echo $origenTotal; ?> en total</span>
+            </div>
+            <?php
+            $pctForm = $origenTotal > 0 ? round($origenMes['formulario'] / $origenTotal * 100) : 0;
+            ?>
+            <div style="display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--bg-secondary);">
+                <div style="width:<?php echo $pctForm; ?>%;background:#0ea5e9;"></div>
+                <div style="width:<?php echo 100 - $pctForm; ?>%;background:#f59e0b;"></div>
+            </div>
+            <div style="display:flex;gap:20px;margin-top:8px;font-size:12px;">
+                <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#0ea5e9;margin-right:5px;"></span>📋 Landing / Formulario propio: <strong><?php echo $origenMes['formulario']; ?></strong></span>
+                <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#f59e0b;margin-right:5px;"></span>👤 Alta manual (asesor): <strong><?php echo $origenMes['manual']; ?></strong></span>
+            </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+        <table class="adt">
+            <thead>
+                <tr>
+                    <th>Asesor</th>
+                    <th>Ayer</th>
+                    <th>Hoy</th>
+                    <th>Δ diario</th>
+                    <th>Semana pasada</th>
+                    <th>Esta semana</th>
+                    <th>Δ semanal</th>
+                    <th>Mes</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($leadMetrics['por_asesor'] as $la): ?>
+                <?php
+                $ayerN = (int) $la['ayer']; $hoyN = (int) $la['hoy'];
+                $semP  = (int) $la['semana_pasada']; $semA = (int) $la['semana'];
+                ?>
+                <tr>
+                    <td><div style="display:flex;align-items:center;gap:8px;">
+                        <div class="ava"><?php echo strtoupper(substr($la['nombre'],0,1).substr($la['apellido'],0,1)); ?></div>
+                        <span style="font-weight:600;"><?php echo htmlspecialchars($la['nombre'].' '.$la['apellido']); ?></span>
+                    </div></td>
+                    <td><?php echo $ayerN; ?></td>
+                    <td><strong><?php echo $hoyN; ?></strong></td>
+                    <td>
+                        <span class="badge badge-<?php echo $badge($hoyN, $ayerN); ?>" style="font-size:11px;">
+                            <?php echo $arrow($hoyN, $ayerN); ?> <?php echo $pct($hoyN, $ayerN); ?>
+                        </span>
+                    </td>
+                    <td><?php echo $semP; ?></td>
+                    <td><strong><?php echo $semA; ?></strong></td>
+                    <td>
+                        <span class="badge badge-<?php echo $badge($semA, $semP); ?>" style="font-size:11px;">
+                            <?php echo $arrow($semA, $semP); ?> <?php echo $pct($semA, $semP); ?>
+                        </span>
+                    </td>
+                    <td><?php echo (int) $la['mes']; ?></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (empty($leadMetrics['por_asesor'])): ?>
+                <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:20px;">Sin asesores activos.</td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Distribución por Ramo</h3></div>
+        <div class="card-body">
+            <?php $ramosInfo = [
+                'autos'          => ['bi-car-front-fill','Autos','#0ea5e9','#e0f2fe'],
+                'vida'           => ['bi-heart-fill','Vida','#10b981','#d1fae5'],
+                'gastos_medicos' => ['bi-hospital-fill','Gastos Médicos','#8b5cf6','#ede9fe'],
+            ];
+            foreach ($ramosInfo as $key=>[$icon,$nombre,$color,$light]):
+                $d=$stats['por_ramo'][$key]??['cotizaciones'=>0,'ventas'=>0];
+                $pct=$d['cotizaciones']>0?min(100,round($d['ventas']/$d['cotizaciones']*100)):0;
+            ?>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border-color);">
+                <div class="ramo-icon" style="background:<?php echo $light; ?>;color:<?php echo $color; ?>;"><i class="bi <?php echo $icon; ?>"></i></div>
+                <div style="flex:1;">
+                    <div style="font-weight:600;font-size:13px;margin-bottom:4px;"><?php echo $nombre; ?></div>
+                    <div class="cbar"><div class="cfill" style="width:<?php echo $pct; ?>%;background:<?php echo $color; ?>;"></div></div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-weight:700;font-size:15px;"><?php echo $d['ventas']; ?></div>
+                    <div style="font-size:11px;color:var(--text-muted);"><?php echo $d['cotizaciones']; ?> cot.</div>
+                </div>
             </div>
             <?php endforeach; ?>
-        </section>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Asesores Este Mes</h3><span style="font-size:12px;color:var(--text-muted);"><?php echo date('F Y'); ?></span></div>
+        <div class="card-body" style="padding:0;">
+            <table class="adt">
+                <thead><tr><th>Asesor</th><th>Clientes</th><th>Ventas</th><th>Ingreso</th></tr></thead>
+                <tbody>
+                <?php foreach ($ranking as $ag): ?>
+                <tr>
+                    <td><div style="display:flex;align-items:center;gap:8px;">
+                        <div class="ava"><?php echo strtoupper(substr($ag['nombre'],0,1).substr($ag['apellido'],0,1)); ?></div>
+                        <span style="font-weight:600;"><?php echo htmlspecialchars($ag['nombre']); ?></span>
+                    </div></td>
+                    <td><?php echo $ag['clientes_mes']; ?></td>
+                    <td><strong style="color:var(--success-color);"><?php echo $ag['ventas_mes']; ?></strong></td>
+                    <td><strong>$<?php echo number_format($ag['ingreso_mes'],0); ?></strong></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-        <!-- Calendario + Sidebar -->
-        <div class="layout-cal" style="display:grid;grid-template-columns:1fr 300px;gap:24px;align-items:start;">
-
-            <!-- Calendario -->
-            <div class="card">
-                <div class="card-header">
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <button type="button" id="btnPrevMes" class="btn btn-outline btn-icon btn-sm" id="btnPrevMes">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15,18 9,12 15,6"/></svg>
-                        </button>
-                        <h3 class="card-title" style="font-size:17px;" id="calTitle"><?php echo $nombresMes[$mes].' '.$anio; ?></h3>
-                        <button type="button" id="btnNextMes" class="btn btn-outline btn-icon btn-sm" id="btnNextMes">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9,18 15,12 9,6"/></svg>
-                        </button>
+<?php elseif ($tab === 'rendimiento'): ?>
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-secondary);border-radius:var(--border-radius);flex-wrap:wrap;flex:1;">
+        <label style="font-size:13px;font-weight:600;color:var(--text-secondary);">Ver datos de:</label>
+        <select class="form-select" id="selFiltroAgente" style="width:auto;">
+            <option value="">Todos los asesores</option>
+            <?php foreach ($asesores as $as): ?>
+            <option value="<?php echo $as['id']; ?>" <?php echo $filtroAgente===$as['id']?'selected':''; ?>>
+                <?php echo htmlspecialchars($as['nombre'].' '.$as['apellido']); ?>
+            </option>
+            <?php endforeach; ?>
+        </select>
+        <?php if ($filtroAgente): ?><a href="?tab=rendimiento" class="btn btn-ghost btn-sm">✕ Ver todos</a><?php endif; ?>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <select id="expMes" class="form-select" style="width:auto;font-size:12px;">
+            <option value="">Todos los meses</option>
+            <?php for($_m=1;$_m<=12;$_m++): $_ms = str_pad((string)$_m, 2, '0', STR_PAD_LEFT); ?>
+            <option value="<?php echo date('Y').'-'.$_ms; ?>"><?php echo date('F', mktime(0, 0, 0, $_m, 1)).' '.date('Y'); ?></option>
+            <?php endfor; ?>
+        </select>
+        <select id="expEstado" class="form-select" style="width:auto;font-size:12px;">
+            <option value="">Todos estados</option>
+            <option value="pendiente">Pendiente</option><option value="enviada">Enviada</option>
+            <option value="aceptada">Aceptada</option><option value="rechazada">Rechazada</option>
+            <option value="pagado">Pagado</option>
+        </select>
+        <button id="btnExportarExcel" class="btn btn-outline btn-sm">📊 Excel</button>
+        <button id="btnExportarPdf"   class="btn btn-outline btn-sm">📄 PDF</button>
+        <a href="/exportar?formato=excel&tipo=ranking" class="btn btn-outline btn-sm">🏆 Ranking</a>
+    </div>
+</div>
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-header"><h3 class="card-title">Ranking — Todos los Tiempos</h3></div>
+    <div class="card-body" style="padding:0;">
+        <table class="adt">
+            <thead><tr><th>#</th><th>Asesor</th><th>Clientes</th><th>Cotizaciones</th><th>Ventas</th><th>Conversión</th><th>Ingreso Total</th></tr></thead>
+            <tbody>
+            <?php $mm=['gold','silver','bronze'];
+            foreach ($ranking as $i=>$ag):
+                if ($filtroAgente && $ag['id']!==$filtroAgente) continue;
+                $t=$ag['total_cotizaciones']>0?round($ag['total_ventas']/$ag['total_cotizaciones']*100):0; ?>
+            <tr>
+                <td><div class="medal <?php echo $mm[$i]??'other'; ?>"><?php echo $i+1; ?></div></td>
+                <td><div style="display:flex;align-items:center;gap:10px;">
+                    <div class="ava"><?php echo strtoupper(substr($ag['nombre'],0,1).substr($ag['apellido'],0,1)); ?></div>
+                    <div>
+                        <div style="font-weight:600;"><?php echo htmlspecialchars($ag['nombre'].' '.$ag['apellido']); ?></div>
+                        <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($ag['correo']); ?></div>
                     </div>
-                    <div style="display:flex;gap:10px;font-size:11px;align-items:center;flex-wrap:wrap;">
-                        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--info-light);"></span>Llamada</span>
-                        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#fef3c7;"></span>Video</span>
-                        <span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#dcfce7;"></span>Presencial</span>
-                    </div>
-                </div>
+                </div></td>
+                <td><?php echo $ag['total_clientes']; ?></td>
+                <td><?php echo $ag['total_cotizaciones']; ?></td>
+                <td><strong style="color:var(--success-color);"><?php echo $ag['total_ventas']; ?></strong></td>
+                <td><div style="display:flex;align-items:center;gap:8px;">
+                    <div class="cbar" style="flex:1;"><div class="cfill" style="width:<?php echo $t; ?>%"></div></div>
+                    <span style="font-size:12px;font-weight:600;min-width:32px;"><?php echo $t; ?>%</span>
+                </div></td>
+                <td><strong>$<?php echo number_format($ag['ingreso_total'],0); ?></strong></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;margin-bottom:24px;">
+    <div class="card"><div class="card-header"><h3 class="card-title">Evolución Mensual de Ventas</h3></div><div class="card-body"><div class="chart-container"><canvas id="chartEvolucion"></canvas></div></div></div>
+    <div class="card"><div class="card-header"><h3 class="card-title">Coberturas Más Vendidas</h3></div><div class="card-body"><div class="chart-container"><canvas id="chartCoberturas"></canvas></div></div></div>
+</div>
+<div class="card"><div class="card-header"><h3 class="card-title">Top Vehículos Asegurados</h3></div><div class="card-body"><div class="chart-container"><canvas id="chartVehiculos"></canvas></div></div></div>
 
-                <div class="cal-grid" id="calGrid">
-                    <?php foreach(['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'] as $d): ?>
-                    <div class="cal-weekday"><?php echo $d; ?></div>
+<?php elseif ($tab === 'pipeline'): ?>
+<?php
+$totPend = array_sum(array_column($pipeline,'pendientes'));
+$totEnv  = array_sum(array_column($pipeline,'enviadas'));
+$totCerr = array_sum(array_column($pipeline,'cerradas'));
+$totPerd = array_sum(array_column($pipeline,'perdidas'));
+?>
+<div class="kpi4">
+    <div class="stat-card warning"><div class="stat-card-value"><?php echo $totPend; ?></div><div class="stat-card-label">⏳ Pendientes</div></div>
+    <div class="stat-card info">   <div class="stat-card-value"><?php echo $totEnv; ?></div>  <div class="stat-card-label">📤 Enviadas al Cliente</div></div>
+    <div class="stat-card success"><div class="stat-card-value"><?php echo $totCerr; ?></div>  <div class="stat-card-label">✅ Cerradas</div></div>
+    <div class="stat-card danger"> <div class="stat-card-value"><?php echo $totPerd; ?></div>  <div class="stat-card-label">❌ Perdidas</div></div>
+</div>
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Pipeline por Asesor</h3>
+        <span style="font-size:12px;color:var(--text-muted);">Valor total: <strong>$<?php echo number_format($totalPipe,0); ?></strong></span>
+    </div>
+    <div class="card-body" style="padding:0;">
+        <table class="adt">
+            <thead><tr><th>Asesor</th><th>⏳</th><th>📤</th><th>✅</th><th>❌</th><th>Valor en Proceso</th><th>Ingreso Cerrado</th><th>Barra</th></tr></thead>
+            <tbody>
+            <?php foreach ($pipeline as $p):
+                $tot = $p['pendientes']+$p['enviadas']+$p['cerradas']+$p['perdidas'];
+                $pP  = $tot>0?round($p['pendientes']/$tot*100):0;
+                $pE  = $tot>0?round($p['enviadas']/$tot*100):0;
+                $pC  = $tot>0?round($p['cerradas']/$tot*100):0;
+                $pPr = $tot>0?round($p['perdidas']/$tot*100):0;
+            ?>
+            <tr>
+                <td><div style="display:flex;align-items:center;gap:8px;">
+                    <div class="ava"><?php echo strtoupper(substr($p['nombre'],0,1).substr($p['apellido'],0,1)); ?></div>
+                    <strong><?php echo htmlspecialchars($p['nombre'].' '.$p['apellido']); ?></strong>
+                </div></td>
+                <td><span class="pip-num" style="color:#f59e0b;"><?php echo $p['pendientes']; ?></span></td>
+                <td><span class="pip-num" style="color:#0ea5e9;"><?php echo $p['enviadas']; ?></span></td>
+                <td><span class="pip-num" style="color:#10b981;"><?php echo $p['cerradas']; ?></span></td>
+                <td><span class="pip-num" style="color:#ef4444;"><?php echo $p['perdidas']; ?></span></td>
+                <td><strong>$<?php echo number_format((float)$p['valor_pipeline'],0); ?></strong></td>
+                <td style="color:var(--success-color);">$<?php echo number_format((float)$p['valor_cerrado'],0); ?></td>
+                <td style="min-width:100px;">
+                    <div class="pipe-bar">
+                        <div class="pipe-seg" style="width:<?php echo $pP; ?>%;background:#f59e0b;"></div>
+                        <div class="pipe-seg" style="width:<?php echo $pE; ?>%;background:#0ea5e9;"></div>
+                        <div class="pipe-seg" style="width:<?php echo $pC; ?>%;background:#10b981;"></div>
+                        <div class="pipe-seg" style="width:<?php echo $pPr; ?>%;background:#ef4444;"></div>
+                    </div>
+                    <div style="font-size:10px;color:var(--text-muted);margin-top:2px;"><?php echo $pC; ?>% cierre</div>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php elseif ($tab === 'actividad'): ?>
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;">
+    <div class="card">
+        <div class="card-header" style="flex-wrap:wrap;gap:8px;">
+            <h3 class="card-title">Actividad Reciente del Equipo</h3>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <select class="form-select" id="selFiltroActividad" style="width:auto;font-size:12px;">
+                    <option value="">Todos los asesores</option>
+                    <?php foreach ($asesores as $as): ?>
+                    <option value="<?php echo $as['id']; ?>" <?php echo (int)$filtroActAgente===$as['id']?'selected':''; ?>>
+                        <?php echo htmlspecialchars($as['nombre'].' '.$as['apellido']); ?>
+                    </option>
                     <?php endforeach; ?>
-
-                    <?php for ($i=0;$i<$diaSemana;$i++): ?>
-                    <div class="cal-day other-month"></div>
-                    <?php endfor; ?>
-
-                    <?php
-                    $dHoy=(int)$hoy->format('j');$mHoy=(int)$hoy->format('n');$aHoy=(int)$hoy->format('Y');
-                    for ($dia=1;$dia<=$diasEnMes;$dia++):
-                        $esHoy=($dia===$dHoy&&$mes===$mHoy&&$anio===$aHoy);
-                        $citasDia=$citasPorDia[$dia]??[];
-                    ?>
-                    <div class="cal-day <?php echo $esHoy?'today':''; ?>" data-action="abrirDia" data-dia="<?php echo $dia; ?>">
-                        <div class="cal-day-num"><?php echo $dia; ?></div>
-                        <?php foreach(array_slice($citasDia,0,2) as $c): ?>
-                        <div class="cal-event <?php echo $c['estado']==='programada'?htmlspecialchars($c['tipo']):htmlspecialchars($c['estado']); ?>"
-                             data-action="verCita" data-id="<?php echo $c['id']; ?>"
-                             title="<?php echo htmlspecialchars(substr($c['hora'],0,5).' - '.$c['cliente_nombre']); ?>">
-                            <?php echo htmlspecialchars(substr($c['hora'],0,5).' '.$c['cliente_nombre']); ?>
-                        </div>
-                        <?php endforeach; ?>
-                        <?php if(count($citasDia)>2): ?>
-                        <div class="cal-more" data-action="abrirDia" data-stop="1" data-dia="<?php echo $dia; ?>">+<?php echo count($citasDia)-2; ?> más</div>
-                        <?php endif; ?>
-                    </div>
-                    <?php endfor; ?>
-
-                    <?php $relleno=(7-(($diaSemana+$diasEnMes)%7))%7;
-                    for ($i=0;$i<$relleno;$i++): ?>
-                    <div class="cal-day other-month"></div>
-                    <?php endfor; ?>
+                </select>
+                <?php if ($filtroActAgente): ?><a href="?tab=actividad" class="btn btn-ghost btn-sm" style="font-size:11px;">✕ Ver todos</a><?php endif; ?>
+                <span style="font-size:11px;color:var(--text-muted);"><?php echo count($actividad); ?> acciones</span>
+            </div>
+        </div>
+        <div class="act-feed" id="actFeed">
+        <?php
+        $icons = ['registro'=>['🧑','#e0f2fe'],'llamada'=>['📞','#f0fdf4'],'cotizacion'=>['📄','#fef3c7'],
+                  'cita'=>['📅','#fdf4ff'],'nota'=>['📝','#f8fafc'],'venta'=>['🎉','#dcfce7'],'cambio_estado'=>['🔄','#f1f5f9']];
+        foreach ($actividad as $act):
+            $ic = $icons[$act['tipo']] ?? ['•','#f8fafc'];
+            $diff = time()-strtotime($act['fecha']);
+            $hace = $diff<60?'Hace un momento':($diff<3600?'Hace '.round($diff/60).' min':($diff<86400?'Hace '.round($diff/3600).'h':date('d/m/Y H:i',strtotime($act['fecha']))));
+        ?>
+        <div class="act-item">
+            <div class="act-icon" style="background:<?php echo $ic[1]; ?>;"><?php echo $ic[0]; ?></div>
+            <div style="flex:1;">
+                <div style="font-size:13px;font-weight:600;"><?php echo htmlspecialchars($act['titulo']); ?></div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <span>👤 <?php echo htmlspecialchars($act['agente_nombre']); ?></span>
+                    <span>·</span><span><?php echo htmlspecialchars($act['cliente_nombre']); ?></span>
+                    <span>·</span><span><?php echo $hace; ?></span>
                 </div>
             </div>
-
-            <!-- Próximas citas -->
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Próximas Citas</h3>
-                    <span class="badge badge-info"><?php echo count($proximas); ?></span>
-                </div>
-                <div class="card-body" style="padding:0 20px;">
-                    <?php if (empty($proximas)): ?>
-                    <div class="empty-state" style="padding:28px 0;">
-                        <div class="empty-state-icon" style="font-size:20px;">📅</div>
-                        <p class="empty-state-description" style="font-size:13px;">Sin citas próximas</p>
+        </div>
+        <?php endforeach; ?>
+        <?php if (empty($actividad)): ?>
+        <div style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px;">Sin actividad registrada</div>
+        <?php endif; ?>
+        </div>
+        <div id="actPag" style="display:flex;gap:4px;justify-content:center;padding:10px;flex-wrap:wrap;border-top:1px solid var(--border-color);"></div>
+    </div>
+    <div>
+        <?php if ($filtroActAgente):
+            $asFi = array_values(array_filter($agLista, fn($a) => (int)$a['id']===(int)$filtroActAgente))[0] ?? null;
+            if ($asFi):
+                $sacs = $db->prepare("SELECT COUNT(*) FROM clientes WHERE agente_id=?"); $sacs->execute([$filtroActAgente]); $acs=(int)$sacs->fetchColumn();
+                $scos = $db->prepare("SELECT COUNT(*) t,SUM(estado IN('aceptada','pagado')) v FROM cotizaciones WHERE agente_id=?"); $scos->execute([$filtroActAgente]); $aco=$scos->fetch();
+                $scis = $db->prepare("SELECT COUNT(*) FROM citas WHERE agente_id=? AND estado='programada' AND fecha>=CURDATE()"); $scis->execute([$filtroActAgente]); $aci=(int)$scis->fetchColumn();
+        ?>
+        <div class="card" style="margin-bottom:16px;">
+            <div class="card-header"><h3 class="card-title">📋 Perfil del Asesor</h3></div>
+            <div class="card-body">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                    <div class="ava" style="width:44px;height:44px;font-size:17px;"><?php echo strtoupper(substr($asFi['nombre'],0,1).substr($asFi['apellido'],0,1)); ?></div>
+                    <div>
+                        <div style="font-weight:700;"><?php echo htmlspecialchars($asFi['nombre'].' '.$asFi['apellido']); ?></div>
+                        <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($asFi['correo']); ?></div>
                     </div>
-                    <?php else:
-                    $tipoIcon=['llamada'=>'📞','videollamada'=>'💻','presencial'=>'🤝'];
-                    foreach ($proximas as $p):
-                        $fd=new DateTime($p['fecha']);$dN=(int)$fd->format('j');$mN=(int)$fd->format('n');
-                    ?>
-                    <div class="upcoming-item">
-                        <div class="upcoming-date">
-                            <div class="upcoming-date-day"><?php echo $dN; ?></div>
-                            <div class="upcoming-date-mes"><?php echo $mesesCortos[$mN]; ?></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <?php foreach([['Clientes',$acs,'var(--accent-color)'],['Ventas',(int)($aco['v']??0),'var(--success-color)'],['Cotizaciones',(int)($aco['t']??0),'var(--text-primary)'],['Citas prox.',$aci,'var(--warning-color)']] as [$lbl,$val,$col]): ?>
+                    <div style="background:var(--bg-secondary);border-radius:6px;padding:10px;text-align:center;">
+                        <div style="font-size:22px;font-weight:800;color:<?php echo $col; ?>"><?php echo $val; ?></div>
+                        <div style="font-size:10px;color:var(--text-muted);"><?php echo $lbl; ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+        <?php endif; endif; ?>
+        <div class="card" style="margin-bottom:16px;">
+            <div class="card-header"><h3 class="card-title">Citas de Hoy</h3><span style="font-size:12px;color:var(--text-muted);"><?php echo date('d/m/Y'); ?></span></div>
+            <div class="card-body" style="padding:0;">
+                <?php if (empty($citasHoy)): ?>
+                <p style="font-size:13px;color:var(--text-muted);text-align:center;padding:16px;">Sin citas programadas para hoy</p>
+                <?php else: foreach ($citasHoy as $ci): ?>
+                <div style="display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border-color);">
+                    <span style="font-size:13px;font-weight:700;color:var(--accent-color);min-width:44px;"><?php echo substr($ci['hora'],0,5); ?></span>
+                    <div>
+                        <div style="font-size:13px;font-weight:600;"><?php echo htmlspecialchars($ci['cliente']); ?></div>
+                        <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($ci['asesor'].' · '.ucfirst($ci['tipo'])); ?></div>
+                    </div>
+                </div>
+                <?php endforeach; endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php elseif ($tab === 'asesores'): ?>
+<div style="display:grid;grid-template-columns:<?php echo $asesorSel?'1fr 2fr':'1fr'; ?>;gap:24px;">
+    <div>
+        <div class="toolbar">
+            <div class="search-bar">
+                <span class="search-bar-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+                <input type="text" id="srchA" class="search-bar-input" placeholder="Nombre, correo...">
+            </div>
+            <?php if ($isSuperadmin): ?>
+            <button class="btn btn-primary" data-action="adm-abrirCrearAgente">+ Nuevo</button>
+            <?php endif; ?>
+        </div>
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Asesores <span class="badge badge-neutral" id="cntA"><?php echo count($agLista); ?></span></h3></div>
+            <div class="card-body" style="padding:0;">
+                <table class="adt"><thead><tr><th>Asesor</th><th>Rol</th><th>Clientes</th><th>Acciones</th></tr></thead>
+                <tbody id="tbA">
+                <?php foreach ($agLista as $ag):
+                    $met    = array_values(array_filter($ranking,fn($r)=>$r['id']===(int)$ag['id']))[0]??[];
+                    $activo = (int)($ag['activo']??1);
+                    $puedeEditar = ($isSuperadmin && in_array($ag['rol'],['asesor','coordinador'],true))
+                                || ($_agenteRol === 'coordinador' && $ag['rol'] === 'asesor');
+                ?>
+                <tr data-n="<?php echo strtolower($ag['nombre'].' '.$ag['apellido']); ?>" data-c="<?php echo strtolower($ag['correo']); ?>">
+                    <td><div style="display:flex;align-items:center;gap:10px;">
+                        <div class="ava" style="<?php echo !$activo?'opacity:.4;':''; ?>"><?php echo strtoupper(substr($ag['nombre'],0,1).substr($ag['apellido'],0,1)); ?></div>
+                        <div>
+                            <div style="font-weight:600;<?php echo !$activo?'color:var(--text-muted);':''; ?>">
+                                <?php echo htmlspecialchars($ag['nombre'].' '.$ag['apellido']); ?>
+                                <?php if ($ag['id']==$agenteId): ?><span style="font-size:11px;color:var(--text-muted);"> (tú)</span><?php endif; ?>
+                                <?php if (!$activo): ?><span style="font-size:10px;background:#fee2e2;color:#dc2626;border-radius:4px;padding:1px 5px;margin-left:4px;">Inactivo</span><?php endif; ?>
+                            </div>
+                            <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($ag['correo']); ?></div>
                         </div>
-                        <div style="flex:1;min-width:0;">
-                            <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                <?php echo htmlspecialchars($p['cliente_nombre']); ?>
-                            </div>
-                            <div style="font-size:12px;color:var(--text-secondary);">
-                                <strong style="color:var(--accent-color);"><?php echo substr($p['hora'],0,5); ?></strong>
-                                &nbsp;<?php echo $tipoIcon[$p['tipo']]??''; ?> <?php echo ucfirst($p['tipo']); ?>
-                            </div>
-                            <?php if (!empty($p['cliente_telefono'])): ?>
-                            <div style="font-size:11px;color:var(--text-muted);">📞 <?php echo htmlspecialchars($p['cliente_telefono']); ?></div>
+                    </div></td>
+                    <td><span class="rol-tag <?php echo $ag['rol']; ?>"><?php echo $ag['rol']; ?></span></td>
+                    <td><?php $nc=$met['total_clientes']??0; ?>
+                        <?php if ($ag['rol']==='asesor'&&$activo&&$nc>0): ?>
+                        <a href="?tab=asesores&asesor_id=<?php echo $ag['id']; ?>" class="btn btn-sm btn-ghost" style="font-size:12px;"><?php echo $nc; ?> clientes →</a>
+                        <?php else: ?><span style="font-size:12px;color:var(--text-muted);"><?php echo $nc; ?></span><?php endif; ?>
+                    </td>
+                    <!-- PARCHE: celda de acciones con botón ✏️ editar agente -->
+                    <td class="adm-stop-prop">
+                        <?php if ($ag['id'] != $agenteId && ($isSuperadmin || $_agenteRol === 'coordinador')): ?>
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <?php if ($isSuperadmin): ?>
+                            <select class="form-select adm-rol-select" style="font-size:11px;padding:3px 6px;width:auto;"
+                                    data-agente-id="<?php echo $ag['id']; ?>">
+                                <option value="asesor"      <?php echo $ag['rol']==='asesor'     ?'selected':''; ?>>Asesor</option>
+                                <option value="coordinador" <?php echo $ag['rol']==='coordinador'?'selected':''; ?>>Coord.</option>
+                                <option value="superadmin"  <?php echo $ag['rol']==='superadmin' ?'selected':''; ?>>SA</option>
+                            </select>
+                            <?php endif; ?>
+
+                            <?php if ($puedeEditar && $activo): ?>
+                            <button class="btn btn-sm btn-ghost"
+                                    title="Editar nombre / contraseña"
+                                    data-action="adm-editarAgente"
+                                    data-id="<?php echo $ag['id']; ?>"
+                                    data-nombre="<?php echo htmlspecialchars($ag['nombre'],ENT_QUOTES); ?>"
+                                    data-apellido="<?php echo htmlspecialchars($ag['apellido'],ENT_QUOTES); ?>"
+                                    data-rol="<?php echo htmlspecialchars($ag['rol'],ENT_QUOTES); ?>">
+                                ✏️
+                            </button>
+                            <?php endif; ?>
+
+                            <?php if ($isSuperadmin): ?>
+                            <button class="btn btn-sm btn-ghost"
+                                    style="color:<?php echo $activo?'var(--danger-color)':'var(--success-color)'; ?>;"
+                                    data-action="adm-toggleAgente"
+                                    data-id="<?php echo $ag['id']; ?>"
+                                    data-nombre="<?php echo htmlspecialchars($ag['nombre'],ENT_QUOTES); ?>"
+                                    data-activo="<?php echo $activo; ?>">
+                                <?php echo $activo ? '⊗' : '✓'; ?>
+                            </button>
+                            <?php endif; ?>
+
+                            <?php if ($_agenteRol === 'coordinador' && $ag['rol'] === 'asesor'): ?>
+                            <button class="btn btn-sm btn-ghost"
+                                    style="color:<?php echo $activo?'var(--danger-color)':'var(--success-color)'; ?>;"
+                                    data-action="adm-toggleAgente"
+                                    data-id="<?php echo $ag['id']; ?>"
+                                    data-nombre="<?php echo htmlspecialchars($ag['nombre'],ENT_QUOTES); ?>"
+                                    data-activo="<?php echo $activo; ?>">
+                                <?php echo $activo ? '⊗' : '✓'; ?>
+                            </button>
+                            <?php endif; ?>
+
+                            <?php if ($isSuperadmin): ?>
+                            <button class="btn btn-sm btn-ghost"
+                                    title="Ver historial de actividad"
+                                    data-action="adm-verHistorialCoord"
+                                    data-id="<?php echo $ag['id']; ?>"
+                                    data-nombre="<?php echo htmlspecialchars($ag['nombre'].' '.$ag['apellido'],ENT_QUOTES); ?>"
+                                    style="<?php echo in_array($ag['rol'], ['coordinador', 'superadmin']) ? '' : 'display:none;'; ?>">
+                                📋
+                            </button>
                             <?php endif; ?>
                         </div>
-                        <button class="btn btn-ghost btn-icon btn-sm" data-action="verCita" data-id="<?php echo $p['id']; ?>">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
-                    </div>
-                    <?php endforeach; endif; ?>
-                </div>
+                        <?php else: ?><span style="font-size:12px;color:var(--text-muted);">—</span><?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody></table>
+                <div class="pagination" id="pgA"></div>
             </div>
         </div>
-    </main>
+    </div>
+
+    <?php if ($asesorSel && $asesorInfo): ?>
+    <div><div class="card">
+        <div class="card-header">
+            <div>
+                <h3 class="card-title">Clientes de <?php echo htmlspecialchars($asesorInfo['nombre'].' '.$asesorInfo['apellido']); ?> <span class="badge badge-neutral"><?php echo count($clientesAsesor); ?></span></h3>
+                <p style="font-size:12px;color:var(--text-muted);margin-top:2px;">Selecciona clientes para reasignarlos</p>
+            </div>
+            <a href="?tab=asesores" class="btn btn-ghost btn-sm">✕ Cerrar</a>
+        </div>
+        <div class="card-body" style="padding:0;">
+            <div id="reasignarBar" style="display:none;padding:12px 16px;background:var(--info-light);border-bottom:1px solid var(--border-color);align-items:center;gap:12px;flex-wrap:wrap;">
+                <span id="selCount" style="font-size:13px;font-weight:600;color:var(--accent-color);"></span>
+                <span style="font-size:13px;">→ Reasignar a:</span>
+                <select class="form-select" id="nuevoAsesor" style="width:auto;">
+                    <option value="">Selecciona asesor...</option>
+                    <?php foreach ($asesores as $as): if ($as['id']===$asesorSel) continue; ?>
+                    <option value="<?php echo $as['id']; ?>"><?php echo htmlspecialchars($as['nombre'].' '.$as['apellido']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button class="btn btn-primary btn-sm" data-action="adm-ejecutarReasignacion">Reasignar</button>
+                <button class="btn btn-ghost btn-sm"   data-action="adm-deseleccionarTodos">Cancelar selección</button>
+            </div>
+            <div style="padding:8px 14px;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <input type="checkbox" id="selectAll" style="width:16px;height:16px;cursor:pointer;">
+                <label for="selectAll" style="font-size:12px;font-weight:600;cursor:pointer;">Sel. todos</label>
+                <input type="text" id="srchCl" placeholder="Buscar..." style="padding:4px 10px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;width:160px;">
+            </div>
+            <div id="clientesList">
+            <?php foreach ($clientesAsesor as $cl): ?>
+            <div class="cb-row" data-action="adm-toggleCliente" data-id="<?php echo $cl['id']; ?>"
+                 id="cbrow_<?php echo $cl['id']; ?>"
+                 data-n="<?php echo strtolower($cl['nombre'].' '.$cl['apellido_paterno']); ?>">
+                <input type="checkbox" id="cb_<?php echo $cl['id']; ?>" value="<?php echo $cl['id']; ?>">
+                <div style="flex:1;">
+                    <div style="font-size:13px;font-weight:600;"><?php echo htmlspecialchars($cl['nombre'].' '.$cl['apellido_paterno'].' '.$cl['apellido_materno']); ?></div>
+                    <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($cl['correo']); ?></div>
+                </div>
+                <div style="text-align:right;">
+                    <span class="badge badge-neutral" style="font-size:10px;"><?php echo $cl['total_cotizaciones']; ?> cot.</span>
+                    <div style="font-size:10px;color:var(--text-muted);margin-top:2px;"><?php echo date('d/m/Y',strtotime($cl['fecha_registro'])); ?></div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+            </div>
+            <div class="pagination" id="pgClientes"></div>
+        </div>
+    </div></div>
+    <?php endif; ?>
 </div>
 
-<!-- Modal: Ver Cita -->
-<div class="modal-overlay" id="modalVerCita">
-    <div class="modal">
-        <div class="modal-header"><h3 class="modal-title">Detalle de Cita</h3><button class="modal-close" data-close="modalVerCita">&times;</button></div>
-        <div class="modal-body" id="modalVerCitaBody"></div>
-        <div class="modal-footer" id="modalVerCitaFooter"></div>
+<?php elseif ($tab === 'emision'):
+    require __DIR__ . '/_tab_emision.php'; ?>
+
+<?php elseif ($tab === 'renovaciones'): ?>
+<?php
+$totalRenov = count($renovacionesPendientes);
+$urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['dias_vence']) && (int)$r['dias_vence'] <= 7));
+?>
+<div class="kpi4" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+    <div class="stat-card warning"><div class="stat-card-value"><?= $totalRenov ?></div><div class="stat-card-label">🔁 Solicitudes</div></div>
+    <div class="stat-card <?= $urgentes > 0 ? 'danger' : 'success' ?>"><div class="stat-card-value"><?= $urgentes ?></div><div class="stat-card-label">🚨 Urgentes (≤7 días)</div></div>
+    <div class="stat-card info"><div class="stat-card-value"><?= $totalRenov - $urgentes ?></div><div class="stat-card-label">📋 En seguimiento</div></div>
+</div>
+<?php if (empty($renovacionesPendientes)): ?>
+<div class="card" style="text-align:center;padding:56px;">
+    <div style="font-size:48px;margin-bottom:12px;">✅</div>
+    <div style="font-size:16px;font-weight:700;color:var(--text-primary);">Sin solicitudes de renovación</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">Cuando un asesor solicite renovar una póliza, aparecerá aquí.</div>
+</div>
+<?php else: ?>
+<div class="toolbar" style="margin-bottom:16px;">
+    <div class="search-bar" style="flex:1;">
+        <span class="search-bar-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" id="srchRenov" class="search-bar-input" placeholder="Buscar por cliente, asesor, compañía…">
     </div>
 </div>
+<div style="display:flex;flex-direction:column;gap:14px;" id="renovLista">
+<?php foreach ($renovacionesPendientes as $r):
+    $dias   = isset($r['dias_vence']) ? (int)$r['dias_vence'] : null;
+    $urgente= $dias !== null && $dias <= 7;
+    $vencida= $dias !== null && $dias < 0;
+    $borderColor = $vencida ? 'var(--danger-color)' : ($urgente ? '#f59e0b' : 'var(--accent-color)');
+    $fechaSol = $r['fecha'] ? date('d/m/Y H:i', strtotime($r['fecha'])) : '—';
+    $fechaFin = !empty($r['fecha_fin']) && $r['fecha_fin'] !== '0000-00-00' ? date('d/m/Y', strtotime($r['fecha_fin'])) : null;
+    $polEstLabel = ['vigente'=>'Vigente','por_vencer'=>'Por vencer','vencida'=>'Vencida','cancelada'=>'Cancelada'][$r['poliza_estado'] ?? ''] ?? '—';
+    $polEstBadge = ['vigente'=>'badge-success','por_vencer'=>'badge-warning','vencida'=>'badge-danger','cancelada'=>'badge-neutral'][$r['poliza_estado'] ?? ''] ?? 'badge-neutral';
+?>
+<div class="card renov-card"
+     data-cliente="<?= strtolower($r['cliente_nombre']) ?>"
+     data-asesor="<?= strtolower($r['asesor_nombre']) ?>"
+     data-compania="<?= strtolower($r['compania'] ?? '') ?>"
+     style="border-left:4px solid <?= $borderColor ?>;">
+    <div class="card-body" style="padding:16px 20px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:220px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                    <?php if ($vencida): ?><span class="badge badge-danger">🚨 Póliza vencida</span>
+                    <?php elseif ($urgente): ?><span class="badge badge-warning">⚠️ Urgente — <?= $dias ?>d restantes</span>
+                    <?php elseif ($dias !== null): ?><span class="badge badge-info"><?= $dias ?>d para vencer</span>
+                    <?php endif; ?>
+                    <?php if (!empty($r['poliza_estado'])): ?>
+                    <span class="badge <?= $polEstBadge ?>" style="font-size:10px;"><?= $polEstLabel ?></span>
+                    <?php endif; ?>
+                </div>
+                <div style="font-size:15px;font-weight:700;margin-bottom:4px;"><?= htmlspecialchars($r['cliente_nombre']) ?></div>
+                <div style="font-size:12px;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
+                    <?php if ($r['cliente_correo']): ?><span>✉️ <?= htmlspecialchars($r['cliente_correo']) ?></span><?php endif; ?>
+                    <?php if ($r['cliente_tel']): ?><span>📞 <?= htmlspecialchars($r['cliente_tel']) ?></span><?php endif; ?>
+                    <span>👤 Asesor: <strong><?= htmlspecialchars($r['asesor_nombre']) ?></strong></span>
+                </div>
+                <?php if (!empty($r['numero_poliza']) || !empty($r['compania'])): ?>
+                <div style="font-size:12px;color:var(--text-secondary);display:flex;gap:10px;flex-wrap:wrap;">
+                    <?php if ($r['compania']): ?><span>🏢 <?= htmlspecialchars($r['compania']) ?></span><?php endif; ?>
+                    <?php if ($r['numero_poliza']): ?><span># <code style="font-size:11px;"><?= htmlspecialchars($r['numero_poliza']) ?></code></span><?php endif; ?>
+                    <?php if ($r['frecuencia_renovacion']): ?><span>🔄 <?= ucfirst($r['frecuencia_renovacion']) ?></span><?php endif; ?>
+                    <?php if ($fechaFin): ?><span>⏳ Vence: <strong><?= $fechaFin ?></strong></span><?php endif; ?>
+                </div>
+                <?php endif; ?>
+                <?php if (!empty($r['descripcion'])): ?>
+                <div style="margin-top:8px;padding:6px 10px;background:var(--bg-secondary);border-radius:6px;font-size:11px;color:var(--text-muted);">
+                    💬 <?= htmlspecialchars($r['descripcion']) ?>
+                </div>
+                <?php endif; ?>
+                <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">📅 Solicitado: <?= $fechaSol ?></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:190px;align-items:flex-end;">
+                <?php if ($r['cliente_id']): ?>
+                <a href="/cliente/<?= (int)$r['cliente_id'] ?>" class="btn btn-outline btn-sm" style="width:100%;text-align:center;">👁 Ver cliente</a>
+                <?php endif; ?>
+                <?php if ($r['poliza_id']): ?>
+                <button class="btn btn-primary btn-sm" style="width:100%;"
+                        data-action="adm-renovGestionarPoliza"
+                        data-poliza-id="<?= (int)$r['poliza_id'] ?>"
+                        data-cliente-id="<?= (int)$r['cliente_id'] ?>"
+                        data-numero="<?= htmlspecialchars($r['numero_poliza'] ?? '', ENT_QUOTES) ?>"
+                        data-compania="<?= htmlspecialchars($r['compania'] ?? '', ENT_QUOTES) ?>"
+                        data-fecha-fin="<?= htmlspecialchars($r['fecha_fin'] ?? '', ENT_QUOTES) ?>"
+                        data-frecuencia="<?= htmlspecialchars($r['frecuencia_renovacion'] ?? 'anual', ENT_QUOTES) ?>">
+                    🔁 Gestionar renovación
+                </button>
+                <?php endif; ?>
+                <button class="btn btn-ghost btn-sm" style="width:100%;color:var(--success-color);"
+                        data-action="adm-renovMarcarGestionada"
+                        data-cliente-id="<?= (int)$r['cliente_id'] ?>"
+                        data-fecha="<?= htmlspecialchars($r['fecha'] ?? '', ENT_QUOTES) ?>">
+                    ✅ Marcar gestionada
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endforeach; ?>
+</div>
+<?php endif; ?>
 
-<!-- Modal: Día -->
-<div class="modal-overlay" id="modalDia">
-    <div class="modal">
-        <div class="modal-header"><h3 class="modal-title" id="modalDiaTitulo">Citas del día</h3><button class="modal-close" data-close="modalDia">&times;</button></div>
-        <div class="modal-body" id="modalDiaBody"></div>
+<!-- Modal: Gestionar Renovación -->
+<div class="modal-overlay" id="modalGestionarRenovacion">
+    <div class="modal" style="max-width:560px;">
+        <div class="modal-header"><h3 class="modal-title">🔁 Gestionar Renovación</h3><button class="modal-close" data-close="modalGestionarRenovacion">&times;</button></div>
+        <div class="modal-body">
+            <input type="hidden" id="grPolizaId"><input type="hidden" id="grClienteId">
+            <div style="background:var(--info-light);border:1px solid var(--info-color,#3b82f6);border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:13px;">
+                <div><strong>Póliza:</strong> <span id="grNumero" style="font-family:monospace;color:var(--accent-color);"></span></div>
+                <div style="margin-top:4px;"><strong>Compañía:</strong> <span id="grCompania"></span></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Nueva fecha de inicio</label><input type="date" class="form-input" id="grFechaInicio"></div>
+                <div class="form-group"><label class="form-label">Nueva fecha de vencimiento</label><input type="date" class="form-input" id="grFechaFin"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">💳 Comprobante de pago (PDF/imagen) <span style="font-size:11px;color:var(--text-muted);">— opcional</span></label>
+                <input type="file" class="form-input" id="grArchivoPoliza" accept=".pdf,.jpg,.jpeg,.png,.webp" style="padding:6px;">
+                <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">El archivo respaldará el pago y marcará la renovación como confirmada automáticamente.</p>
+            </div>
+            <div class="form-group"><label class="form-label">Nuevo número de póliza (si cambió)</label><input type="text" class="form-input" id="grNuevoNumero" placeholder="Dejar vacío para mantener el actual"></div>
+            <div class="form-group"><label class="form-label">Notas del coordinador</label><textarea class="form-input" id="grNotas" rows="2" style="resize:vertical;"></textarea></div>
+            <div class="form-group">
+                <label class="form-label">📎 Nueva póliza (PDF/imagen) <span style="font-size:11px;color:var(--text-muted);">— opcional</span></label>
+                <input type="file" class="form-input" id="grArchivoPoliza" accept=".pdf,.jpg,.jpeg,.png,.webp" style="padding:6px;">
+                <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">El archivo se adjuntará a la póliza y se marcará como renovación.</p>
+            </div>
+        </div>
         <div class="modal-footer">
-            <button class="btn btn-outline" data-close="modalDia">Cerrar</button>
-            <button class="btn btn-primary" data-action="dia-nueva-cita">Nueva Cita</button>
+            <button class="btn btn-outline" data-close="modalGestionarRenovacion">Cancelar</button>
+            <button class="btn btn-primary" data-action="adm-confirmarRenovacion">💾 Guardar renovación</button>
         </div>
     </div>
 </div>
 
-<!-- Modal: Nueva Cita -->
-<div class="modal-overlay" id="modalNuevaCita">
-    <div class="modal modal-lg">
-        <div class="modal-header"><h3 class="modal-title">Nueva Cita</h3><button class="modal-close" data-close="modalNuevaCita">&times;</button></div>
+<script nonce="<?= $cspNonce ?>">
+(function () {
+    document.getElementById('srchRenov')?.addEventListener('input', function () {
+        const q = this.value.toLowerCase().trim();
+        document.querySelectorAll('#renovLista .renov-card').forEach(card => {
+            const txt = (card.dataset.cliente + ' ' + card.dataset.asesor + ' ' + card.dataset.compania);
+            card.closest('.card').style.display = (!q || txt.includes(q)) ? '' : 'none';
+        });
+    });
+
+    document.addEventListener('click', function (e) {
+        const el = e.target.closest('[data-action]');
+        if (!el) return;
+        switch (el.dataset.action) {
+            case 'adm-renovGestionarPoliza': {
+                document.getElementById('grPolizaId').value  = el.dataset.polizaId;
+                document.getElementById('grClienteId').value = el.dataset.clienteId;
+                document.getElementById('grNumero').textContent   = el.dataset.numero || '—';
+                document.getElementById('grCompania').textContent = el.dataset.compania || '—';
+                document.getElementById('grFrecuencia').value     = el.dataset.frecuencia || 'anual';
+                document.getElementById('grNuevoNumero').value    = '';
+                document.getElementById('grNotas').value          = '';
+                const hoy = new Date(); const fin = new Date(hoy); fin.setFullYear(fin.getFullYear() + 1);
+                document.getElementById('grFechaInicio').value = hoy.toISOString().split('T')[0];
+                document.getElementById('grFechaFin').value    = fin.toISOString().split('T')[0];
+                if (typeof openModal === 'function') openModal('modalGestionarRenovacion');
+                break;
+            }
+            case 'adm-confirmarRenovacion': {
+                const btn = el; const polizaId = document.getElementById('grPolizaId').value; const clienteId = document.getElementById('grClienteId').value;
+                const fd = new FormData(); fd.append('accion','renov_actualizar_poliza'); fd.append('poliza_id',polizaId); fd.append('cliente_id',clienteId);
+                fd.append('fecha_inicio',document.getElementById('grFechaInicio').value); fd.append('fecha_fin',document.getElementById('grFechaFin').value);
+                fd.append('frecuencia',document.getElementById('grFrecuencia').value); fd.append('nuevo_numero',document.getElementById('grNuevoNumero').value.trim());
+                fd.append('notas',document.getElementById('grNotas').value.trim());
+                const grFile = document.getElementById('grArchivoPoliza');
+                if (grFile && grFile.files[0]) fd.append('nueva_poliza_archivo', grFile.files[0]);
+                btn.disabled = true; btn.textContent = 'Guardando…';
+                fetch('/admin', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
+                    btn.disabled = false; btn.textContent = '💾 Guardar renovación';
+                    if (d.ok) { if (typeof showToast === 'function') showToast('Póliza renovada y marcada como vigente' + (d.archivo_guardado ? ' · 📎 archivo adjunto' : ''), 'success'); if (typeof closeModal === 'function') closeModal('modalGestionarRenovacion'); setTimeout(() => location.reload(), 1200); }
+                    else { if (typeof showToast === 'function') showToast(d.msg || 'Error al guardar', 'error'); }
+                }).catch(() => { btn.disabled = false; btn.textContent = '💾 Guardar renovación'; if (typeof showToast === 'function') showToast('Error de conexión', 'error'); });
+                break;
+            }
+            case 'adm-renovMarcarGestionada': {
+                const clienteId = el.dataset.clienteId; const fecha = el.dataset.fecha;
+                if (!confirm('¿Marcar esta solicitud como gestionada?')) break;
+                const fd = new FormData(); fd.append('accion','renov_marcar_gestionada'); fd.append('cliente_id',clienteId); fd.append('fecha',fecha);
+                fetch('/admin', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
+                    if (d.ok) { el.closest('.card').remove(); if (typeof showToast === 'function') showToast('Marcada como gestionada', 'success'); }
+                    else { if (typeof showToast === 'function') showToast(d.msg || 'Error', 'error'); }
+                }).catch(() => { if (typeof showToast === 'function') showToast('Error de conexión', 'error'); });
+                break;
+            }
+        }
+    });
+}());
+</script>
+
+<?php elseif ($tab === 'polizas'): ?>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+    <h2 style="font-size:17px;font-weight:600;margin:0;">📋 Historial de Pólizas</h2>
+    <select id="polFiltroAsesor" class="form-select" style="width:auto;font-size:13px;">
+        <option value="">Todos los asesores</option>
+        <?php foreach ($agLista as $ag): ?>
+        <option value="<?= $ag['id'] ?>"><?= htmlspecialchars($ag['nombre'].' '.$ag['apellido']) ?></option>
+        <?php endforeach; ?>
+    </select>
+    <select id="polFiltroEstado" class="form-select" style="width:auto;font-size:13px;">
+        <option value="">Todos los estados</option>
+        <option value="pagada">✅ Pagadas</option>
+        <option value="pendiente">⏳ Pendientes de pago</option>
+        <option value="por_vencer">⚠️ Por vencer (≤30 días)</option>
+        <option value="vencida">❌ Vencidas</option>
+    </select>
+    
+    <?php if ($isSuperadmin): ?>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="polVerEliminadas" value="1" style="width:14px;height:14px;">
+        Ver papelera (eliminadas)
+    </label>
+    <?php endif; ?>
+    
+    <button class="btn btn-outline btn-sm" id="btnCargarPolizas">🔄 Cargar / Actualizar</button>
+</div>
+<div id="polKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;"></div>
+<div class="card">
+    <div class="card-body" style="padding:0;">
+        <div id="polTablaWrap" style="overflow-x:auto;">
+            <p style="padding:20px;color:var(--text-muted);font-size:13px;">Haz clic en "Cargar / Actualizar" para ver las pólizas.</p>
+        </div>
+    </div>
+</div>
+<script nonce="<?= $cspNonce ?>">
+(function(){
+    function cargarPolizas(){
+        var fd = new FormData();
+        fd.append('accion','get_polizas_resumen');
+        var as = document.getElementById('polFiltroAsesor');
+        if(as && as.value) fd.append('asesor_id', as.value);
+
+        var chkElim = document.getElementById('polVerEliminadas');
+        var viendoPapelera = chkElim && chkElim.checked;
+        if(viendoPapelera) fd.append('ver_eliminadas', '1');
+
+        fetch('/admin', {method:'POST', body:fd})
+            .then(r=>r.text())
+            .then(text=>{
+                try {
+                    var d = JSON.parse(text);
+                    if(!d.ok){document.getElementById('polTablaWrap').innerHTML='<p style="padding:20px;color:red;">'+d.msg+'</p>';return;}
+                    
+                    var kd=[['Total',d.total,''],['✅ Pagadas',d.pagadas,'success'],['⏳ Pendientes',d.pendientes,'warning'],['⚠️ Por vencer',d.por_vencer,'danger']];
+                    document.getElementById('polKpis').innerHTML=kd.map(([l,v,c])=>`<div class="stat-card ${c}" style="padding:12px 16px;"><div class="stat-card-value">${v}</div><div class="stat-card-label">${l}</div></div>`).join('');
+                    
+                    var filtE = document.getElementById('polFiltroEstado').value;
+                    var polizas = d.polizas;
+                    if(filtE==='pagada') polizas = polizas.filter(p=>p.pago_confirmado==1||p.pago_confirmado===true);
+                    else if(filtE==='pendiente') polizas = polizas.filter(p=>!p.pago_confirmado && p.estado!=='vencida');
+                    else if(filtE==='por_vencer') polizas = polizas.filter(p=>p.dias_restantes!==null && parseInt(p.dias_restantes)>=0 && parseInt(p.dias_restantes)<=30);
+                    else if(filtE==='vencida') polizas = polizas.filter(p=>p.estado==='vencida');
+                    
+                    if(!polizas.length){document.getElementById('polTablaWrap').innerHTML='<p style="padding:20px;color:var(--text-muted);">Sin pólizas para el filtro seleccionado.</p>';return;}
+                    
+                    var estadoBadge={vigente:'<span class="badge badge-success">Vigente</span>',por_vencer:'<span class="badge badge-warning">Por vencer</span>',vencida:'<span class="badge badge-danger">Vencida</span>',cancelada:'<span class="badge badge-neutral">Cancelada</span>'};
+                    
+                    var rows = polizas.map(p=>{
+                        var isEliminada = p.eliminado_en !== null && p.eliminado_en !== undefined;
+                        var dias = parseInt(p.dias_restantes);
+                        var diasTxt = isEliminada ? '—' : (isNaN(dias) ? '—' : (dias<0 ? `<span style="color:var(--danger-color);">Vencida hace ${Math.abs(dias)}d</span>` : `<span style="color:${dias<=5?'var(--danger-color)':dias<=15?'var(--warning-color)':'inherit'}">${dias} días</span>`));
+                        var pagoBadge = (p.pago_confirmado==1||p.pago_confirmado===true) ? `<span class="badge badge-success">✅ Pagada</span>` : `<span class="badge badge-warning">⏳ Pendiente</span>`;
+                        var estadoHtml = isEliminada ? '<span class="badge badge-danger">🗑️ Eliminada</span>' : (estadoBadge[p.estado]??p.estado);
+                        
+                        var colAccion = viendoPapelera ? (isEliminada ? `<td><button class="btn btn-sm btn-outline btn-restaurar-poliza" style="color:#16a34a;border-color:#16a34a;" data-id="${p.id}">♻️ Restaurar</button></td>` : `<td>—</td>`) : '';
+
+                        return `<tr style="${isEliminada ? 'opacity:0.6; background:#fef2f2;' : ''}">
+                            <td><a href="/cliente/${p.cliente_id_ref}" style="font-weight:600;color:var(--accent-color);">${p.cliente_nombre??'—'}</a><br><span style="font-size:11px;color:var(--text-muted);">${p.asesor_nombre??''}</span></td>
+                            <td>${p.compania??'—'}</td>
+                            <td style="font-size:12px;">${p.numero_poliza??'—'}</td>
+                            <td>${estadoHtml}</td>
+                            <td>${pagoBadge}${p.metodo_pago?`<br><span style="font-size:11px;color:var(--text-muted);">${p.metodo_pago}</span>`:''}</td>
+                            <td>${p.fecha_fin?new Date(p.fecha_fin).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}</td>
+                            <td>${diasTxt}</td>
+                            ${colAccion}
+                        </tr>`;
+                    }).join('');
+                    
+                    document.getElementById('polTablaWrap').innerHTML=`<table class="data-table"><thead><tr><th>Cliente / Asesor</th><th>Compañía</th><th>No. Póliza</th><th>Estado</th><th>Pago</th><th>Vence</th><th>Días restantes</th>${viendoPapelera ? '<th>Acciones</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>`;
+                } catch(e) {
+                    document.getElementById('polTablaWrap').innerHTML='<div style="padding:20px;color:red;"><b>Error oculto detectado:</b><br><pre style="background:#fee2e2;padding:10px;border-radius:6px;overflow-x:auto;">' + text + '</pre></div>';
+                }
+            })
+            .catch(err => {
+                document.getElementById('polTablaWrap').innerHTML='<p style="padding:20px;color:red;">Error de conexión crítico: ' + err.message + '</p>';
+            });
+    }
+
+    // Delegación de eventos para el botón de restaurar
+    document.getElementById('polTablaWrap').addEventListener('click', function(e) {
+        var btn = e.target.closest('.btn-restaurar-poliza');
+        if (btn) {
+            restaurarPolizaAdmin(btn.dataset.id);
+        }
+    });
+
+    // Listener general para restaurar
+    window.restaurarPolizaAdmin = function(id) {
+        if (!confirm('¿Restaurar esta póliza eliminada?')) return;
+        var fd = new FormData();
+        fd.append('accion', 'restaurar_poliza');
+        fd.append('poliza_id', id);
+        fetch('/admin', {method: 'POST', body: fd})
+        .then(r=>r.json())
+        .then(d=>{
+            if(d.ok) {
+                if(typeof toast === 'function') toast('Póliza restaurada con éxito', 'success');
+                cargarPolizas();
+            } else {
+                if(typeof toast === 'function') toast(d.msg || 'Error', 'error');
+            }
+        });
+    };
+
+    document.getElementById('btnCargarPolizas').addEventListener('click', cargarPolizas);
+    document.getElementById('polFiltroEstado').addEventListener('change', cargarPolizas);
+    document.getElementById('polFiltroAsesor').addEventListener('change', cargarPolizas);
+    var chkElim = document.getElementById('polVerEliminadas');
+    if (chkElim) chkElim.addEventListener('change', cargarPolizas);
+    
+    cargarPolizas();
+})();
+</script>
+
+<?php elseif ($tab === 'cotizaciones' && $isSuperadmin): ?>
+<div class="toolbar">
+    <div class="search-bar">
+        <span class="search-bar-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" id="srchC" class="search-bar-input" placeholder="Folio, cliente, compañía...">
+    </div>
+    <select class="filter-select" id="flAg"><option value="todos">Todos los asesores</option><?php foreach ($agNombres as $an): ?><option value="<?php echo htmlspecialchars($an); ?>"><?php echo htmlspecialchars($an); ?></option><?php endforeach; ?></select>
+    <select class="filter-select" id="flEst"><option value="todos">Todos los estados</option><option value="pendiente">Pendiente</option><option value="enviada">Enviada</option><option value="aceptada">Aceptada</option><option value="rechazada">Rechazada</option></select>
+    <button id="btnAdminSortVence" class="btn btn-outline" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;"><i class="bi bi-clock-history" style="font-size:14px;"></i> Próximos a vencer</button>
+</div>
+<div class="card">
+    <div class="card-header"><h3 class="card-title">Todas las Cotizaciones <span class="badge badge-neutral" id="cntC"><?php echo count($cotsGlobal); ?></span></h3><span style="font-size:11px;color:var(--text-muted);">Doble clic en una fila para ver documentos</span></div>
+    <div class="card-body" style="padding:0;">
+        <table class="adt"><thead><tr><th>Folio</th><th>Cliente</th><th>Asesor</th><th>Compañía</th><th>Prima</th><th>Estado</th><th>Fecha</th><th>Vence</th><th></th></tr></thead>
+        <tbody id="tbC">
+        <?php $eb=['pendiente'=>'badge-warning','enviada'=>'badge-info','aceptada'=>'badge-success','rechazada'=>'badge-danger'];
+        foreach ($cotsGlobal as $cot): $bd=$eb[$cot['estado']]??'badge-neutral'; ?>
+        <tr style="cursor:pointer;"
+            data-id="<?php echo $cot['id']; ?>"
+            data-f="<?php echo strtolower($cot['folio']??''); ?>"
+            data-cl="<?php echo strtolower($cot['cliente_nombre']); ?>"
+            data-co="<?php echo strtolower($cot['compania']); ?>"
+            data-ag="<?php echo htmlspecialchars($cot['agente_nombre']); ?>"
+            data-st="<?php echo $cot['estado']; ?>"
+            data-vence="<?php echo htmlspecialchars($cot['fecha_fin_vigencia'] ?? ''); ?>"
+            data-cot='<?php echo htmlspecialchars(json_encode(['id'=>$cot['id'],'folio'=>$cot['folio']??'','cliente_nombre'=>$cot['cliente_nombre'],'agente_nombre'=>$cot['agente_nombre'],'compania'=>$cot['compania'],'tipo_cobertura'=>$cot['tipo_cobertura']??'','precio'=>$cot['precio'],'estado'=>$cot['estado'],'fecha'=>$cot['fecha'],'fecha_fin_vigencia'=>$cot['fecha_fin_vigencia']??'']),ENT_QUOTES); ?>'>
+            <td><?php if(!empty($cot['folio'])): ?><span class="fmono"><?php echo htmlspecialchars($cot['folio']); ?></span><?php else: ?><span style="color:var(--text-muted);">—</span><?php endif; ?></td>
+            <td style="font-weight:600;"><?php echo htmlspecialchars($cot['cliente_nombre']); ?></td>
+            <td><span style="font-size:12px;background:var(--bg-secondary);padding:2px 8px;border-radius:4px;"><?php echo htmlspecialchars($cot['agente_nombre']); ?></span></td>
+            <td><?php echo htmlspecialchars($cot['compania']); ?></td>
+            <td><strong style="color:var(--success-color);">$<?php echo number_format((float)$cot['precio'],0); ?></strong></td>
+            <td><span class="badge <?php echo $bd; ?>"><?php echo ucfirst($cot['estado']); ?></span></td>
+            <td style="font-size:12px;color:var(--text-muted);"><?php echo date('d/m/Y',strtotime($cot['fecha'])); ?></td>
+            <td><?php
+                if (!empty($cot['fecha_fin_vigencia'])):
+                    $dR=(int)ceil((strtotime($cot['fecha_fin_vigencia'])-time())/86400);
+                    $vC=$dR<=7?'color:#dc2626;font-weight:700;':($dR<=30?'color:#a16207;font-weight:600;':'color:var(--text-muted);');
+                ?>
+                <span style="font-size:12px;<?php echo $vC; ?>"><?php echo date('d/m/Y',strtotime($cot['fecha_fin_vigencia'])); ?></span>
+                <?php if($dR<=30&&$dR>0): ?><div style="font-size:10px;color:<?php echo $dR<=7?'#dc2626':'#a16207'; ?>;"><?php echo $dR; ?>d</div>
+                <?php elseif($dR<=0): ?><div style="font-size:10px;color:#dc2626;font-weight:700;">VENCIDA</div><?php endif; ?>
+                <?php else: ?><span style="font-size:11px;color:var(--text-muted);">—</span><?php endif; ?>
+            </td>
+            <td style="display:flex;gap:4px;align-items:center;">
+                <?php if ($isSuperadmin): ?>
+                <button class="btn btn-sm btn-ghost"
+                        title="Forzar estado (solo SA)"
+                        data-action="adm-forzarEstado"
+                        data-id="<?php echo $cot['id']; ?>"
+                        data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>">🔧</button>
+                <?php endif; ?>
+                <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);"
+                        data-action="adm-eliminarCot"
+                        data-id="<?php echo $cot['id']; ?>"
+                        data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>">🗑</button>
+            </td>
+        <?php endforeach; ?>
+        </tbody></table>
+        <div class="pagination" id="pgC"></div>
+    </div>
+</div>
+
+<?php elseif ($tab === 'configuracion' && $isSuperadmin): ?>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">📞 Números de Empresa para ATC</h3></div>
+        <div class="card-body">
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Visibles para todos los asesores en su panel.</p>
+            <?php for ($i=1;$i<=3;$i++): $num=$atcMap["atc_numero_{$i}"]['valor']??''; $nom=$atcMap["atc_nombre_{$i}"]['valor']??''; ?>
+            <div style="background:var(--bg-secondary);border-radius:var(--border-radius-sm);padding:14px;margin-bottom:12px;">
+                <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:8px;">Línea <?php echo $i; ?></div>
+                <div class="form-row" style="margin-bottom:0;">
+                    <div class="form-group"><label class="form-label">Nombre / Tipo</label><input type="text" class="form-input" id="atc_nombre_<?php echo $i; ?>" value="<?php echo htmlspecialchars($nom); ?>" placeholder="Ej. Atención al Cliente"></div>
+                    <div class="form-group"><label class="form-label">Número</label><input type="text" class="form-input" id="atc_numero_<?php echo $i; ?>" value="<?php echo htmlspecialchars($num); ?>" placeholder="55 1234 5678"></div>
+                </div>
+            </div>
+            <?php endfor; ?>
+            <button id="btnGuardarATC" class="btn btn-primary" style="width:100%;margin-top:8px;">Guardar números ATC</button>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">👁️ Vista previa — Asesores</h3></div>
+        <div class="card-body">
+            <?php foreach ($atcData as $row):
+                if (strpos($row['clave'],'atc_numero')!==0||empty($row['valor'])) continue;
+                $idx=$row['clave'][-1]; $nombre=$atcMap["atc_nombre_{$idx}"]['valor']??'Línea '.$idx;
+            ?>
+            <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--bg-secondary);border-radius:var(--border-radius-sm);margin-bottom:10px;border-left:3px solid var(--accent-color);">
+                <span style="font-size:24px;">📞</span>
+                <div><div style="font-weight:700;font-size:14px;"><?php echo htmlspecialchars($row['valor']); ?></div><div style="font-size:12px;color:var(--text-secondary);"><?php echo htmlspecialchars($nombre); ?></div></div>
+                <a href="tel:<?php echo preg_replace('/\D/','',$row['valor']); ?>" style="margin-left:auto;background:var(--accent-color);color:#fff;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:600;text-decoration:none;">Llamar</a>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+</main>
+</div>
+
+<!-- ═══ MODALES ════════════════════════════════════════════════════════════════ -->
+
+<!-- Modal Crear Agente -->
+<div class="modal-overlay" id="modalCrearAgente">
+    <div class="modal">
+        <div class="modal-header"><h3 class="modal-title">Nuevo Asesor</h3><button class="modal-close" data-close="modalCrearAgente">&times;</button></div>
         <div class="modal-body">
             <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label required">Cliente</label>
-                    <select class="form-select" id="ncCliente">
-                        <option value="">Selecciona...</option>
-                        <?php foreach ($clientesList as $cl): ?>
-                        <option value="<?php echo $cl['id']; ?>"><?php echo htmlspecialchars($cl['nombre'].' '.$cl['apellido_paterno'].' '.$cl['apellido_materno']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label required">Tipo</label>
-                    <select class="form-select" id="ncTipo">
-                        <option value="llamada">📞 Llamada</option>
-                        <option value="videollamada">💻 Videollamada</option>
-                        <option value="presencial">🤝 Presencial</option>
-                    </select>
-                </div>
+                <div class="form-group"><label class="form-label required">Nombre</label><input type="text" class="form-input" id="nN"></div>
+                <div class="form-group"><label class="form-label required">Apellido</label><input type="text" class="form-input" id="nA"></div>
             </div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label required">Fecha</label><input type="date" class="form-input" id="ncFecha"></div>
-                <div class="form-group"><label class="form-label required">Hora</label><input type="time" class="form-input" id="ncHora" value="10:00"></div>
+            <div class="form-group"><label class="form-label required">Correo</label><input type="email" class="form-input" id="nC"></div>
+            <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-input" id="nT"></div>
+            <div class="form-group"><label class="form-label required">Contraseña</label><input type="password" class="form-input" id="nP" placeholder="Mínimo 8 caracteres"></div>
+            <div class="form-group"><label class="form-label">Rol</label>
+                <select class="form-select" id="nR">
+                    <option value="asesor">Asesor de Ventas</option>
+                    <option value="coordinador">Coordinador</option>
+                    <option value="superadmin">Superadmin</option>
+                </select>
             </div>
-            <div class="form-group" id="meetGroup" style="display:none;">
-                <label class="form-label" style="display:flex;align-items:center;gap:8px;">
-                    Link de Google Meet
-                    <a href="https://meet.google.com/new" target="_blank" class="btn btn-sm btn-ghost" style="margin-left:auto;font-size:11px;">🔗 Crear Meet</a>
-                </label>
-                <input type="text" class="form-input" id="ncMeetLink" placeholder="Pega aquí el link de Google Meet">
-            </div>
-            <div class="form-group"><label class="form-label">Comentarios</label><textarea class="form-textarea" id="ncComentarios" placeholder="Objetivo de la cita..."></textarea></div>
-
-            <!-- Teléfono de contacto rápido (opcional) -->
-            <div class="form-group">
-                <label class="form-label">Teléfono de contacto
-                    <span style="font-size:10px;color:var(--text-muted);font-weight:400;">(opcional · solo para esta cita)</span>
-                </label>
-                <input type="tel" class="form-input" id="ncTelefono"
-                       maxlength="15" pattern="[\+\d\s\-]{7,15}"
-                       placeholder="+52 (123) 456-7890"
-                       id="ncTelefono">
-                <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">Máximo 15 caracteres</div>
-            </div>
-
-            <!-- Campos extra si el ramo es Autos -->
-            <?php if (($ramoFiltro ?? $ramo) === 'autos'): ?>
-            <div id="grupoAutos" style="border-top:1px solid var(--border-color);padding-top:14px;margin-top:4px;">
-                <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">🚗 Datos del vehículo</div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Tipo de auto</label>
-                        <select class="form-select" id="ncTipoAuto">
-                            <option value="">— Selecciona —</option>
-                            <option>Auto</option><option>SUV / Camioneta</option><option>Pickup</option>
-                            <option>Moto</option><option>Deportivo</option><option>Eléctrico</option><option>Van / Minivan</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Marca</label>
-                        <select class="form-select" id="ncMarcaAuto">
-                            <option value="">— Selecciona —</option>
-                            <?php
-                            $marcas = ['Acura','Audi','BMW','Buick','Cadillac','Chevrolet','Chrysler','Dodge',
-                                       'Ferrari','Fiat','Ford','GMC','Honda','Hyundai','Infiniti','Jeep',
-                                       'Kia','KTM','Lamborghini','Land Rover','Lexus','Lincoln','Mazda',
-                                       'Mercedes-Benz','Mitsubishi','Nissan','Peugeot','Porsche','Ram',
-                                       'Renault','SEAT','Subaru','Suzuki','Tesla','Toyota','Volkswagen',
-                                       'Volvo','Otra'];
-                            foreach ($marcas as $m): ?>
-                            <option><?php echo $m; ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Estado del auto</label>
-                        <select class="form-select" id="ncEstadoAuto">
-                            <option value="">— Selecciona —</option>
-                            <option value="nuevo">Nuevo</option>
-                            <option value="seminuevo">Seminuevo</option>
-                            <option value="usado">Usado</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <?php endif; ?>
-
-            <!-- Ramo activo en sesión — se envía siempre en el POST -->
-            <input type="hidden" id="ncRamo" value="<?php echo htmlspecialchars($ramoFiltro ?? $ramo ?? 'autos'); ?>">
         </div>
         <div class="modal-footer">
-            <button class="btn btn-outline" data-close="modalNuevaCita">Cancelar</button>
-            <button class="btn btn-primary" id="btnGuardarCita">Guardar Cita</button>
+            <button class="btn btn-outline" data-close="modalCrearAgente">Cancelar</button>
+            <button class="btn btn-primary" data-action="adm-crearAgente">Crear</button>
         </div>
+    </div>
+</div>
+
+<!-- Modal Ver Cotización -->
+<div class="modal-overlay" id="modalAdminVerCot">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title">📋 Detalle — <span id="adminCotFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+            <button class="modal-close" data-close="modalAdminVerCot">&times;</button>
+        </div>
+        <div class="modal-body" id="adminCotContent" style="min-height:120px;"></div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" data-close="modalAdminVerCot">Cerrar</button>
+            <button class="btn btn-ghost" data-action="adm-verDocs">📎 Ver documentos</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Documentos -->
+<div class="modal-overlay" id="modalAdminDocs">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title">📎 Documentos — <span id="adminDocsFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+            <button class="modal-close" data-close="modalAdminDocs">&times;</button>
+        </div>
+        <div class="modal-body" id="adminDocsContent" style="min-height:160px;"><div style="text-align:center;padding:32px;color:var(--text-muted);">Cargando...</div></div>
+        <div class="modal-footer"><button class="btn btn-outline" data-close="modalAdminDocs">Cerrar</button></div>
+    </div>
+</div>
+
+<!-- PARCHE: Modal Editar Agente (nombre + contraseña) -->
+<div class="modal-overlay" id="modalEditarAgente">
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-header">
+            <h3 class="modal-title">✏️ Editar agente</h3>
+            <button class="modal-close" data-close="modalEditarAgente">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="editAgenteId">
+            <div style="background:var(--bg-secondary);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
+                <strong id="editAgenteRolBadge"></strong>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Puedes cambiar el nombre y/o la contraseña. El correo no es editable aquí.</p>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label required">Nombre</label><input type="text" class="form-input" id="editNombre"></div>
+                <div class="form-group"><label class="form-label required">Apellido</label><input type="text" class="form-input" id="editApellido"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Nueva contraseña <span style="font-size:11px;color:var(--text-muted);">(dejar en blanco para no cambiar)</span></label>
+                <input type="password" class="form-input" id="editPassword" placeholder="Mínimo 8 caracteres">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Confirmar contraseña</label>
+                <input type="password" class="form-input" id="editPasswordConfirm" placeholder="Repite la contraseña">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" data-close="modalEditarAgente">Cancelar</button>
+            <button class="btn btn-primary" data-action="adm-guardarEdicionAgente">💾 Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- PARCHE: Modal Historial Coordinador (solo superadmin) -->
+<div class="modal-overlay" id="modalHistorialCoord">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title">📋 Historial del coordinador</h3>
+            <button class="modal-close" data-close="modalHistorialCoord">&times;</button>
+        </div>
+        <div class="modal-body" id="historialCoordBody" style="min-height:200px;">
+            <div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-outline" data-close="modalHistorialCoord">Cerrar</button></div>
     </div>
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
+
+<?php if ($tab === 'rendimiento'): ?>
+<script src="/js/reportes.js" nonce="<?= $cspNonce ?>"></script>
 <script nonce="<?= $cspNonce ?>">
-// ── FIX #1: "let" en lugar de "const" para permitir reasignación al navegar meses ──
-let citasData  = <?php echo $citasJSON; ?>;
-const mesActual  = <?php echo $mes; ?>;
-const anioActual = <?php echo $anio; ?>;
-const MESES_NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const datosEvolucion  = <?php echo json_encode($evolucion); ?>;
+const datosVehiculos  = <?php echo json_encode($vehiculos); ?>;
+const datosCoberturas = <?php echo json_encode($coberturas); ?>;
+document.addEventListener('DOMContentLoaded', () => { if(typeof initReportesCharts==='function') initReportesCharts(); });
+</script>
+<?php endif; ?>
 
-function openModal(id){const m=document.getElementById(id);if(m){m.classList.add('active');document.body.style.overflow='hidden';}}
-function closeModal(id){const m=document.getElementById(id);if(m){m.classList.remove('active');document.body.style.overflow='';}}
-document.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay')){e.target.classList.remove('active');document.body.style.overflow='';}});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){const a=document.querySelector('.modal-overlay.active');if(a){a.classList.remove('active');document.body.style.overflow='';}}});
-
-function verCita(id){
-    const c=citasData.find(x=>parseInt(x.id)===id);if(!c)return;
-    const badgeClass={programada:'badge-info',completada:'badge-success',cancelada:'badge-danger'};
-    const tipoLabel={llamada:'📞 Llamada',videollamada:'💻 Videollamada',presencial:'🤝 Presencial'};
-    const fecha=new Date(c.fecha+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-    const iniciales=esc(c.cliente_nombre).split(' ').slice(0,2).map(p=>p[0]).join('').toUpperCase();
-    document.getElementById('modalVerCitaBody').innerHTML=`
-        <div style="display:flex;flex-direction:column;gap:14px;">
-            <div style="background:linear-gradient(135deg,var(--primary-light),var(--primary-color));border-radius:var(--border-radius);padding:18px;color:white;display:flex;align-items:center;gap:14px;">
-                <div style="width:48px;height:48px;background:rgba(255,255,255,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;">${iniciales}</div>
-                <div style="flex:1;"><div style="font-size:16px;font-weight:700;">${esc(c.cliente_nombre)}</div><div style="opacity:.85;font-size:13px;">${tipoLabel[c.tipo]||c.tipo}</div></div>
-                <span class="badge ${badgeClass[c.estado]||'badge-neutral'}" style="background:rgba(255,255,255,.2);color:white;">${ucfirst(c.estado)}</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Fecha</div><div style="font-weight:500;text-transform:capitalize;">${fecha}</div></div>
-                <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Hora</div><div style="font-size:20px;font-weight:700;color:var(--accent-color);">${esc(c.hora).substring(0,5)}</div></div>
-                ${c.cliente_telefono?`<div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Teléfono</div><div>${esc(c.cliente_telefono)}</div></div>`:''}
-            </div>
-            ${c.comentarios?`<div style="background:#f8fafc;border-left:3px solid var(--accent-color);border-radius:var(--border-radius-sm);padding:14px;"><div style="font-size:11px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;margin-bottom:5px;">Agenda</div><div>${esc(c.comentarios)}</div></div>`:''}
-            ${c.meet_link?`<a href="${esc(c.meet_link)}" target="_blank" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#1a73e8,#0d47a1);color:#fff;border-radius:var(--border-radius-sm);text-decoration:none;font-weight:600;">💻 <span>Unirse a Google Meet</span></a>`:''}
-        </div>`;
-    const footer=document.getElementById('modalVerCitaFooter');
-    footer.innerHTML=c.estado==='programada'
-        ?`<button class="btn btn-danger btn-sm" data-action="cancelar" data-id="${id}">Cancelar cita</button><button class="btn btn-outline" data-close="modalVerCita">Cerrar</button><button class="btn btn-success" data-action="completar" data-id="${id}">✓ Completada</button>`
-        :`<button class="btn btn-outline" data-close="modalVerCita">Cerrar</button>`;
-    openModal('modalVerCita');
-}
-
-// ── FIX #2: abrirDia usa _calMes/_calAnio cuando existen (navegación AJAX),
-//            y cae a mesActual/anioActual como fallback en la carga inicial ──
-function abrirDia(dia){
-    const mes  = (typeof _calMes  !== 'undefined') ? _calMes  : mesActual;
-    const anio = (typeof _calAnio !== 'undefined') ? _calAnio : anioActual;
-    const fechaStr=`${anio}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
-    const citas=citasData.filter(c=>c.fecha===fechaStr);
-    document.getElementById('modalDiaTitulo').textContent=`${dia} de ${MESES_NOMBRES[mes-1]} ${anio}`;
-    const badgeClass={programada:'badge-info',completada:'badge-success',cancelada:'badge-danger'};
-    document.getElementById('modalDiaBody').innerHTML=citas.length===0
-        ?`<div class="empty-state" style="padding:28px 0;"><div class="empty-state-icon" style="font-size:20px;">📅</div><p class="empty-state-description">Sin citas este día.</p></div>`
-        :citas.map(c=>`<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border-color);">
-            <div style="min-width:46px;font-weight:700;color:var(--accent-color);font-size:15px;">${esc(c.hora).substring(0,5)}</div>
-            <div style="flex:1;"><div style="font-weight:600;font-size:13px;">${esc(c.cliente_nombre)}</div><div style="font-size:12px;color:var(--text-secondary);">${ucfirst(c.tipo)}</div></div>
-            <span class="badge ${badgeClass[c.estado]||'badge-neutral'}">${ucfirst(c.estado)}</span>
-            <button class="btn btn-ghost btn-icon btn-sm" data-action="dia-ver" data-id="${parseInt(c.id)}">👁</button>
-        </div>`).join('');
-    openModal('modalDia');
-}
-
-function cambiarEstado(citaId,nuevoEstado){
-    const labels={cancelada:'cancelar',completada:'marcar como completada'};
-    if(!confirm(`¿Deseas ${labels[nuevoEstado]} esta cita?`))return;
-    const fd=new FormData();fd.append('accion','estado');fd.append('cita_id',citaId);fd.append('estado',nuevoEstado);
-    fetch('/citas',{method:'POST',body:fd}).then(r=>r.json()).then(data=>{
-        if(data.ok){const c=citasData.find(x=>parseInt(x.id)===citaId);if(c)c.estado=nuevoEstado;showToast('Estado actualizado','success');closeModal('modalVerCita');}
-        else showToast(data.msg||'Error','error');
-    });
-}
-
-function guardarCita(){
-    const clienteId=document.getElementById('ncCliente').value;
-    const tipo=document.getElementById('ncTipo').value;
-    const fecha=document.getElementById('ncFecha').value;
-    const hora=document.getElementById('ncHora').value;
-    const comentarios=document.getElementById('ncComentarios').value;
-    const ramo=document.getElementById('ncRamo')?.value||'autos';
-    if(!clienteId){showToast('Selecciona un cliente','error');return;}
-    if(!fecha||!hora){showToast('Indica la fecha y la hora','error');return;}
-    if(new Date(fecha+'T'+hora)<new Date()){showToast('La fecha no puede ser en el pasado','error');return;}
-    const btn=document.getElementById('btnGuardarCita');
-    btn.disabled=true;btn.textContent='Guardando...';
-    const fd=new FormData();
-    const meetLink=document.getElementById('ncMeetLink')?.value||'';
-    fd.append('accion','crear');
-    fd.append('cliente_id',clienteId);
-    fd.append('tipo',tipo);
-    fd.append('fecha',fecha);
-    fd.append('hora',hora);
-    fd.append('comentarios',comentarios);
-    fd.append('ramo',ramo);
-    if(meetLink) fd.append('meet_link',meetLink);
-    // Teléfono de contacto rápido
-    const tel=document.getElementById('ncTelefono')?.value?.trim();
-    if(tel) fd.append('telefono_cliente',tel);
-    // Campos extra de autos
-    const tipoAuto=document.getElementById('ncTipoAuto')?.value;
-    const marcaAuto=document.getElementById('ncMarcaAuto')?.value;
-    const estadoAuto=document.getElementById('ncEstadoAuto')?.value;
-    if(tipoAuto)  fd.append('tipo_auto',tipoAuto);
-    if(marcaAuto) fd.append('marca_auto',marcaAuto);
-    if(estadoAuto)fd.append('estado_auto',estadoAuto);
-    fetch('/citas',{method:'POST',body:fd}).then(r=>r.json()).then(data=>{
-        btn.disabled=false;btn.textContent='Guardar Cita';
-        if(data.ok){
-            showToast('Cita guardada correctamente','success');
-            closeModal('modalNuevaCita');
-            setTimeout(()=>{
-                const m=(typeof _calMes!=='undefined')?_calMes:mesActual;
-                const a=(typeof _calAnio!=='undefined')?_calAnio:anioActual;
-                location.href='/citas?mes='+m+'&anio='+a;
-            },1200);
-        } else {
-            showToast(data.msg||'Error al guardar','error');
+<script nonce="<?= $cspNonce ?>">
+// ── Delegación global ─────────────────────────────────────────────────────────
+document.addEventListener('click', function(e) {
+    const el = e.target.closest('[data-action],[data-close]');
+    if (!el) return;
+    if (el.dataset.close) { closeModal(el.dataset.close); return; }
+    switch(el.dataset.action) {
+        case 'adm-abrirCrearAgente':   openModal('modalCrearAgente'); break;
+        case 'adm-crearAgente':        crearAgente(); break;
+        case 'adm-toggleAgente':       delAg(+el.dataset.id, el.dataset.nombre, +el.dataset.activo); break;
+        case 'adm-eliminarCot':        delCot(+el.dataset.id, el.dataset.folio); break;
+        case 'adm-forzarEstado':       abrirForzarEstado(+el.dataset.id, el.dataset.folio); break;
+        case 'adm-ejecutarReasignacion': ejecutarReasignacion(); break;
+        case 'adm-deseleccionarTodos': deseleccionarTodos(); break;
+        case 'adm-toggleCliente': {
+            const id  = +el.dataset.id;
+            const cb  = document.getElementById('cb_'+id);
+            const row = document.getElementById('cbrow_'+id);
+            if (!cb) break;
+            if (e.target !== cb) cb.checked = !cb.checked;
+            if (cb.checked) { seleccionados.add(id); row.style.background='var(--info-light)'; }
+            else            { seleccionados.delete(id); row.style.background=''; }
+            actualizarBarraReasignar();
+            break;
         }
-    }).catch(()=>{
-        btn.disabled=false;
-        btn.textContent='Guardar Cita';
-        showToast('Error de conexión','error');
-    });
-}
-
-function onTipoChange(tipo){const g=document.getElementById('meetGroup');if(g)g.style.display=tipo==='videollamada'?'':'none';}
-
-function showToast(msg,type='success'){
-    const c=document.getElementById('toastContainer');if(!c)return;
-    const t=document.createElement('div');t.className=`toast ${type}`;
-    t.innerHTML=`<div class="toast-icon">${type==='error'?'✗':'✓'}</div><div class="toast-message">${msg}</div><button class="toast-close" data-action="toast-close">&times;</button>`;
-    c.appendChild(t);setTimeout(()=>{t.classList.add('hiding');setTimeout(()=>t.remove(),300);},5000);
-}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function ucfirst(s){return s?s.charAt(0).toUpperCase()+s.slice(1):'';}
-
-document.addEventListener('DOMContentLoaded',()=>{
-    const today=new Date().toISOString().split('T')[0];
-    document.getElementById('ncFecha').min=today;document.getElementById('ncFecha').value=today;
+        case 'adm-verDocs':  abrirDocumentosAdmin(window._adminCotId); break;
+        case 'adm-page':     window['_p_'+el.dataset.tb]?.go(+el.dataset.p); break;
+        case 'toast-close':  el.closest('.toast')?.remove(); break;
+        // PARCHE: editar agente e historial coordinador
+        case 'adm-editarAgente': {
+            document.getElementById('editAgenteId').value       = el.dataset.id;
+            document.getElementById('editNombre').value         = el.dataset.nombre;
+            document.getElementById('editApellido').value       = el.dataset.apellido;
+            document.getElementById('editPassword').value       = '';
+            document.getElementById('editPasswordConfirm').value= '';
+            document.getElementById('editAgenteRolBadge').textContent = 'Rol: ' + el.dataset.rol;
+            openModal('modalEditarAgente');
+            break;
+        }
+        case 'adm-guardarEdicionAgente': guardarEdicionAgente(); break;
+        case 'adm-verHistorialCoord': verHistorialCoord(el.dataset.id, el.dataset.nombre); break;
+    }
 });
-</script>
 
-<script nonce="<?= $cspNonce ?>">
-// ── Navegación de mes sin recarga de página ───────────────────────────────────
-var _calMes    = <?php echo $mes; ?>;
-var _calAnio   = <?php echo $anio; ?>;
-var _calLoading = false;
+// Cerrar modal al clic en overlay
+document.addEventListener('click', e => {
+    if (e.target.classList.contains('modal-overlay')) { e.target.classList.remove('active'); document.body.style.overflow=''; }
+});
 
-var _MESES_LARGOS  = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                       'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-var _MESES_CORTOS  = ['','Ene','Feb','Mar','Abr','May','Jun',
-                       'Jul','Ago','Sep','Oct','Nov','Dic'];
-var _DIAS_SEMANA   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+// Stop propagation en celdas de acción: solo si el click NO fue en un botón/link/select interno
+// Esto permite que los data-action buttons funcionen, pero evita navegar la fila al clickear la celda
+document.addEventListener('click', function(e) {
+    const td = e.target.closest('td.adm-stop-prop');
+    if (!td) return;
+    // Si el click fue en un botón, link, select o su contenido, dejar que el delegador lo maneje
+    if (e.target.closest('button,a,select,input')) return;
+    // Solo si el click fue en la celda vacía, cancelar propagación al tr
+    e.stopPropagation();
+});
 
-function navMes(dir) {
-    if (_calLoading) return;
-    _calMes += dir;
-    if (_calMes < 1)  { _calMes = 12; _calAnio--; }
-    if (_calMes > 12) { _calMes = 1;  _calAnio++; }
-    _calLoading = true;
+document.addEventListener('change', function(e) {
+    if (e.target.id === 'selFiltroAgente')
+        return void (location.href = '?tab=rendimiento' + (e.target.value ? '&agente_id='+e.target.value : ''));
+    if (e.target.id === 'selFiltroActividad')
+        return void (location.href = '?tab=actividad' + (e.target.value ? '&act_agente='+e.target.value : ''));
+    if (e.target.classList.contains('adm-rol-select'))
+        return void chgRol(+e.target.dataset.agenteId, e.target.value);
+    if (e.target.id === 'flAg' || e.target.id === 'flEst') return void filtC();
+    if (e.target.id === 'selectAll') return void toggleTodos(e.target.checked);
+});
+document.addEventListener('input', function(e) {
+    if (e.target.id === 'srchA')  return void filtA();
+    if (e.target.id === 'srchC')  return void filtC();
+    if (e.target.id === 'srchCl') return void filtCl();
+});
 
-    var titleLabel = _MESES_LARGOS[_calMes] + ' ' + _calAnio;
-    document.getElementById('calTitle').textContent    = titleLabel;
-    document.getElementById('pageSubtitle').textContent = titleLabel;
-    document.getElementById('calGrid').style.opacity   = '0.4';
-
-    fetch('/citas?mes=' + _calMes + '&anio=' + _calAnio + '&_ajax=1')
-        .then(function(r){ return r.json(); })
-        .then(function(data) {
-            // ── FIX #1 aplicado: citasData es "let", esta asignación ya no explota ──
-            citasData = data.citas;
-            renderCalGrid(data.diasEnMes, data.primerDia, data.hoy);
-            renderProximas(data.proximas);
-            renderStats(data.stats);
-            document.getElementById('calGrid').style.opacity = '1';
-            _calLoading = false;
-            history.replaceState({}, '', '/citas?mes=' + _calMes + '&anio=' + _calAnio);
-        })
-        .catch(function(e) {
-            console.error('navMes error:', e);
-            _calLoading = false;
-            document.getElementById('calGrid').style.opacity = '1';
+// ── Paginación ────────────────────────────────────────────────────────────────
+function setupPag(tbId, pgId, pp=15) {
+    const tb=document.getElementById(tbId); if (!tb) return;
+    const pg=document.getElementById(pgId); let cp=1;
+    const rows=()=>[...tb.querySelectorAll('tr')];
+    const vis=()=>rows().filter(r=>r.getAttribute('data-filtered')!=='hide');
+    function render(){
+        const vr=vis(),total=vr.length,pages=Math.max(1,Math.ceil(total/pp));
+        if(cp>pages) cp=pages;
+        rows().forEach(r=>{
+            if(r.getAttribute('data-filtered')==='hide'){r.style.display='none';return;}
+            const i=vr.indexOf(r); r.style.display=(i>=(cp-1)*pp&&i<cp*pp)?'':'none';
         });
-}
-
-function renderCalGrid(diasEnMes, primerDia, hoy) {
-    var grid = document.getElementById('calGrid');
-    var html = '';
-    _DIAS_SEMANA.forEach(function(d) {
-        html += '<div class="cal-weekday">' + d + '</div>';
-    });
-
-    for (var i = 0; i < primerDia; i++) {
-        html += '<div class="cal-day other-month"></div>';
-    }
-
-    var hoyParts = hoy.split('-');
-    var dHoy = parseInt(hoyParts[2]), mHoy = parseInt(hoyParts[1]), aHoy = parseInt(hoyParts[0]);
-
-    var citasPorDia = {};
-    (citasData || []).forEach(function(c) {
-        var d = parseInt(c.fecha.split('-')[2]);
-        if (!citasPorDia[d]) citasPorDia[d] = [];
-        citasPorDia[d].push(c);
-    });
-
-    var tipoClase = { llamada:'llamada', videollamada:'videollamada', presencial:'presencial' };
-
-    for (var dia = 1; dia <= diasEnMes; dia++) {
-        var esHoy = (dia === dHoy && _calMes === mHoy && _calAnio === aHoy);
-        html += '<div class="cal-day' + (esHoy ? ' today' : '') + '" data-action="abrirDia" data-dia="' + dia + '">';
-        html += '<div class="cal-day-num">' + dia + '</div>';
-        var citasDia = citasPorDia[dia] || [];
-        var visible = citasDia.slice(0, 2);
-        visible.forEach(function(c) {
-            var cls = c.estado === 'programada' ? (tipoClase[c.tipo] || 'llamada') : c.estado;
-            var hora = c.hora.substring(0,5);
-            html += '<div class="cal-event ' + cls + '" data-action="verCita" data-id="' + c.id + '" title="' + hora + ' - ' + esc(c.cliente_nombre) + '">' + hora + ' ' + esc(c.cliente_nombre) + '</div>';
-        });
-        if (citasDia.length > 2) {
-            html += '<div class="cal-more" data-action="abrirDia" data-stop="1" data-dia="' + dia + '">+' + (citasDia.length-2) + ' más</div>';
+        if(!pg||pages<=1){if(pg)pg.innerHTML='';return;}
+        let h=pagBtn('‹',cp-1,tbId,cp===1);
+        for(let i=1;i<=pages;i++){
+            if(i===1||i===pages||Math.abs(i-cp)<=1) h+=pagBtn(i,i,tbId,false,i===cp);
+            else if(Math.abs(i-cp)===2) h+='<span class="page-btn" style="border:none;cursor:default;">…</span>';
         }
-        html += '</div>';
+        h+=pagBtn('›',cp+1,tbId,cp===pages);
+        pg.innerHTML=h;
     }
+    window['_p_'+tbId]={render,go:p=>{cp=p;render();}};
+    render();
+}
+function pagBtn(lbl,p,tb,disabled,active=false){
+    return `<button class="page-btn${active?' active':''}" data-action="adm-page" data-p="${p}" data-tb="${tb}" ${disabled?'disabled':''}>${lbl}</button>`;
+}
+function filtA(){const tx=(document.getElementById('srchA')?.value||'').toLowerCase();let v=0;[...document.querySelectorAll('#tbA tr')].forEach(r=>{const ok=!tx||(r.dataset.n||'').includes(tx)||(r.dataset.c||'').includes(tx);r.setAttribute('data-filtered',ok?'show':'hide');if(ok)v++;});const cnt=document.getElementById('cntA');if(cnt)cnt.textContent=v;window['_p_tbA']?.go(1);}
+function filtC(){const tx=(document.getElementById('srchC')?.value||'').toLowerCase();const ag=document.getElementById('flAg')?.value||'todos';const es=document.getElementById('flEst')?.value||'todos';let v=0;[...document.querySelectorAll('#tbC tr')].forEach(r=>{const ok=(!tx||(r.dataset.f||'').includes(tx)||(r.dataset.cl||'').includes(tx)||(r.dataset.co||'').includes(tx))&&(ag==='todos'||r.dataset.ag===ag)&&(es==='todos'||r.dataset.st===es);r.setAttribute('data-filtered',ok?'show':'hide');if(ok)v++;});const cnt=document.getElementById('cntC');if(cnt)cnt.textContent=v;window['_p_tbC']?.go(1);}
+function filtCl(){const tx=(document.getElementById('srchCl')?.value||'').toLowerCase();document.querySelectorAll('#clientesList .cb-row').forEach(r=>r.classList.toggle('cl-hidden',!(!tx||(r.dataset.n||'').includes(tx))));if(typeof window._renderCl==='function')window._renderCl();}
 
-    var total = primerDia + diasEnMes;
-    var relleno = (7 - (total % 7)) % 7;
-    for (var j = 0; j < relleno; j++) {
-        html += '<div class="cal-day other-month"></div>';
+// ── CRUD ──────────────────────────────────────────────────────────────────────
+function chgRol(id,rol){if(!confirm(`¿Cambiar rol a "${rol}"?`))return;post({accion:'cambiar_rol',agente_id:id,rol}).then(d=>d.ok?toast('Rol actualizado','success'):toast(d.msg,'error'));}
+function delAg(id,n,activo){const accion=activo?'eliminar_agente':'reactivar_agente';if(!confirm(activo?`¿Desactivar al asesor ${n}?`:`¿Reactivar al asesor ${n}?`))return;post({accion,agente_id:id}).then(d=>{if(d.ok){toast(d.msg||'OK','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
+function crearAgente(){const n=document.getElementById('nN').value.trim(),a=document.getElementById('nA').value.trim(),c=document.getElementById('nC').value.trim(),t=document.getElementById('nT').value.trim(),p=document.getElementById('nP').value.trim(),r=document.getElementById('nR').value;if(!n||!a||!c||!p){toast('Completa los campos requeridos','error');return;}if(p.length<8){toast('Contraseña mínimo 8 caracteres','error');return;}post({accion:'crear_agente',nombre:n,apellido:a,correo:c,telefono:t,password:p,rol:r}).then(d=>{if(d.ok){toast('Asesor creado','success');closeModal('modalCrearAgente');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
+function delCot(id,f){if(!confirm(`¿Eliminar cotización ${f}? Esta acción no se puede deshacer.`))return;post({accion:'eliminar_cotizacion',cotizacion_id:id}).then(d=>{if(d.ok){toast('Eliminada','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
+function abrirForzarEstado(id, folio) {
+    const estados = ['pendiente','en_proceso','enviada','rechazada','aceptada','pagado'];
+    const emision = ['pendiente','en_proceso','emitida','rechazado'];
+    const est    = prompt(`Forzar estado de cotización ${folio}\n\nEstados válidos:\n${estados.join(', ')}\n\nNuevo estado:`);
+    if (!est || !estados.includes(est)) { toast('Estado inválido o cancelado','error'); return; }
+    const emi = prompt(`Estado de emisión válidos:\n${emision.join(', ')}\n\nNuevo emision_estado:`);
+    if (!emi || !emision.includes(emi)) { toast('Estado de emisión inválido o cancelado','error'); return; }
+    post({ accion:'forzar_estado_cotizacion', cotizacion_id:id, estado:est, emision_estado:emi })
+        .then(d => d.ok ? (toast('Estado forzado correctamente','success'), setTimeout(()=>location.reload(),900))
+                        : toast(d.msg||'Error','error'));
+}
+// PARCHE: Guardar edición de agente (nombre + contraseña)
+async function guardarEdicionAgente() {
+    const id    = document.getElementById('editAgenteId').value;
+    const nombre= document.getElementById('editNombre').value.trim();
+    const apell = document.getElementById('editApellido').value.trim();
+    const pw    = document.getElementById('editPassword').value;
+    const pw2   = document.getElementById('editPasswordConfirm').value;
+    if (!nombre || !apell) { toast('Nombre y apellido son requeridos', 'error'); return; }
+    if (pw && pw !== pw2)  { toast('Las contraseñas no coinciden', 'error'); return; }
+    if (pw && pw.length < 8) { toast('Contraseña mínimo 8 caracteres', 'error'); return; }
+    const fd1 = new FormData(); fd1.append('accion','editar_agente_nombre'); fd1.append('agente_id',id); fd1.append('nombre',nombre); fd1.append('apellido',apell);
+    const r1 = await fetch('/admin',{method:'POST',body:fd1}).then(r=>r.json());
+    if (!r1.ok) { toast(r1.msg||'Error al guardar nombre','error'); return; }
+    if (pw) {
+        const fd2 = new FormData(); fd2.append('accion','cambiar_password_agente'); fd2.append('agente_id',id); fd2.append('password',pw);
+        const r2 = await fetch('/admin',{method:'POST',body:fd2}).then(r=>r.json());
+        if (!r2.ok) { toast(r2.msg||'Error al cambiar contraseña','error'); return; }
     }
-
-    grid.innerHTML = html;
+    toast('Agente actualizado correctamente','success');
+    closeModal('modalEditarAgente');
+    setTimeout(()=>location.reload(),1000);
 }
 
-function renderStats(stats) {
-    var cards = document.querySelectorAll('.stat-card');
-    if (!stats || !cards.length) return;
-    var vals = [stats.total, stats.programadas, stats.completadas, stats.canceladas];
-    cards.forEach(function(card, i) {
-        var valEl = card.querySelector('.stat-card-value');
-        if (valEl && vals[i] !== undefined) valEl.textContent = vals[i];
-    });
+// PARCHE: Ver historial coordinador
+function verHistorialCoord(id, nombre) {
+    document.querySelector('#modalHistorialCoord .modal-title').textContent = `📋 Historial de ${nombre||'coordinador'}`;
+    document.getElementById('historialCoordBody').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>';
+    openModal('modalHistorialCoord');
+    const fd=new FormData(); fd.append('accion','get_historial_coordinador'); fd.append('agente_id',id);
+    fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+        if(!d.ok){document.getElementById('historialCoordBody').innerHTML='<p style="color:var(--danger-color);text-align:center;padding:24px;">Error al cargar.</p>';return;}
+        if(!d.historial.length){document.getElementById('historialCoordBody').innerHTML='<p style="color:var(--text-muted);text-align:center;padding:40px;">Sin acciones registradas.</p>';return;}
+        const typeIcon={cobro:'💳',comprobante:'📄',renovacion:'🔁',nota:'📝'};
+        let html='<div style="display:flex;flex-direction:column;">';
+        d.historial.forEach(h=>{
+            html+=`<div style="display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border-color);">
+                <div style="font-size:20px;flex-shrink:0;">${typeIcon[h.tipo]||'•'}</div>
+                <div style="flex:1;">
+                    <div style="font-size:13px;font-weight:600;">${h.titulo}</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${h.cliente_nombre?h.cliente_nombre+' · ':''}${h.fecha_fmt}</div>
+                    ${h.descripcion?`<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${h.descripcion}</div>`:''}
+                </div></div>`;
+        });
+        html+='</div>';
+        document.getElementById('historialCoordBody').innerHTML=html;
+    }).catch(()=>{document.getElementById('historialCoordBody').innerHTML='<p style="color:var(--danger-color);text-align:center;padding:24px;">Error de conexión.</p>';});
 }
 
-function renderProximas(proximas) {
-    var container = document.querySelector('.upcoming-item')?.closest('.card-body');
-    if (!container) return;
-    if (!proximas || !proximas.length) {
-        container.innerHTML = '<div class="empty-state" style="padding:28px 0;"><div class="empty-state-icon" style="font-size:20px;">📅</div><p class="empty-state-description" style="font-size:13px;">Sin citas próximas</p></div>';
-        return;
+// ── Reasignación ──────────────────────────────────────────────────────────────
+const seleccionados=new Set();
+function toggleTodos(checked){document.querySelectorAll('#clientesList .cb-row').forEach(row=>{if(row.classList.contains('cl-hidden')||row.style.display==='none')return;const cb=row.querySelector('input[type=checkbox]');if(!cb)return;const id=+cb.value;cb.checked=checked;if(checked){seleccionados.add(id);row.style.background='var(--info-light)';}else{seleccionados.delete(id);row.style.background='';}});actualizarBarraReasignar();}
+function deseleccionarTodos(){document.getElementById('selectAll').checked=false;toggleTodos(false);}
+function actualizarBarraReasignar(){const bar=document.getElementById('reasignarBar');const cnt=document.getElementById('selCount');if(bar)bar.style.display=seleccionados.size>0?'flex':'none';if(cnt)cnt.textContent=seleccionados.size+' cliente'+(seleccionados.size!==1?'s':'')+' seleccionado'+(seleccionados.size!==1?'s':'');}
+function ejecutarReasignacion(){const nuevoId=document.getElementById('nuevoAsesor')?.value;if(!nuevoId){toast('Selecciona el asesor destino','error');return;}if(!seleccionados.size){toast('Selecciona al menos un cliente','error');return;}const nom=document.getElementById('nuevoAsesor').options[document.getElementById('nuevoAsesor').selectedIndex].text;if(!confirm(`¿Reasignar ${seleccionados.size} cliente(s) a ${nom}?`))return;post({accion:'reasignar_clientes',cliente_ids:[...seleccionados].join(','),nuevo_asesor_id:nuevoId}).then(d=>{if(d.ok){toast(`${d.reasignados} cliente(s) reasignados`,'success');setTimeout(()=>location.reload(),1200);}else toast(d.msg,'error');});}
+
+// ── ATC ───────────────────────────────────────────────────────────────────────
+document.getElementById('btnGuardarATC')?.addEventListener('click',function(){const items=[];for(let i=1;i<=3;i++){items.push({clave:'atc_numero_'+i,valor:document.getElementById('atc_numero_'+i)?.value.trim()||'',descripcion:'Número ATC '+i});items.push({clave:'atc_nombre_'+i,valor:document.getElementById('atc_nombre_'+i)?.value.trim()||'',descripcion:'Nombre ATC '+i});}fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})}).then(r=>r.json()).then(d=>{if(d.ok){toast('Números ATC guardados','success');setTimeout(()=>location.reload(),900);}else toast(d.msg||'Error','error');});});
+
+// ── Exportar ──────────────────────────────────────────────────────────────────
+document.getElementById('btnExportarExcel')?.addEventListener('click',()=>exportar('excel'));
+document.getElementById('btnExportarPdf')  ?.addEventListener('click',()=>exportar('pdf'));
+function exportar(fmt){const mes=document.getElementById('expMes')?.value||'';const estado=document.getElementById('expEstado')?.value||'';const ag=<?php echo json_encode($filtroAgente); ?>;let url=`/exportar?formato=${fmt}&tipo=cotizaciones`;if(ag)url+=`&agente_id=${ag}`;if(estado)url+=`&estado=${estado}`;if(mes){const[y,m]=mes.split('-');const ult=new Date(+y,+m,0).getDate();url+=`&desde=${y}-${m}-01&hasta=${y}-${m}-${String(ult).padStart(2,'0')}`;}if(fmt==='pdf')window.open(url,'_blank');else location.href=url;}
+
+// ── Sort por vencimiento ──────────────────────────────────────────────────────
+document.getElementById('btnAdminSortVence')?.addEventListener('click',toggleAdminSortVence);
+var _admSortActivo=false,_admOrdenOrig=null;
+function toggleAdminSortVence(){const tbody=document.getElementById('tbC'),btn=document.getElementById('btnAdminSortVence');if(!tbody||!btn)return;if(!_admSortActivo){_admOrdenOrig=[...tbody.querySelectorAll('tr')].map(tr=>tr.dataset.id);const rows=[...tbody.querySelectorAll('tr')];const hoy=new Date();hoy.setHours(0,0,0,0);const conV=rows.filter(tr=>tr.dataset.vence),sinV=rows.filter(tr=>!tr.dataset.vence);conV.sort((a,b)=>new Date(a.dataset.vence)-new Date(b.dataset.vence));[...conV,...sinV].forEach(tr=>tbody.appendChild(tr));rows.forEach(tr=>{if(!tr.dataset.vence)return;const d=Math.ceil((new Date(tr.dataset.vence+'T00:00:00')-hoy)/86400000);if(d<=0){tr.style.outline='2px solid #ef4444';tr.style.outlineOffset='-2px';}else if(d<=7){tr.style.outline='2px solid #f97316';tr.style.outlineOffset='-2px';}else if(d<=30){tr.style.outline='2px solid #f59e0b';tr.style.outlineOffset='-2px';}});btn.style.cssText='background:#fef3c7;border-color:#f59e0b;color:#92400e;';btn.innerHTML='<i class="bi bi-clock-history"></i> Ordenado <span style="font-size:10px;font-weight:700;background:#f59e0b;color:#fff;padding:1px 5px;border-radius:4px;margin-left:4px;">ACTIVO</span>';_admSortActivo=true;}else{if(_admOrdenOrig)_admOrdenOrig.forEach(id=>{const tr=tbody.querySelector(`tr[data-id="${id}"]`);if(tr)tbody.appendChild(tr);});tbody.querySelectorAll('tr').forEach(tr=>{tr.style.outline='';tr.style.outlineOffset='';});btn.style.cssText='';btn.innerHTML='<i class="bi bi-clock-history" style="font-size:14px;"></i> Próximos a vencer';_admSortActivo=false;}}
+
+// ── Post helper ───────────────────────────────────────────────────────────────
+function post(data){const fd=new FormData();Object.entries(data).forEach(([k,v])=>fd.append(k,v));return fetch('/admin',{method:'POST',body:fd}).then(r=>r.json());}
+
+// ── Doble clic en tabla cotizaciones ─────────────────────────────────────────
+document.addEventListener('dblclick',e=>{
+    const tr=e.target.closest('#tbC tr');if(!tr)return;
+    try{const cot=JSON.parse(tr.dataset.cot||'{}');if(!cot.id)return;window._adminCotId=cot.id;
+    const eBadge={pendiente:'badge-warning',enviada:'badge-info',aceptada:'badge-success',rechazada:'badge-danger',pagado:'badge-success'};
+    const eLabel={pendiente:'Pendiente',enviada:'Enviada',aceptada:'Aceptada',rechazada:'Rechazada',pagado:'Pagado'};
+    document.getElementById('adminCotFolio').textContent=cot.folio||'#'+cot.id;
+    document.getElementById('adminCotContent').innerHTML=`<div style="display:flex;flex-direction:column;gap:12px;"><div style="background:linear-gradient(135deg,#0f2940,#1a3a5c);border-radius:10px;padding:18px 22px;color:#fff;"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"><div><div style="font-size:10px;opacity:.65;text-transform:uppercase;">Folio</div><div style="font-family:'Courier New',monospace;font-size:17px;font-weight:800;">${cot.folio||'Sin folio'}</div></div><span class="badge ${eBadge[cot.estado]||'badge-neutral'}" style="font-size:12px;padding:5px 12px;">${eLabel[cot.estado]||cot.estado}</span></div><div style="margin-top:10px;font-size:13px;opacity:.85;">📋 ${cot.compania} — ${cot.tipo_cobertura||''}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Cliente</div><div style="font-weight:600;">${cot.cliente_nombre}</div></div><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Asesor</div><div style="font-weight:600;">${cot.agente_nombre}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Prima</div><div style="font-size:20px;font-weight:800;color:var(--success-color);">$${parseFloat(cot.precio||0).toLocaleString('es-MX',{minimumFractionDigits:2})}</div></div><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Fecha</div><div style="font-weight:600;">${cot.fecha?new Date(cot.fecha+'T12:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—'}</div></div></div></div>`;
+    openModal('modalAdminVerCot');}catch(_){}
+});
+window._adminCotId=null;
+
+function abrirDocumentosAdmin(cotId){if(!cotId)return;document.getElementById('adminDocsFolio').textContent='...';document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);">⏳ Cargando...</div>';openModal('modalAdminDocs');const fd=new FormData();fd.append('accion','get_documentos_admin');fd.append('cotizacion_id',cotId);fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(!d.ok){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error al cargar documentos.</div>';return;}document.getElementById('adminDocsFolio').textContent=d.folio||'#'+cotId;if(!d.docs?.length){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:48px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-size:15px;font-weight:600;">Sin documentos adjuntos</div></div>';return;}const cards=d.docs.map(doc=>{const bi=doc.en_idrive?'<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">☁️ iDrive</span>':'<span style="font-size:10px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 8px;border-radius:99px;">Local</span>';const th=doc.es_imagen&&doc.url_local?`<div style="height:110px;border-radius:7px;overflow:hidden;margin-bottom:10px;cursor:pointer;" data-href="${doc.url_local}"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`:`<div style="height:110px;background:var(--bg-secondary);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;">${doc.es_pdf||doc.url_local?'📄':'📎'}</div>`;const bd=doc.url_local?`<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="flex:1;text-align:center;font-size:11px;">⬇ Descargar</a>`:`<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;">${doc.en_idrive?'Solo en ☁️ iDrive':'No disponible'}</span>`;return `<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;display:flex;flex-direction:column;">${th}<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">${doc.tipo_label}</div><div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px;" title="${doc.nombre_orig}">${doc.nombre_orig}</div><div style="display:flex;align-items:center;gap:8px;">${bi}${bd}</div></div>`;}).join('');document.getElementById('adminDocsContent').innerHTML=`<p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">${d.docs.length} documento${d.docs.length!==1?'s':''}</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;">${cards}</div>`;document.querySelectorAll('#adminDocsContent [data-href]').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.href,'_blank')));}).catch(()=>{document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error de conexión.</div>';});}
+
+// ── Paginación clientes del asesor (CORREGIDA) ──────────────────────────────
+(function(){
+    const list = document.getElementById('clientesList');
+    const pg = document.getElementById('pgClientes');
+    if(!list || !pg) return;
+    
+    const PP = 10; // Límite exacto de 10 por página
+    let cp = 1;
+    
+    // Obtener los clientes que coinciden con el buscador
+    function vis(){
+        return [...list.querySelectorAll('.cb-row')].filter(r => !r.classList.contains('cl-hidden'));
     }
-    var TIPO_ICON = { llamada:'📞', videollamada:'💻', presencial:'🤝' };
-    var html = '';
-    proximas.forEach(function(p) {
-        var parts = p.fecha.split('-');
-        var dN = parseInt(parts[2]), mN = parseInt(parts[1]);
-        html += '<div class="upcoming-item">' +
-            '<div class="upcoming-date"><div class="upcoming-date-day">' + dN + '</div><div class="upcoming-date-mes">' + _MESES_CORTOS[mN] + '</div></div>' +
-            '<div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(p.cliente_nombre) + '</div>' +
-            '<div style="font-size:12px;color:var(--text-secondary);"><strong style="color:var(--accent-color);">' + p.hora.substring(0,5) + '</strong>&nbsp;' + (TIPO_ICON[p.tipo]||'') + ' ' + p.tipo + '</div>' +
-            (p.cliente_telefono ? '<div style="font-size:11px;color:var(--text-muted);">📞 ' + esc(p.cliente_telefono) + '</div>' : '') +
-            '</div><button class="btn btn-ghost btn-icon btn-sm" data-action="verCita" data-id="' + p.id + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>';
-    });
-    container.innerHTML = html;
-}
+    
+    function renderCl(){
+        const v = vis();
+        const tp = Math.max(1, Math.ceil(v.length / PP));
+        if(cp > tp) cp = Math.max(1, tp);
+        
+        // Iterar sobre las filas y mostrar solo las de la página actual
+        [...list.querySelectorAll('.cb-row')].forEach(r => {
+            if(r.classList.contains('cl-hidden')){
+                r.style.display = 'none';
+                return;
+            }
+            const i = v.indexOf(r);
+            // Usamos 'flex' porque las filas con clase .cb-row se rompen si usamos ''
+            r.style.display = (i >= (cp - 1) * PP && i < cp * PP) ? 'flex' : 'none';
+        });
+        
+        // Renderizar los botones usando la función nativa del CRM (pagBtn)
+        if(tp <= 1){
+            pg.innerHTML = '';
+            return;
+        }
+        
+        let h = pagBtn('‹', cp - 1, '_cl', cp === 1);
+        for(let i = 1; i <= tp; i++){
+            if(i === 1 || i === tp || Math.abs(i - cp) <= 1) {
+                h += pagBtn(i, i, '_cl', false, i === cp);
+            } else if(Math.abs(i - cp) === 2) {
+                h += '<span class="page-btn" style="border:none;cursor:default;">…</span>';
+            }
+        }
+        h += pagBtn('›', cp + 1, '_cl', cp === tp);
+        pg.innerHTML = h;
+    }
+    
+    // Conectar ESTRICTAMENTE con el sistema global 'adm-page' de tu código original
+    window['_p__cl'] = {
+        go: function(p) {
+            cp = p;
+            renderCl();
+        }
+    };
+    
+    // Conectar con el buscador para que se recalcule al teclear
+    window._renderCl = renderCl;
+    
+    renderCl();
+})();
 
-// FIX #2: Se eliminó el bloque "window.abrirDia" que hacía el parche incompleto.
-// La función abrirDia() definida arriba ya lee _calMes/_calAnio directamente.
+// ── Paginación actividad ──────────────────────────────────────────────────────
+(function(){const feed=document.getElementById('actFeed'),pag=document.getElementById('actPag');if(!feed||!pag)return;const items=[...feed.querySelectorAll('.act-item')],pp=10;let cp=1;const pages=()=>Math.max(1,Math.ceil(items.length/pp));function renderFeed(){const p=pages();items.forEach((el,i)=>{el.style.display=(i>=(cp-1)*pp&&i<cp*pp)?'':'none';});if(p<=1){pag.innerHTML='';return;}let h=pagBtn('‹',cp-1,'_act',cp===1);for(let i=1;i<=p;i++)h+=pagBtn(i,i,'_act',false,i===cp);h+=pagBtn('›',cp+1,'_act',cp===p);pag.innerHTML=h;}window.aFeed=p=>{cp=Math.max(1,Math.min(p,pages()));renderFeed();};renderFeed();})();
 
-function esc(s) {
-    if (!s) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+// ── Inicializar paginación tablas principales ─────────────────────────────────
+document.addEventListener('DOMContentLoaded',()=>{setupPag('tbA','pgA',10);setupPag('tbC','pgC',20);});
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg,type='success'){const c=document.getElementById('toastContainer');if(!c)return;const t=document.createElement('div');t.className=`toast ${type}`;t.innerHTML=`<div class="toast-icon">${type==='error'?'✗':'✓'}</div><div class="toast-message">${msg}</div><button class="toast-close" data-action="toast-close">&times;</button>`;c.appendChild(t);setTimeout(()=>{t.classList.add('hiding');setTimeout(()=>t.remove(),300);},5000);}
+// Alias para compatibilidad con código externo que use showToast
+function showToast(msg,type='success'){toast(msg,type);}
 </script>
+<?php if ($tab === 'emision'): ?>
+<script src="/js/emision.js" nonce="<?= $cspNonce ?>"></script>
+<?php endif; ?>
 
-
-<script src="/js/crm-events.js" nonce="<?= $cspNonce ?>"></script>
-<script src="/js/modales.js"    nonce="<?= $cspNonce ?>"></script>
 </body>
 </html>
