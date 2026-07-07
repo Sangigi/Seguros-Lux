@@ -430,20 +430,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         }
 
     } elseif ($a === 'cambiar_rol') {
-        $tid = (int)($_POST['agente_id']??0);
-        $rol = trim($_POST['rol']??'');
-        if (!$tid || !in_array($rol,['asesor','coordinador','superadmin'],true)) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
+        $tid    = (int)($_POST['agente_id']??0);
+        $puesto = trim($_POST['puesto']??$_POST['rol']??''); // 'rol' se acepta por compatibilidad
+        if (!$tid || !isset(\App\Models\AgentModel::PUESTOS[$puesto])) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
         if ($tid === $agenteId) { echo json_encode(['ok'=>false,'msg'=>'No puedes cambiar tu propio rol.']); exit; }
-        $agentModel->cambiarRol($tid, $rol);
+        $agentModel->cambiarPuesto($tid, $puesto);
         echo json_encode(['ok'=>true]);
 
     } elseif ($a === 'crear_agente') {
         $n=trim($_POST['nombre']??''); $ap=trim($_POST['apellido']??'');
         $co=trim($_POST['correo']??''); $te=trim($_POST['telefono']??'');
-        $pw=trim($_POST['password']??''); $ro=trim($_POST['rol']??'asesor');
+        $pw=trim($_POST['password']??''); $puesto=trim($_POST['rol']??'asesor');
         if (!$n||!$ap||!$co||!$pw) { echo json_encode(['ok'=>false,'msg'=>'Faltan campos obligatorios.']); exit; }
-        if (!in_array($ro,['asesor','coordinador','superadmin'],true)) $ro='asesor';
-        $id = $agentModel->crear($n,$ap,$co,$te,$pw,$ro);
+        if (!isset(\App\Models\AgentModel::PUESTOS[$puesto])) $puesto='asesor';
+        $rolBase = \App\Models\AgentModel::rolBaseDePuesto($puesto, 'asesor');
+        $id = $agentModel->crear($n,$ap,$co,$te,$pw,$rolBase,$puesto);
         echo json_encode(['ok'=>true,'id'=>$id]);
 
     } elseif ($a === 'eliminar_agente') {
@@ -1211,7 +1212,7 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
                             <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($ag['correo']); ?></div>
                         </div>
                     </div></td>
-                    <td><span class="rol-tag <?php echo $ag['rol']; ?>"><?php echo $ag['rol']; ?></span></td>
+                    <td><span class="rol-tag <?php echo $ag['rol']; ?>"><?php echo htmlspecialchars(\App\Models\AgentModel::labelPuesto($ag['puesto'] ?? null, $ag['rol'])); ?></span></td>
                     <td><?php $nc=$met['total_clientes']??0; ?>
                         <?php if ($ag['rol']==='asesor'&&$activo&&$nc>0): ?>
                         <a href="?tab=asesores&asesor_id=<?php echo $ag['id']; ?>" class="btn btn-sm btn-ghost" style="font-size:12px;"><?php echo $nc; ?> clientes →</a>
@@ -1222,11 +1223,12 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
                         <?php if ($ag['id'] != $agenteId && ($isSuperadmin || $_agenteRol === 'coordinador')): ?>
                         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                             <?php if ($isSuperadmin): ?>
+                            <?php $puestoActual = $ag['puesto'] ?? $ag['rol']; ?>
                             <select class="form-select adm-rol-select" style="font-size:11px;padding:3px 6px;width:auto;"
                                     data-agente-id="<?php echo $ag['id']; ?>">
-                                <option value="asesor"      <?php echo $ag['rol']==='asesor'     ?'selected':''; ?>>Asesor</option>
-                                <option value="coordinador" <?php echo $ag['rol']==='coordinador'?'selected':''; ?>>Coord.</option>
-                                <option value="superadmin"  <?php echo $ag['rol']==='superadmin' ?'selected':''; ?>>SA</option>
+                                <?php foreach (\App\Models\AgentModel::PUESTOS as $key => $info): ?>
+                                <option value="<?php echo $key; ?>" <?php echo $puestoActual===$key?'selected':''; ?>><?php echo htmlspecialchars($info['label']); ?></option>
+                                <?php endforeach; ?>
                             </select>
                             <?php endif; ?>
 
@@ -1781,11 +1783,11 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
             <div class="form-group"><label class="form-label required">Correo</label><input type="email" class="form-input" id="nC"></div>
             <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-input" id="nT"></div>
             <div class="form-group"><label class="form-label required">Contraseña</label><input type="password" class="form-input" id="nP" placeholder="Mínimo 8 caracteres"></div>
-            <div class="form-group"><label class="form-label">Rol</label>
+            <div class="form-group"><label class="form-label">Puesto</label>
                 <select class="form-select" id="nR">
-                    <option value="asesor">Asesor de Ventas</option>
-                    <option value="coordinador">Coordinador</option>
-                    <option value="superadmin">Superadmin</option>
+                    <?php foreach (\App\Models\AgentModel::PUESTOS as $key => $info): ?>
+                    <option value="<?php echo $key; ?>"><?php echo htmlspecialchars($info['label']); ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
         </div>
@@ -1991,7 +1993,7 @@ function filtC(){const tx=(document.getElementById('srchC')?.value||'').toLowerC
 function filtCl(){const tx=(document.getElementById('srchCl')?.value||'').toLowerCase();document.querySelectorAll('#clientesList .cb-row').forEach(r=>r.classList.toggle('cl-hidden',!(!tx||(r.dataset.n||'').includes(tx))));if(typeof window._renderCl==='function')window._renderCl();}
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
-function chgRol(id,rol){if(!confirm(`¿Cambiar rol a "${rol}"?`))return;post({accion:'cambiar_rol',agente_id:id,rol}).then(d=>d.ok?toast('Rol actualizado','success'):toast(d.msg,'error'));}
+function chgRol(id,puesto){if(!confirm(`¿Cambiar puesto a "${puesto}"?`))return;post({accion:'cambiar_rol',agente_id:id,puesto}).then(d=>d.ok?toast('Puesto actualizado','success'):toast(d.msg,'error'));}
 function delAg(id,n,activo){const accion=activo?'eliminar_agente':'reactivar_agente';if(!confirm(activo?`¿Desactivar al asesor ${n}?`:`¿Reactivar al asesor ${n}?`))return;post({accion,agente_id:id}).then(d=>{if(d.ok){toast(d.msg||'OK','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
 function crearAgente(){const n=document.getElementById('nN').value.trim(),a=document.getElementById('nA').value.trim(),c=document.getElementById('nC').value.trim(),t=document.getElementById('nT').value.trim(),p=document.getElementById('nP').value.trim(),r=document.getElementById('nR').value;if(!n||!a||!c||!p){toast('Completa los campos requeridos','error');return;}if(p.length<8){toast('Contraseña mínimo 8 caracteres','error');return;}post({accion:'crear_agente',nombre:n,apellido:a,correo:c,telefono:t,password:p,rol:r}).then(d=>{if(d.ok){toast('Asesor creado','success');closeModal('modalCrearAgente');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
 function delCot(id,f){if(!confirm(`¿Eliminar cotización ${f}? Esta acción no se puede deshacer.`))return;post({accion:'eliminar_cotizacion',cotizacion_id:id}).then(d=>{if(d.ok){toast('Eliminada','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
