@@ -115,18 +115,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['accion'])) {
 
     if ($input['nombre'] && $input['apellido_paterno'] && $input['correo']) {
         $db = \Database\Connection::getConnection();
-        $db->prepare(
-            "INSERT INTO clientes
-             (nombre, apellido_paterno, apellido_materno, correo, telefono, ciudad, ramo,
+        $sqlBase = "(nombre, apellido_paterno, apellido_materno, correo, telefono, ciudad, ramo,
               marca, modelo, anio_vehiculo, tipo_vehiculo, submarca, version,
               tiene_adaptaciones, detalle_adaptaciones,
               asegurado, tiempo_compra,
               fecha_nacimiento, sexo, estado_civil,
               giro_empresa, num_empleados, facturacion_anual,
               calle, colonia, estado, codigo_postal,
-              fecha_cita, hora_cita, agente_id, estado_cliente)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo')"
-        )->execute([
+              fecha_cita, hora_cita, agente_id, estado_cliente";
+        $valsBase = [
             $input['nombre'],         $input['apellido_paterno'], $input['apellido_materno'],
             $input['correo'],         $input['telefono'],         $input['ciudad'],         $input['ramo'],
             $input['marca'],          $input['modelo'],           $input['anio_vehiculo'],
@@ -138,7 +135,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['accion'])) {
             $input['calle'],          $input['colonia'],          $input['estado'],
             $input['codigo_postal'],  $input['fecha_cita'],       $input['hora_cita'],
             $agenteId,
-        ]);
+        ];
+        try {
+            // Intento con 'origen' (para el reporte de landing vs. alta manual)
+            $db->prepare(
+                "INSERT INTO clientes {$sqlBase}, origen)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo','manual')"
+            )->execute($valsBase);
+        } catch (\Throwable $e) {
+            // 'origen' puede no existir en instalaciones antiguas de la tabla.
+            $db->prepare(
+                "INSERT INTO clientes {$sqlBase})
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo')"
+            )->execute($valsBase);
+        }
         $nuevoId = (int) $db->lastInsertId();
         if ($nuevoId > 0) {
             $historialModel->registrar($nuevoId, $agenteId, 'registro', 'Cliente registrado',
