@@ -492,6 +492,7 @@ class AgentModel extends BaseModel
         return $resultado;
     }
 
+    public function getClientesPorAsesor(int $agenteId): array
     {
         $stmt = $this->db()->prepare(
             "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
