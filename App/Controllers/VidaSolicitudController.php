@@ -444,6 +444,7 @@ class VidaSolicitudController
                 'ramo'                => $ramo,
                 'agente_id'           => $agenteId,
                 'estado_cliente'      => 'nuevo',
+                'origen'              => 'formulario_campana',
             ];
 
             if ($ramo === 'autos') {
@@ -462,7 +463,15 @@ class VidaSolicitudController
 
             $cols   = implode(', ', array_keys($datos));
             $places = implode(', ', array_fill(0, count($datos), '?'));
-            $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
+            try {
+                $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
+            } catch (\Throwable $e) {
+                // 'origen' puede no existir en instalaciones antiguas de la tabla.
+                unset($datos['origen']);
+                $cols   = implode(', ', array_keys($datos));
+                $places = implode(', ', array_fill(0, count($datos), '?'));
+                $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
+            }
 
             $clienteId = (int) $db->lastInsertId();
 
