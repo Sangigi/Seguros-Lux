@@ -226,6 +226,7 @@ class SessionManager
         $_SESSION['agente_apellido'] = $agente['apellido'];
         $_SESSION['agente_id']       = (int)$agente['id'];
         $_SESSION['agente_rol']      = $agente['rol'] ?? 'asesor';
+        $_SESSION['agente_puesto']   = $agente['puesto'] ?? ($agente['rol'] ?? 'asesor');
         $_SESSION['LAST_ACTIVITY']   = time();
 
         self::storeFingerprint();
@@ -293,6 +294,7 @@ class SessionManager
             'nombre'   => $_SESSION['agente_nombre']   ?? '',
             'apellido' => $_SESSION['agente_apellido'] ?? '',
             'rol'      => $_SESSION['agente_rol']      ?? 'asesor',
+            'puesto'   => $_SESSION['agente_puesto']   ?? ($_SESSION['agente_rol'] ?? 'asesor'),
         ];
     }
 
