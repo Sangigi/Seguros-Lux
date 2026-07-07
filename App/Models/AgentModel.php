@@ -8,7 +8,7 @@ class AgentModel extends BaseModel
     protected string $table = 'agentes';
     protected int $cacheTtl = 300;
     protected array $defaultColumns = [
-        'id', 'nombre', 'apellido', 'correo', 'telefono', 'rol', 'puesto', 'activo',
+        'id', 'nombre', 'apellido', 'correo', 'telefono', 'rol', 'activo',
     ];
 
     protected array $fillable = [
@@ -18,50 +18,15 @@ class AgentModel extends BaseModel
         'telefono'   => 'string',
         'contrasena' => 'string',
         'rol'        => 'string',
-        'puesto'     => 'string',
         'activo'     => 'int',
     ];
-
-    /**
-     * Catálogo de "puestos" (etiquetas de negocio) disponibles, cada uno
-     * asociado a UNO de los 3 roles base que controlan permisos en todo
-     * el sistema. Agregar un puesto nuevo aquí NO requiere tocar lógica
-     * de permisos en ningún controlador/vista: el `rol` real sigue siendo
-     * el mismo de siempre, solo cambia cómo se muestra en la UI.
-     *
-     * Para dar de alta un "puesto" nuevo (ej. "Gerente de Ventas"),
-     * solo hay que agregar una línea aquí indicando a qué rol base
-     * hereda sus permisos.
-     */
-    public const PUESTOS = [
-        'asesor'            => ['label' => 'Asesor',            'rol_base' => 'asesor'],
-        'coordinador'       => ['label' => 'Coordinador',       'rol_base' => 'coordinador'],
-        'gerente_ventas'    => ['label' => 'Gerente de Ventas', 'rol_base' => 'coordinador'],
-        'superadmin'        => ['label' => 'Superadmin',        'rol_base' => 'superadmin'],
-    ];
-
-    public static function labelPuesto(?string $puesto, string $rolFallback): string
-    {
-        if ($puesto && isset(self::PUESTOS[$puesto])) {
-            return self::PUESTOS[$puesto]['label'];
-        }
-        return self::PUESTOS[$rolFallback]['label'] ?? ucfirst($rolFallback);
-    }
-
-    public static function rolBaseDePuesto(?string $puesto, string $rolFallback): string
-    {
-        if ($puesto && isset(self::PUESTOS[$puesto])) {
-            return self::PUESTOS[$puesto]['rol_base'];
-        }
-        return $rolFallback;
-    }
 
     // ── Lectura ───────────────────────────────────────────────────────────────
 
     public function findByEmail(string $correo): ?array
     {
         $stmt = $this->db()->prepare(
-            'SELECT id, nombre, apellido, correo, contrasena, rol, puesto, activo
+            'SELECT id, nombre, apellido, correo, contrasena, rol, activo
              FROM agentes WHERE correo = ? LIMIT 1'
         );
         $stmt->execute([$correo]);
@@ -71,7 +36,7 @@ class AgentModel extends BaseModel
     public function getTodos(): array
     {
         return $this->db()
-            ->query('SELECT id, nombre, apellido, correo, telefono, rol, puesto,
+            ->query('SELECT id, nombre, apellido, correo, telefono, rol,
                             COALESCE(activo,1) AS activo
                      FROM agentes
                      ORDER BY COALESCE(activo,1) DESC, id ASC')
@@ -81,7 +46,7 @@ class AgentModel extends BaseModel
     public function getSoloAsesores(): array
     {
         return $this->db()
-            ->query("SELECT id, nombre, apellido, correo, telefono, rol, puesto,
+            ->query("SELECT id, nombre, apellido, correo, telefono, rol,
                             COALESCE(activo,1) AS activo
                      FROM agentes
                      WHERE rol IN ('asesor','agente') AND COALESCE(activo,1) = 1
@@ -91,7 +56,7 @@ class AgentModel extends BaseModel
 
     // ── Escritura ─────────────────────────────────────────────────────────────
 
-    public function crear(string $nombre, string $apellido, string $correo, string $telefono, string $password, string $rol = 'asesor', ?string $puesto = null): int
+    public function crear(string $nombre, string $apellido, string $correo, string $telefono, string $password, string $rol = 'asesor'): int 
     {
         $chk = $this->db()->prepare('SELECT 1 FROM agentes WHERE correo = ? LIMIT 1');
         $chk->execute([$correo]);
@@ -104,7 +69,6 @@ class AgentModel extends BaseModel
             'telefono'   => $telefono,
             'contrasena' => password_hash($password, PASSWORD_BCRYPT),
             'rol'        => $rol,
-            'puesto'     => $puesto ?? $rol,
             'activo'     => 1,
         ]);
     }
@@ -112,17 +76,6 @@ class AgentModel extends BaseModel
     public function cambiarRol(int $id, string $rol): void
     {
         $this->db()->prepare('UPDATE agentes SET rol = ? WHERE id = ?')->execute([$rol, $id]);
-    }
-
-    public function cambiarPuesto(int $id, string $puesto): void
-    {
-        if (!isset(self::PUESTOS[$puesto])) return;
-        $rolBase = self::PUESTOS[$puesto]['rol_base'];
-        // El rol base se sincroniza automáticamente: así toda la lógica de
-        // permisos existente (basada en `rol`) sigue funcionando sin cambios.
-        $this->db()
-            ->prepare('UPDATE agentes SET rol = ?, puesto = ? WHERE id = ?')
-            ->execute([$rolBase, $puesto, $id]);
     }
 
     public function eliminar(int $id): void
@@ -414,42 +367,52 @@ class AgentModel extends BaseModel
      */
     public function getLeadMetrics(): array
     {
-        $sql = "SELECT a.id, a.nombre, a.apellido,
-                       -- Totales del periodo actual
-                       SUM(DATE(c.fecha_registro) = CURDATE())                                              AS hoy,
-                       SUM(DATE(c.fecha_registro) = CURDATE() - INTERVAL 1 DAY)                              AS ayer,
-                       SUM(YEARWEEK(c.fecha_registro,1) = YEARWEEK(CURDATE(),1))                             AS semana,
-                       SUM(YEARWEEK(c.fecha_registro,1) = YEARWEEK(CURDATE(),1) - 1)                         AS semana_pasada,
-                       SUM(
-                           (DAY(CURDATE()) <= 15 AND DATE(c.fecha_registro) BETWEEN DATE_FORMAT(CURDATE(),'%Y-%m-01') AND DATE_FORMAT(CURDATE(),'%Y-%m-15'))
-                           OR
-                           (DAY(CURDATE()) > 15 AND DATE(c.fecha_registro) BETWEEN DATE_FORMAT(CURDATE(),'%Y-%m-16') AND LAST_DAY(CURDATE()))
-                       )                                                                                     AS quincena,
-                       SUM(YEAR(c.fecha_registro)=YEAR(CURDATE()) AND MONTH(c.fecha_registro)=MONTH(CURDATE())) AS mes,
-                       SUM(YEAR(c.fecha_registro)=YEAR(CURDATE() - INTERVAL 1 MONTH) AND MONTH(c.fecha_registro)=MONTH(CURDATE() - INTERVAL 1 MONTH)) AS mes_pasado
-                FROM agentes a
-                LEFT JOIN clientes c ON c.agente_id = a.id
-                WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
-                GROUP BY a.id, a.nombre, a.apellido
-                ORDER BY hoy DESC, semana DESC";
-
-        $porAsesor = $this->db()->query($sql)->fetchAll();
-
-        // Totales del equipo completo (suma de la tabla anterior).
-        $totales = [
-            'hoy' => 0, 'ayer' => 0, 'semana' => 0, 'semana_pasada' => 0,
-            'quincena' => 0, 'mes' => 0, 'mes_pasado' => 0,
+        $vacio = [
+            'totales' => [
+                'hoy' => 0, 'ayer' => 0, 'semana' => 0, 'semana_pasada' => 0,
+                'quincena' => 0, 'mes' => 0, 'mes_pasado' => 0,
+            ],
+            'por_asesor' => [],
         ];
-        foreach ($porAsesor as $row) {
-            foreach ($totales as $k => $v) {
-                $totales[$k] += (int) ($row[$k] ?? 0);
+
+        try {
+            $sql = "SELECT a.id, a.nombre, a.apellido,
+                           -- Totales del periodo actual
+                           SUM(DATE(c.fecha_registro) = CURDATE())                                              AS hoy,
+                           SUM(DATE(c.fecha_registro) = CURDATE() - INTERVAL 1 DAY)                              AS ayer,
+                           SUM(YEARWEEK(c.fecha_registro,1) = YEARWEEK(CURDATE(),1))                             AS semana,
+                           SUM(YEARWEEK(c.fecha_registro,1) = YEARWEEK(CURDATE(),1) - 1)                         AS semana_pasada,
+                           SUM(
+                               (DAY(CURDATE()) <= 15 AND DATE(c.fecha_registro) BETWEEN DATE_FORMAT(CURDATE(),'%Y-%m-01') AND DATE_FORMAT(CURDATE(),'%Y-%m-15'))
+                               OR
+                               (DAY(CURDATE()) > 15 AND DATE(c.fecha_registro) BETWEEN DATE_FORMAT(CURDATE(),'%Y-%m-16') AND LAST_DAY(CURDATE()))
+                           )                                                                                     AS quincena,
+                           SUM(YEAR(c.fecha_registro)=YEAR(CURDATE()) AND MONTH(c.fecha_registro)=MONTH(CURDATE())) AS mes,
+                           SUM(YEAR(c.fecha_registro)=YEAR(CURDATE() - INTERVAL 1 MONTH) AND MONTH(c.fecha_registro)=MONTH(CURDATE() - INTERVAL 1 MONTH)) AS mes_pasado
+                    FROM agentes a
+                    LEFT JOIN clientes c ON c.agente_id = a.id
+                    WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
+                    GROUP BY a.id, a.nombre, a.apellido
+                    ORDER BY hoy DESC, semana DESC";
+
+            $porAsesor = $this->db()->query($sql)->fetchAll();
+
+            // Totales del equipo completo (suma de la tabla anterior).
+            $totales = $vacio['totales'];
+            foreach ($porAsesor as $row) {
+                foreach ($totales as $k => $v) {
+                    $totales[$k] += (int) ($row[$k] ?? 0);
+                }
             }
-        }
 
-        return [
-            'totales'    => $totales,
-            'por_asesor' => $porAsesor,
-        ];
+            return [
+                'totales'    => $totales,
+                'por_asesor' => $porAsesor,
+            ];
+        } catch (\Throwable $e) {
+            error_log('[getLeadMetrics] ' . $e->getMessage());
+            return $vacio;
+        }
     }
 
     public function getClientesPorAsesor(int $agenteId): array
@@ -475,18 +438,6 @@ class AgentModel extends BaseModel
         $placeholders = implode(',', array_fill(0, count($clienteIds), '?'));
         $db = $this->db();
 
-        // 0. Obtener nombres de los clientes ANTES de reasignar (para el mensaje de notificación)
-        $clientesInfo = [];
-        try {
-            $stmtInfo = $db->prepare(
-                "SELECT id, nombre, apellido_paterno FROM clientes WHERE id IN ({$placeholders})"
-            );
-            $stmtInfo->execute($clienteIds);
-            foreach ($stmtInfo->fetchAll(\PDO::FETCH_ASSOC) as $row) {
-                $clientesInfo[(int)$row['id']] = trim($row['nombre'] . ' ' . $row['apellido_paterno']);
-            }
-        } catch (\Throwable) {}
-
         // 1. Reasignar el cliente al nuevo asesor
         $stmt = $db->prepare(
             "UPDATE clientes SET agente_id = ? WHERE id IN ({$placeholders})"
@@ -511,24 +462,8 @@ class AgentModel extends BaseModel
             }
         } catch (\Throwable) {}
 
-        // 4. Notificar in-app al nuevo asesor por cada cliente reasignado
-        try {
-            $notifModel = new NotificacionModel();
-            foreach ($clienteIds as $cid) {
-                $nombreCliente = $clientesInfo[$cid] ?? 'Cliente';
-                $notifModel->crear(
-                    $nuevoAsesorId,
-                    'sistema',
-                    '↔️ Cliente reasignado',
-                    "{$nombreCliente} te fue reasignado. Revísalo y contáctalo cuanto antes.",
-                    (string) $cid
-                );
-            }
-        } catch (\Throwable) {}
-
         return $total;
     }
-
 
     public function getRecentActivity(int $agenteId, int $limit = 8): array
     {
