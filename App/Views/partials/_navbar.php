@@ -6,6 +6,7 @@
 
 use App\Security\SessionManager;
 use App\Models\NotificacionModel;
+use App\Models\AgentModel;
 
 $_agente      = SessionManager::getAgentData();
 $_agenteNombre= trim(($_agente['nombre'] ?? '') . ' ' . ($_agente['apellido'] ?? ''));
@@ -481,7 +482,7 @@ button.sidebar-link {
             <div class="sidebar-user-avatar"><?php echo htmlspecialchars($_iniciales); ?></div>
             <div style="min-width:0;">
                 <div class="sidebar-user-name"><?php echo htmlspecialchars($_agenteNombre); ?></div>
-                <div class="sidebar-user-role"><?php echo htmlspecialchars($_agenteRol); ?></div>
+                <div class="sidebar-user-role"><?php echo htmlspecialchars(\App\Models\AgentModel::labelPuesto($_agente['puesto'] ?? null, $_agenteRol)); ?></div>
             </div>
         </div>
         <form method="POST" action="/logout" id="formLogout" style="margin:0;">
