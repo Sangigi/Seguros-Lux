@@ -559,9 +559,18 @@ class VidaSolicitudController
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             ");
 
-            foreach (['submarca VARCHAR(100)', 'version VARCHAR(100)', 'domicilio VARCHAR(255)', 'cp VARCHAR(10)', 'hospitales TEXT'] as $col) {
-                try { $db->exec("ALTER TABLE vida_solicitudes ADD COLUMN IF NOT EXISTS {$col} DEFAULT NULL"); }
-                catch (\Throwable) {}
+            foreach (['submarca' => 'VARCHAR(100)', 'version' => 'VARCHAR(100)', 'domicilio' => 'VARCHAR(255)', 'cp' => 'VARCHAR(10)', 'hospitales' => 'TEXT'] as $colName => $colType) {
+                try {
+                    $chk = $db->prepare(
+                        "SELECT 1 FROM information_schema.columns
+                         WHERE table_schema = DATABASE() AND table_name = 'vida_solicitudes' AND column_name = ?"
+                    );
+                    $chk->execute([$colName]);
+                    if (!$chk->fetch()) {
+                        // MySQL 5.7 no soporta "ADD COLUMN IF NOT EXISTS"; se verifica manualmente.
+                        $db->exec("ALTER TABLE vida_solicitudes ADD COLUMN {$colName} {$colType} DEFAULT NULL");
+                    }
+                } catch (\Throwable) {}
             }
 
             $db->prepare(
