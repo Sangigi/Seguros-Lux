@@ -400,7 +400,7 @@ $pageTitle = $modoEdicion
                             <div style="font-size:11px;color:var(--text-secondary);">Ramo activo en tu sesión. <a href="/dashboard" style="color:var(--accent-color);">Cambiar ramo</a></div>
                         </div>
                     </div>
-                    <input type="hidden" id="ramoHidden" value="<?php echo htmlspecialchars($ramoActivo); ?>">
+                    <input type="hidden" id="ramoHidden" value="<?php echo htmlspecialchars($ramoActivo ?? 'autos'); ?>">
 
                     <!-- ═══ SECCIÓN 3: DATOS DEL SEGURO ═══ -->
                     <span class="section-label">3 · Datos del Seguro</span>
