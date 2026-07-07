@@ -50,6 +50,7 @@ class ClientModel extends BaseModel
         'agente_id'         => 'int',
         'estado_cliente'    => 'string',
         'telegram_chat_id'  => 'string',
+        'origen'            => 'string',
     ];
 
     // ── Definición de campos extra por ramo ───────────────────────────────────
@@ -455,6 +456,7 @@ class ClientModel extends BaseModel
             'agente_id'        => $agenteId,
             'estado_cliente'   => 'nuevo',
             'ramo'             => $ramo,
+            'origen'           => 'formulario',
         ];
 
         // Campos dinámicos según ramo
@@ -479,7 +481,13 @@ class ClientModel extends BaseModel
             // vida y gastos_medicos solo usan los campos base (fecha_nacimiento, sexo ya están)
         }
 
-        $clienteId = $this->insert($datosCliente);
+        try {
+            $clienteId = $this->insert($datosCliente);
+        } catch (\Throwable $e) {
+            // 'origen' puede no existir en instalaciones antiguas de la tabla.
+            unset($datosCliente['origen']);
+            $clienteId = $this->insert($datosCliente);
+        }
 
         if ($fechaCita && $horaCita) {
             $tipoCita = in_array($input['tipoCita'] ?? '', ['llamada','videollamada'], true)
