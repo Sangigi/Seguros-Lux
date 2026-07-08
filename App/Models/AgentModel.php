@@ -492,6 +492,73 @@ class AgentModel extends BaseModel
         return $resultado;
     }
 
+    /**
+     * Detalle de clientes (para el modal drill-down) por bucket de origen
+     * ('formulario' o 'manual') del mes en curso.
+     */
+    public function getDetalleOrigenMes(string $bucket): array
+    {
+        $formularioTags = ['formulario', 'formulario_propio', 'formulario_campana', 'meta_lead_ads'];
+
+        try {
+            $rows = $this->db()->query(
+                "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
+                        c.correo, c.telefono, c.ramo, c.fecha_registro, c.origen,
+                        a.nombre AS agente_nombre, a.apellido AS agente_apellido
+                 FROM clientes c
+                 LEFT JOIN agentes a ON a.id = c.agente_id
+                 WHERE YEAR(c.fecha_registro) = YEAR(CURDATE()) AND MONTH(c.fecha_registro) = MONTH(CURDATE())
+                 ORDER BY c.fecha_registro DESC
+                 LIMIT 300"
+            )->fetchAll();
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return array_values(array_filter($rows, function ($r) use ($bucket, $formularioTags) {
+            $esFormulario = ($r['origen'] ?? null) !== null && in_array($r['origen'], $formularioTags, true);
+            return $bucket === 'formulario' ? $esFormulario : !$esFormulario;
+        }));
+    }
+
+    /**
+     * Detalle de clientes (para el modal drill-down) por periodo, usando
+     * las MISMAS ventanas de fecha que getLeadMetrics() para que los
+     * números del KPI y del listado siempre coincidan.
+     */
+    public function getDetalleClientesPeriodo(string $periodo): array
+    {
+        $where = match ($periodo) {
+            'hoy'           => "DATE(c.fecha_registro) = CURDATE()",
+            'ayer'          => "DATE(c.fecha_registro) = CURDATE() - INTERVAL 1 DAY",
+            'semana'        => "YEARWEEK(c.fecha_registro,1) = YEARWEEK(CURDATE(),1)",
+            'semana_pasada' => "YEARWEEK(c.fecha_registro,1) = YEARWEEK(CURDATE(),1) - 1",
+            'quincena'      => "(
+                                    (DAY(CURDATE()) <= 15 AND DATE(c.fecha_registro) BETWEEN DATE_FORMAT(CURDATE(),'%Y-%m-01') AND DATE_FORMAT(CURDATE(),'%Y-%m-15'))
+                                    OR
+                                    (DAY(CURDATE()) > 15 AND DATE(c.fecha_registro) BETWEEN DATE_FORMAT(CURDATE(),'%Y-%m-16') AND LAST_DAY(CURDATE()))
+                                )",
+            'mes'           => "YEAR(c.fecha_registro)=YEAR(CURDATE()) AND MONTH(c.fecha_registro)=MONTH(CURDATE())",
+            'mes_pasado'    => "YEAR(c.fecha_registro)=YEAR(CURDATE() - INTERVAL 1 MONTH) AND MONTH(c.fecha_registro)=MONTH(CURDATE() - INTERVAL 1 MONTH)",
+            default         => '1=0',
+        };
+
+        try {
+            return $this->db()->query(
+                "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
+                        c.correo, c.telefono, c.ramo, c.fecha_registro, c.origen,
+                        a.nombre AS agente_nombre, a.apellido AS agente_apellido
+                 FROM clientes c
+                 LEFT JOIN agentes a ON a.id = c.agente_id
+                 WHERE {$where}
+                 ORDER BY c.fecha_registro DESC
+                 LIMIT 300"
+            )->fetchAll();
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
     public function getClientesPorAsesor(int $agenteId): array
     {
         $stmt = $this->db()->prepare(
