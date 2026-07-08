@@ -484,6 +484,7 @@ class ClientModel extends BaseModel
         try {
             $clienteId = $this->insert($datosCliente);
         } catch (\Throwable $e) {
+            error_log('[ClientModel] insert() falló con origen incluido: ' . $e->getMessage());
             // 'origen' puede no existir en instalaciones antiguas de la tabla.
             unset($datosCliente['origen']);
             $clienteId = $this->insert($datosCliente);
