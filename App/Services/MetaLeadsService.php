@@ -262,6 +262,7 @@ class MetaLeadsService
             $places = implode(', ', array_fill(0, count($datos), '?'));
             $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
         } catch (\Throwable $e) {
+            error_log('[MetaLeadsService] INSERT clientes falló con origen incluido: ' . $e->getMessage());
             unset($datos['origen']);
             $cols   = implode(', ', array_keys($datos));
             $places = implode(', ', array_fill(0, count($datos), '?'));
