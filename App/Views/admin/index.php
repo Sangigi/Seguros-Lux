@@ -313,6 +313,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         exit;
     }
 
+    // ── Desglose (drill-down) de origen de clientes y de leads por periodo ─────
+    if ($a === 'detalle_origen_clientes') {
+        $bucket = $_POST['bucket'] ?? '';
+        if (!in_array($bucket, ['formulario', 'manual'], true)) {
+            echo json_encode(['ok'=>false,'msg'=>'Bucket inválido.']); exit;
+        }
+        $detalle = $agentModel->getDetalleOrigenMes($bucket);
+        echo json_encode(['ok'=>true,'detalle'=>$detalle]); exit;
+    }
+
+    if ($a === 'detalle_leads_periodo') {
+        $periodo = $_POST['periodo'] ?? '';
+        if (!in_array($periodo, ['hoy','ayer','semana','semana_pasada','quincena','mes','mes_pasado'], true)) {
+            echo json_encode(['ok'=>false,'msg'=>'Periodo inválido.']); exit;
+        }
+        $detalle = $agentModel->getDetalleClientesPeriodo($periodo);
+        echo json_encode(['ok'=>true,'detalle'=>$detalle]); exit;
+    }
+
     // ── Historial de pólizas (coordinador / SA) ────────────────────────────────
     if ($a === 'get_polizas_resumen') {
         $filtroAsesor = (int)($_POST['asesor_id'] ?? 0);
@@ -810,25 +829,25 @@ $arrow = static function (int $ahora, int $antes): string {
     </div>
     <div class="card-body">
         <div class="kpi4" style="margin-bottom:20px;">
-            <div class="stat-card accent">
+            <div class="stat-card accent adm-clickable" data-action="adm-detalle-leads" data-periodo="hoy" style="cursor:pointer;">
                 <div class="stat-card-value"><?php echo $lm['hoy']; ?></div>
                 <div class="stat-card-label">Hoy</div>
                 <div class="badge badge-<?php echo $badge($lm['hoy'], $lm['ayer']); ?>" style="margin-top:6px;font-size:11px;">
                     <?php echo $arrow($lm['hoy'], $lm['ayer']); ?> vs. ayer (<?php echo $lm['ayer']; ?>)
                 </div>
             </div>
-            <div class="stat-card info">
+            <div class="stat-card info adm-clickable" data-action="adm-detalle-leads" data-periodo="semana" style="cursor:pointer;">
                 <div class="stat-card-value"><?php echo $lm['semana']; ?></div>
                 <div class="stat-card-label">Esta Semana</div>
                 <div class="badge badge-<?php echo $badge($lm['semana'], $lm['semana_pasada']); ?>" style="margin-top:6px;font-size:11px;">
                     <?php echo $arrow($lm['semana'], $lm['semana_pasada']); ?> vs. semana pasada (<?php echo $lm['semana_pasada']; ?>)
                 </div>
             </div>
-            <div class="stat-card warning">
+            <div class="stat-card warning adm-clickable" data-action="adm-detalle-leads" data-periodo="quincena" style="cursor:pointer;">
                 <div class="stat-card-value"><?php echo $lm['quincena']; ?></div>
                 <div class="stat-card-label">Quincena Actual</div>
             </div>
-            <div class="stat-card success">
+            <div class="stat-card success adm-clickable" data-action="adm-detalle-leads" data-periodo="mes" style="cursor:pointer;">
                 <div class="stat-card-value"><?php echo $lm['mes']; ?></div>
                 <div class="stat-card-label">Este Mes</div>
                 <div class="badge badge-<?php echo $badge($lm['mes'], $lm['mes_pasado']); ?>" style="margin-top:6px;font-size:11px;">
@@ -847,12 +866,22 @@ $arrow = static function (int $ahora, int $antes): string {
             $pctForm = $origenTotal > 0 ? round($origenMes['formulario'] / $origenTotal * 100) : 0;
             ?>
             <div style="display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--bg-secondary);">
-                <div style="width:<?php echo $pctForm; ?>%;background:#0ea5e9;"></div>
-                <div style="width:<?php echo 100 - $pctForm; ?>%;background:#f59e0b;"></div>
+                <button type="button" class="origen-bar-seg" data-action="adm-detalle-origen" data-bucket="formulario"
+                        style="width:<?php echo $pctForm; ?>%;background:#0ea5e9;border:none;cursor:pointer;padding:0;"
+                        title="Ver detalle de landing / formulario propio"></button>
+                <button type="button" class="origen-bar-seg" data-action="adm-detalle-origen" data-bucket="manual"
+                        style="width:<?php echo 100 - $pctForm; ?>%;background:#f59e0b;border:none;cursor:pointer;padding:0;"
+                        title="Ver detalle de alta manual"></button>
             </div>
             <div style="display:flex;gap:20px;margin-top:8px;font-size:12px;">
-                <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#0ea5e9;margin-right:5px;"></span>📋 Landing / Formulario propio: <strong><?php echo $origenMes['formulario']; ?></strong></span>
-                <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#f59e0b;margin-right:5px;"></span>👤 Alta manual (asesor): <strong><?php echo $origenMes['manual']; ?></strong></span>
+                <button type="button" class="origen-leyenda-btn" data-action="adm-detalle-origen" data-bucket="formulario"
+                        style="background:none;border:none;cursor:pointer;padding:0;font-size:12px;color:inherit;">
+                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#0ea5e9;margin-right:5px;"></span>📋 Landing / Formulario propio: <strong><?php echo $origenMes['formulario']; ?></strong>
+                </button>
+                <button type="button" class="origen-leyenda-btn" data-action="adm-detalle-origen" data-bucket="manual"
+                        style="background:none;border:none;cursor:pointer;padding:0;font-size:12px;color:inherit;">
+                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#f59e0b;margin-right:5px;"></span>👤 Alta manual (asesor): <strong><?php echo $origenMes['manual']; ?></strong>
+                </button>
             </div>
         </div>
 
@@ -1872,6 +1901,19 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
     </div>
 </div>
 
+<div class="modal-overlay" id="modalDetalleClientes">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title" id="detalleClientesTitulo">Detalle</h3>
+            <button class="modal-close" data-close="modalDetalleClientes">&times;</button>
+        </div>
+        <div class="modal-body" id="detalleClientesBody" style="min-height:200px;max-height:60vh;overflow-y:auto;">
+            <div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-outline" data-close="modalDetalleClientes">Cerrar</button></div>
+    </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <?php if ($tab === 'rendimiento'): ?>
@@ -1911,6 +1953,8 @@ document.addEventListener('click', function(e) {
         }
         case 'adm-verDocs':  abrirDocumentosAdmin(window._adminCotId); break;
         case 'adm-page':     window['_p_'+el.dataset.tb]?.go(+el.dataset.p); break;
+        case 'adm-detalle-origen': abrirDetalleClientes('detalle_origen_clientes', {bucket: el.dataset.bucket}, tituloOrigen(el.dataset.bucket)); break;
+        case 'adm-detalle-leads':  abrirDetalleClientes('detalle_leads_periodo', {periodo: el.dataset.periodo}, tituloPeriodo(el.dataset.periodo)); break;
         case 'toast-close':  el.closest('.toast')?.remove(); break;
         // PARCHE: editar agente e historial coordinador
         case 'adm-editarAgente': {
@@ -2091,6 +2135,39 @@ document.addEventListener('dblclick',e=>{
 });
 window._adminCotId=null;
 
+function tituloOrigen(bucket){return bucket==='formulario' ? '📋 Landing / Formulario propio — ' + '<?php echo date("F Y"); ?>' : '👤 Alta manual (asesor) — ' + '<?php echo date("F Y"); ?>';}
+function tituloPeriodo(periodo){const labels={hoy:'Hoy',ayer:'Ayer',semana:'Esta semana',semana_pasada:'Semana pasada',quincena:'Quincena actual',mes:'Este mes',mes_pasado:'Mes pasado'};return '🆕 Leads / Clientes nuevos — ' + (labels[periodo]||periodo);}
+function abrirDetalleClientes(accion, params, titulo){
+    document.getElementById('detalleClientesTitulo').textContent = titulo;
+    document.getElementById('detalleClientesBody').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>';
+    openModal('modalDetalleClientes');
+    const fd = new FormData();
+    fd.append('accion', accion);
+    Object.entries(params).forEach(([k,v]) => fd.append(k, v));
+    fetch('/admin', {method:'POST', body:fd}).then(r=>r.json()).then(d=>{
+        const body = document.getElementById('detalleClientesBody');
+        if (!d.ok) { body.innerHTML = '<p style="color:var(--danger-color);text-align:center;padding:24px;">Error al cargar.</p>'; return; }
+        if (!d.detalle.length) { body.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px;">Sin clientes en este periodo.</p>'; return; }
+        const ramoLabels = {autos:'🚗 Autos', vida:'❤️ Vida', gastos_medicos:'🏥 GMM', empresas:'🏢 Empresas'};
+        const rows = d.detalle.map(c => {
+            const nombreCliente = [c.nombre, c.apellido_paterno, c.apellido_materno].filter(Boolean).join(' ');
+            const agente = (c.agente_nombre || c.agente_apellido) ? `${c.agente_nombre||''} ${c.agente_apellido||''}`.trim() : '<span style="color:var(--text-muted);">Sin asesor</span>';
+            const fecha = c.fecha_registro ? new Date(c.fecha_registro.replace(' ','T')).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+            const ramo = ramoLabels[c.ramo] || (c.ramo || '—');
+            return `<tr>
+                <td><strong>${nombreCliente || 'Sin nombre'}</strong><div style="font-size:11px;color:var(--text-muted);">${c.correo||''} ${c.telefono?' · '+c.telefono:''}</div></td>
+                <td>${agente}</td>
+                <td>${ramo}</td>
+                <td style="font-size:12px;">${fecha}</td>
+            </tr>`;
+        }).join('');
+        body.innerHTML = `<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">${d.detalle.length} cliente${d.detalle.length!==1?'s':''}</p>
+            <div style="overflow-x:auto;"><table class="adt">
+                <thead><tr><th>Cliente</th><th>Asesor que lo registró</th><th>Ramo</th><th>Fecha de alta</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table></div>`;
+    }).catch(()=>{document.getElementById('detalleClientesBody').innerHTML = '<p style="color:var(--danger-color);text-align:center;padding:24px;">Error de conexión.</p>';});
+}
 function abrirDocumentosAdmin(cotId){if(!cotId)return;document.getElementById('adminDocsFolio').textContent='...';document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);">⏳ Cargando...</div>';openModal('modalAdminDocs');const fd=new FormData();fd.append('accion','get_documentos_admin');fd.append('cotizacion_id',cotId);fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(!d.ok){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error al cargar documentos.</div>';return;}document.getElementById('adminDocsFolio').textContent=d.folio||'#'+cotId;if(!d.docs?.length){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:48px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-size:15px;font-weight:600;">Sin documentos adjuntos</div></div>';return;}const cards=d.docs.map(doc=>{const bi=doc.en_idrive?'<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">☁️ iDrive</span>':'<span style="font-size:10px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 8px;border-radius:99px;">Local</span>';const th=doc.es_imagen&&doc.url_local?`<div style="height:110px;border-radius:7px;overflow:hidden;margin-bottom:10px;cursor:pointer;" data-href="${doc.url_local}"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`:`<div style="height:110px;background:var(--bg-secondary);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;">${doc.es_pdf||doc.url_local?'📄':'📎'}</div>`;const bd=doc.url_local?`<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="flex:1;text-align:center;font-size:11px;">⬇ Descargar</a>`:`<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;">${doc.en_idrive?'Solo en ☁️ iDrive':'No disponible'}</span>`;return `<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;display:flex;flex-direction:column;">${th}<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">${doc.tipo_label}</div><div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px;" title="${doc.nombre_orig}">${doc.nombre_orig}</div><div style="display:flex;align-items:center;gap:8px;">${bi}${bd}</div></div>`;}).join('');document.getElementById('adminDocsContent').innerHTML=`<p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">${d.docs.length} documento${d.docs.length!==1?'s':''}</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;">${cards}</div>`;document.querySelectorAll('#adminDocsContent [data-href]').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.href,'_blank')));}).catch(()=>{document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error de conexión.</div>';});}
 
 // ── Paginación clientes del asesor (CORREGIDA) ──────────────────────────────
@@ -2156,7 +2233,16 @@ function abrirDocumentosAdmin(cotId){if(!cotId)return;document.getElementById('a
 })();
 
 // ── Paginación actividad ──────────────────────────────────────────────────────
-(function(){const feed=document.getElementById('actFeed'),pag=document.getElementById('actPag');if(!feed||!pag)return;const items=[...feed.querySelectorAll('.act-item')],pp=10;let cp=1;const pages=()=>Math.max(1,Math.ceil(items.length/pp));function renderFeed(){const p=pages();items.forEach((el,i)=>{el.style.display=(i>=(cp-1)*pp&&i<cp*pp)?'':'none';});if(p<=1){pag.innerHTML='';return;}let h=pagBtn('‹',cp-1,'_act',cp===1);for(let i=1;i<=p;i++)h+=pagBtn(i,i,'_act',false,i===cp);h+=pagBtn('›',cp+1,'_act',cp===p);pag.innerHTML=h;}window.aFeed=p=>{cp=Math.max(1,Math.min(p,pages()));renderFeed();};renderFeed();})();
+(function(){const feed=document.getElementById('actFeed'),pag=document.getElementById('actPag');if(!feed||!pag)return;const items=[...feed.querySelectorAll('.act-item')],pp=10;let cp=1;const pages=()=>Math.max(1,Math.ceil(items.length/pp));function renderFeed(){const p=pages();items.forEach((el,i)=>{el.style.display=(i>=(cp-1)*pp&&i<cp*pp)?'':'none';});if(p<=1){pag.innerHTML='';return;}let h=pagBtn('‹',cp-1,'_act',cp===1);for(let i=1;i<=p;i++)h+=pagBtn(i,i,'_act',false,i===cp);h+=pagBtn('›',cp+1,'_act',cp===p);pag.innerHTML=h;}
+    // Conectar ESTRICTAMENTE con el sistema global 'adm-page' (data-tb="_act" → window['_p__act'])
+    window['_p__act'] = {
+        go: function(p) {
+            cp = Math.max(1, Math.min(p, pages()));
+            renderFeed();
+        }
+    };
+    renderFeed();
+})();
 
 // ── Inicializar paginación tablas principales ─────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{setupPag('tbA','pgA',10);setupPag('tbC','pgC',20);});
