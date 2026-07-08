@@ -237,7 +237,8 @@ class VidaSolicitudController
             modelo: $modelo, version: $version, anio: $anio, domicilio: $domicilio, cp: $cp,
             edadGmm: $edadGmm, depGmm: $depGmm, hospitales: $hospitales,
             empresa: $empresa, giroEmp: $giroEmp, empleados: $empleados, servicios: $servicios,
-            comentarios: $comentarios, numUnidades: $numUnidades, tipoFlota: $tipoFlota
+            comentarios: $comentarios, numUnidades: $numUnidades, tipoFlota: $tipoFlota,
+            vehiculoCampana: $vehiculoCampana
         );
 
         // ── Guardar el detalle de la solicitud como nota del cliente ───────────
@@ -360,7 +361,8 @@ class VidaSolicitudController
         string $modelo, string $version, string $anio, string $domicilio, string $cp,
         string $edadGmm, string $depGmm, string $hospitales,
         string $empresa, string $giroEmp, string $empleados, string $servicios,
-        string $comentarios, string $numUnidades, string $tipoFlota
+        string $comentarios, string $numUnidades, string $tipoFlota,
+        string $vehiculoCampana = ''
     ): array {
         try {
             $db = Connection::getConnection();
@@ -377,9 +379,10 @@ class VidaSolicitudController
                     // en vez de dejarlo etiquetado como "manual" para siempre.
                     $origenActual = $existente['origen'] ?? null;
                     if ($origenActual === null || $origenActual === '' || $origenActual === 'manual') {
+                        $origenNuevo = $vehiculoCampana !== '' ? 'campana' : 'formulario_producto';
                         try {
-                            $db->prepare("UPDATE clientes SET origen = 'formulario_campana' WHERE id = ?")
-                               ->execute([(int)$existente['id']]);
+                            $db->prepare("UPDATE clientes SET origen = ? WHERE id = ?")
+                               ->execute([$origenNuevo, (int)$existente['id']]);
                         } catch (\Throwable) {
                             // La columna `origen` puede no existir en instalaciones antiguas.
                         }
@@ -457,7 +460,7 @@ class VidaSolicitudController
                 'ramo'                => $ramo,
                 'agente_id'           => $agenteId,
                 'estado_cliente'      => 'nuevo',
-                'origen'              => 'formulario_campana',
+                'origen'              => $vehiculoCampana !== '' ? 'campana' : 'formulario_producto',
             ];
 
             if ($ramo === 'autos') {
