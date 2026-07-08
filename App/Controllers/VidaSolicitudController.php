@@ -367,10 +367,23 @@ class VidaSolicitudController
 
             // No duplicar si ya existe el correo
             if ($correo) {
-                $st = $db->prepare("SELECT id, agente_id FROM clientes WHERE correo = ? LIMIT 1");
+                $st = $db->prepare("SELECT id, agente_id, origen FROM clientes WHERE correo = ? LIMIT 1");
                 $st->execute([$correo]);
                 $existente = $st->fetch(\PDO::FETCH_ASSOC);
                 if ($existente) {
+                    // El cliente ya existía (p. ej. alta manual previa de un asesor
+                    // por otro motivo), pero ahora SÍ llenó un formulario público.
+                    // Se actualiza su `origen` para reflejar este contacto real,
+                    // en vez de dejarlo etiquetado como "manual" para siempre.
+                    $origenActual = $existente['origen'] ?? null;
+                    if ($origenActual === null || $origenActual === '' || $origenActual === 'manual') {
+                        try {
+                            $db->prepare("UPDATE clientes SET origen = 'formulario_campana' WHERE id = ?")
+                               ->execute([(int)$existente['id']]);
+                        } catch (\Throwable) {
+                            // La columna `origen` puede no existir en instalaciones antiguas.
+                        }
+                    }
                     return [(int)($existente['agente_id'] ?? 0), (int)$existente['id'], false];
                 }
             }
@@ -466,7 +479,10 @@ class VidaSolicitudController
             try {
                 $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
             } catch (\Throwable $e) {
-                // 'origen' puede no existir en instalaciones antiguas de la tabla.
+                // Se registra el error REAL antes de reintentar sin 'origen',
+                // para poder diagnosticar por qué esta columna nunca se guarda
+                // (antes este catch era silencioso y ocultaba la causa).
+                error_log('[VidaSolicitudController] INSERT clientes falló con origen incluido: ' . $e->getMessage());
                 unset($datos['origen']);
                 $cols   = implode(', ', array_keys($datos));
                 $places = implode(', ', array_fill(0, count($datos), '?'));
