@@ -452,14 +452,30 @@ class AgentModel extends BaseModel
         ];
     }
 
+    /**
+     * Clasifica un valor crudo de `clientes.origen` en uno de 3 buckets
+     * de negocio. Único lugar donde vive esta regla — getOrigenClientesMes()
+     * y getDetalleOrigenMes() lo reutilizan para que nunca se desincronicen.
+     *
+     *  - 'campana_paga' → Meta Ads / Facebook / Instagram (leads pagados).
+     *  - 'formulario'   → cualquier formulario propio del sitio (landing de
+     *                     vida, autos, GMM, empresas, campaña vehicular).
+     *  - 'manual'       → alta manual del asesor, o registros sin clasificar
+     *                     (histórico previo a que existiera esta columna).
+     */
+    public static function clasificarOrigen(?string $origen): string
+    {
+        $campanaPagaTags = ['meta_lead_ads'];
+        $formularioTags  = ['formulario', 'formulario_propio', 'formulario_campana'];
+
+        if ($origen !== null && in_array($origen, $campanaPagaTags, true)) return 'campana_paga';
+        if ($origen !== null && in_array($origen, $formularioTags, true))  return 'formulario';
+        return 'manual';
+    }
+
     public function getOrigenClientesMes(): array
     {
-        $resultado = ['formulario' => 0, 'manual' => 0];
-
-        // Buckets: "formulario" = landing propia / campañas / Meta Ads.
-        //          "manual"     = alta manual del asesor, o registros
-        //          sin `origen` clasificado (histórico / columna ausente).
-        $formularioTags = ['formulario', 'formulario_propio', 'formulario_campana', 'meta_lead_ads'];
+        $resultado = ['campana_paga' => 0, 'formulario' => 0, 'manual' => 0];
 
         try {
             $stmt = $this->db()->query(
@@ -469,12 +485,8 @@ class AgentModel extends BaseModel
                  GROUP BY origen"
             );
             foreach ($stmt->fetchAll() as $row) {
-                $origen = $row['origen'] ?? null;
-                if ($origen !== null && in_array($origen, $formularioTags, true)) {
-                    $resultado['formulario'] += (int) $row['total'];
-                } else {
-                    $resultado['manual'] += (int) $row['total'];
-                }
+                $bucket = self::clasificarOrigen($row['origen'] ?? null);
+                $resultado[$bucket] += (int) $row['total'];
             }
         } catch (\Throwable) {
             // La columna `origen` puede no existir en instalaciones antiguas;
@@ -494,12 +506,10 @@ class AgentModel extends BaseModel
 
     /**
      * Detalle de clientes (para el modal drill-down) por bucket de origen
-     * ('formulario' o 'manual') del mes en curso.
+     * ('campana_paga', 'formulario' o 'manual') del mes en curso.
      */
     public function getDetalleOrigenMes(string $bucket): array
     {
-        $formularioTags = ['formulario', 'formulario_propio', 'formulario_campana', 'meta_lead_ads'];
-
         try {
             $rows = $this->db()->query(
                 "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
@@ -515,10 +525,7 @@ class AgentModel extends BaseModel
             return [];
         }
 
-        return array_values(array_filter($rows, function ($r) use ($bucket, $formularioTags) {
-            $esFormulario = ($r['origen'] ?? null) !== null && in_array($r['origen'], $formularioTags, true);
-            return $bucket === 'formulario' ? $esFormulario : !$esFormulario;
-        }));
+        return array_values(array_filter($rows, fn($r) => self::clasificarOrigen($r['origen'] ?? null) === $bucket));
     }
 
     /**
