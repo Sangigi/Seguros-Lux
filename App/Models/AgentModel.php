@@ -457,25 +457,28 @@ class AgentModel extends BaseModel
      * de negocio. Único lugar donde vive esta regla — getOrigenClientesMes()
      * y getDetalleOrigenMes() lo reutilizan para que nunca se desincronicen.
      *
-     *  - 'campana_paga' → Meta Ads / Facebook / Instagram (leads pagados).
-     *  - 'formulario'   → cualquier formulario propio del sitio (landing de
-     *                     vida, autos, GMM, empresas, campaña vehicular).
-     *  - 'manual'       → alta manual del asesor, o registros sin clasificar
-     *                     (histórico previo a que existiera esta columna).
+     *  - 'campana'    → landing dedicada a la que mandas tráfico pagado
+     *                   (ej. /campana-vehicular), detectada por el campo
+     *                   `vehiculo` que solo ese formulario envía.
+     *  - 'formulario' → formularios de producto del sitio (landing de
+     *                   vida, autos, GMM, empresas) y el formulario
+     *                   general de agendar cita.
+     *  - 'manual'     → alta manual del asesor, o registros sin clasificar
+     *                   (histórico previo a que existiera esta columna).
      */
     public static function clasificarOrigen(?string $origen): string
     {
-        $campanaPagaTags = ['meta_lead_ads'];
-        $formularioTags  = ['formulario', 'formulario_propio', 'formulario_campana'];
+        $campanaTags    = ['campana'];
+        $formularioTags = ['formulario', 'formulario_propio', 'formulario_producto', 'formulario_campana'];
 
-        if ($origen !== null && in_array($origen, $campanaPagaTags, true)) return 'campana_paga';
-        if ($origen !== null && in_array($origen, $formularioTags, true))  return 'formulario';
+        if ($origen !== null && in_array($origen, $campanaTags, true))    return 'campana';
+        if ($origen !== null && in_array($origen, $formularioTags, true)) return 'formulario';
         return 'manual';
     }
 
     public function getOrigenClientesMes(): array
     {
-        $resultado = ['campana_paga' => 0, 'formulario' => 0, 'manual' => 0];
+        $resultado = ['campana' => 0, 'formulario' => 0, 'manual' => 0];
 
         try {
             $stmt = $this->db()->query(
@@ -506,7 +509,7 @@ class AgentModel extends BaseModel
 
     /**
      * Detalle de clientes (para el modal drill-down) por bucket de origen
-     * ('campana_paga', 'formulario' o 'manual') del mes en curso.
+     * ('campana', 'formulario' o 'manual') del mes en curso.
      */
     public function getDetalleOrigenMes(string $bucket): array
     {
