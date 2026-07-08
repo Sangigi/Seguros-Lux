@@ -316,7 +316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     // ── Desglose (drill-down) de origen de clientes y de leads por periodo ─────
     if ($a === 'detalle_origen_clientes') {
         $bucket = $_POST['bucket'] ?? '';
-        if (!in_array($bucket, ['formulario', 'manual'], true)) {
+        if (!in_array($bucket, ['campana_paga', 'formulario', 'manual'], true)) {
             echo json_encode(['ok'=>false,'msg'=>'Bucket inválido.']); exit;
         }
         $detalle = $agentModel->getDetalleOrigenMes($bucket);
@@ -856,27 +856,36 @@ $arrow = static function (int $ahora, int $antes): string {
             </div>
         </div>
 
-        <?php $origenTotal = $origenMes['formulario'] + $origenMes['manual']; ?>
+        <?php $origenTotal = $origenMes['campana_paga'] + $origenMes['formulario'] + $origenMes['manual']; ?>
         <div style="border-top:1px solid var(--border-color);padding-top:16px;margin-bottom:20px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <span style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;">Origen de clientes (landing propia vs. alta manual) — <?php echo date('F'); ?></span>
+                <span style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;">Origen de clientes (campaña paga · formularios propios · alta manual) — <?php echo date('F'); ?></span>
                 <span style="font-size:11px;color:var(--text-muted);"><?php echo $origenTotal; ?> en total</span>
             </div>
             <?php
-            $pctForm = $origenTotal > 0 ? round($origenMes['formulario'] / $origenTotal * 100) : 0;
+            $pctCampana = $origenTotal > 0 ? round($origenMes['campana_paga'] / $origenTotal * 100) : 0;
+            $pctForm    = $origenTotal > 0 ? round($origenMes['formulario']   / $origenTotal * 100) : 0;
+            $pctManual  = max(0, 100 - $pctCampana - $pctForm);
             ?>
             <div style="display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--bg-secondary);">
+                <button type="button" class="origen-bar-seg" data-action="adm-detalle-origen" data-bucket="campana_paga"
+                        style="width:<?php echo $pctCampana; ?>%;background:#8b5cf6;border:none;cursor:pointer;padding:0;"
+                        title="Ver detalle de campaña paga (Meta Ads)"></button>
                 <button type="button" class="origen-bar-seg" data-action="adm-detalle-origen" data-bucket="formulario"
                         style="width:<?php echo $pctForm; ?>%;background:#0ea5e9;border:none;cursor:pointer;padding:0;"
-                        title="Ver detalle de landing / formulario propio"></button>
+                        title="Ver detalle de formularios propios del sitio"></button>
                 <button type="button" class="origen-bar-seg" data-action="adm-detalle-origen" data-bucket="manual"
-                        style="width:<?php echo 100 - $pctForm; ?>%;background:#f59e0b;border:none;cursor:pointer;padding:0;"
+                        style="width:<?php echo $pctManual; ?>%;background:#f59e0b;border:none;cursor:pointer;padding:0;"
                         title="Ver detalle de alta manual"></button>
             </div>
-            <div style="display:flex;gap:20px;margin-top:8px;font-size:12px;">
+            <div style="display:flex;gap:20px;margin-top:8px;font-size:12px;flex-wrap:wrap;">
+                <button type="button" class="origen-leyenda-btn" data-action="adm-detalle-origen" data-bucket="campana_paga"
+                        style="background:none;border:none;cursor:pointer;padding:0;font-size:12px;color:inherit;">
+                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#8b5cf6;margin-right:5px;"></span>📢 Campaña paga (Meta Ads): <strong><?php echo $origenMes['campana_paga']; ?></strong>
+                </button>
                 <button type="button" class="origen-leyenda-btn" data-action="adm-detalle-origen" data-bucket="formulario"
                         style="background:none;border:none;cursor:pointer;padding:0;font-size:12px;color:inherit;">
-                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#0ea5e9;margin-right:5px;"></span>📋 Landing / Formulario propio: <strong><?php echo $origenMes['formulario']; ?></strong>
+                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#0ea5e9;margin-right:5px;"></span>📋 Formularios propios (vida, autos, GMM, empresas): <strong><?php echo $origenMes['formulario']; ?></strong>
                 </button>
                 <button type="button" class="origen-leyenda-btn" data-action="adm-detalle-origen" data-bucket="manual"
                         style="background:none;border:none;cursor:pointer;padding:0;font-size:12px;color:inherit;">
@@ -2135,7 +2144,15 @@ document.addEventListener('dblclick',e=>{
 });
 window._adminCotId=null;
 
-function tituloOrigen(bucket){return bucket==='formulario' ? '📋 Landing / Formulario propio — ' + '<?php echo date("F Y"); ?>' : '👤 Alta manual (asesor) — ' + '<?php echo date("F Y"); ?>';}
+function tituloOrigen(bucket){
+    const mes = '<?php echo date("F Y"); ?>';
+    const labels = {
+        campana_paga: '📢 Campaña paga (Meta Ads) — ' + mes,
+        formulario:   '📋 Formularios propios (vida, autos, GMM, empresas) — ' + mes,
+        manual:       '👤 Alta manual (asesor) — ' + mes,
+    };
+    return labels[bucket] || ('Detalle — ' + mes);
+}
 function tituloPeriodo(periodo){const labels={hoy:'Hoy',ayer:'Ayer',semana:'Esta semana',semana_pasada:'Semana pasada',quincena:'Quincena actual',mes:'Este mes',mes_pasado:'Mes pasado'};return '🆕 Leads / Clientes nuevos — ' + (labels[periodo]||periodo);}
 function abrirDetalleClientes(accion, params, titulo){
     document.getElementById('detalleClientesTitulo').textContent = titulo;
