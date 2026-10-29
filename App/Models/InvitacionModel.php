@@ -351,7 +351,13 @@ class InvitacionModel extends BaseModel
             return null;
         }
 
-        return ['token' => $token, 'correo' => (string) $inv['correo'], 'expira' => $expira];
+        return [
+            'token'  => $token,
+            'correo' => (string) $inv['correo'],
+            'nombre' => trim((string) $inv['nombre'] . ' ' . (string) $inv['apellido']),
+            'rol'    => (string) $inv['rol'],
+            'expira' => $expira,
+        ];
     }
 
     /** Marca como expiradas las invitaciones vencidas (para el cron). */

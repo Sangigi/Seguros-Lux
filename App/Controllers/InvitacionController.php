@@ -3,20 +3,24 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Models\AgentModel;
+use App\Models\EmpresaModel;
 use App\Models\InvitacionModel;
 use App\Security\Roles;
 use App\Security\SessionManager;
 use App\Security\Tenant;
+use App\Services\InvitacionCorreo;
 
 /**
  * InvitacionController — alta de usuarios dentro de una empresa (API JSON).
  *
- * El alta de personas no crea cuentas con contraseña puesta por un tercero.
- * Se manda una invitación con un token de un solo uso y es la propia persona
- * quien fija su contraseña al activarla. Así nadie —ni su jefe, ni el
- * propietario de la plataforma— llega a conocerla.
+ * La vía normal es la invitación: se manda por correo un enlace de un solo
+ * uso y es la propia persona quien fija su contraseña al activarla, así que
+ * nadie más llega a conocerla. Para quien no tiene correo a mano o necesita
+ * dar de alta a alguien en el momento existe también el alta directa con una
+ * contraseña inicial (`crear`), reservada a quien tiene USUARIOS_CREAR.
  *
- * Dos límites que no dependen de la interfaz, sino del modelo:
+ * Dos límites que no dependen de la interfaz, sino del servidor:
  *   - nadie puede invitar con un rol igual o superior al suyo
  *     (`Roles::asignablesPor`), lo que impide fabricarse un igual o
  *     promoverse creando una cuenta por encima;
@@ -91,6 +95,7 @@ class InvitacionController
 
         match ((string) ($input['accion'] ?? 'invitar')) {
             'invitar'  => self::invitar($input, $empresaId),
+            'crear'    => self::crear($input, $empresaId),
             'cancelar' => self::cancelar($input, $empresaId),
             'reenviar' => self::reenviar($input, $empresaId),
             default    => self::responder(400, ['ok' => false, 'msg' => 'Acción desconocida.']),
@@ -111,11 +116,83 @@ class InvitacionController
             return;
         }
 
+        $correo = strtolower(trim((string) ($input['correo'] ?? '')));
+        $nombre = trim((string) ($input['nombre'] ?? '') . ' ' . (string) ($input['apellido'] ?? ''));
+        $enlace = self::enlaceRegistro($resultado['token']);
+
+        $enviado = InvitacionCorreo::enviar(
+            $correo,
+            $nombre,
+            self::nombreEmpresa($empresaId),
+            (string) ($input['rol'] ?? Roles::ASESOR),
+            $enlace,
+            $resultado['expira']
+        );
+
         self::responder(201, [
-            'ok'     => true,
-            'msg'    => 'Invitación enviada.',
-            'enlace' => self::enlaceRegistro($resultado['token']),
-            'expira' => $resultado['expira'],
+            'ok'             => true,
+            'msg'            => self::mensajeEnvio($enviado, $correo),
+            'correo_enviado' => $enviado,
+            'enlace'         => $enlace,
+            'expira'         => $resultado['expira'],
+        ]);
+    }
+
+    /**
+     * Alta directa con una contraseña inicial que pone quien da de alta.
+     *
+     * Los mismos límites que la invitación: solo roles por debajo del propio,
+     * dentro de la empresa activa y sin pasar el cupo del plan.
+     */
+    private static function crear(array $input, int $empresaId): void
+    {
+        if (!SessionManager::puede(Roles::USUARIOS_CREAR)) {
+            self::responder(403, ['ok' => false, 'msg' => 'Sin permiso para crear usuarios.']);
+            return;
+        }
+
+        $correo   = strtolower(trim((string) ($input['correo'] ?? '')));
+        $nombre   = trim((string) ($input['nombre'] ?? ''));
+        $apellido = trim((string) ($input['apellido'] ?? ''));
+        $telefono = trim((string) ($input['telefono'] ?? ''));
+        $rol      = (string) ($input['rol'] ?? Roles::ASESOR);
+        $password = (string) ($input['password'] ?? '');
+
+        if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+            self::responder(422, ['ok' => false, 'msg' => 'El correo no es válido.']);
+            return;
+        }
+
+        if ($nombre === '') {
+            self::responder(422, ['ok' => false, 'msg' => 'El nombre es obligatorio.']);
+            return;
+        }
+
+        if (!in_array($rol, Roles::asignablesPor(SessionManager::getRole()), true)) {
+            self::responder(422, ['ok' => false, 'msg' => 'No puedes asignar ese perfil.']);
+            return;
+        }
+
+        $errorPass = InvitacionModel::validarPassword($password);
+        if ($errorPass !== null) {
+            self::responder(422, ['ok' => false, 'msg' => $errorPass]);
+            return;
+        }
+
+        $id = (new AgentModel())->crear($nombre, $apellido, $correo, $telefono, $password, $rol, null, $empresaId);
+
+        if ($id === 0) {
+            self::responder(422, [
+                'ok'  => false,
+                'msg' => 'No se creó: ya hay un usuario con ese correo en la empresa, o se alcanzó el máximo de usuarios del plan.',
+            ]);
+            return;
+        }
+
+        self::responder(201, [
+            'ok'  => true,
+            'msg' => 'Usuario creado. Ya puede entrar con su correo y la contraseña que le asignaste.',
+            'id'  => $id,
         ]);
     }
 
@@ -154,12 +231,35 @@ class InvitacionController
             return;
         }
 
+        $enlace  = self::enlaceRegistro($nueva['token']);
+        $enviado = InvitacionCorreo::enviar(
+            $nueva['correo'],
+            $nueva['nombre'],
+            self::nombreEmpresa($empresaId),
+            $nueva['rol'],
+            $enlace,
+            $nueva['expira']
+        );
+
         self::responder(200, [
-            'ok'     => true,
-            'msg'    => 'Invitación reenviada con un enlace nuevo.',
-            'enlace' => self::enlaceRegistro($nueva['token']),
-            'expira' => $nueva['expira'],
+            'ok'             => true,
+            'msg'            => self::mensajeEnvio($enviado, $nueva['correo'], 'Invitación reenviada con un enlace nuevo'),
+            'correo_enviado' => $enviado,
+            'enlace'         => $enlace,
+            'expira'         => $nueva['expira'],
         ]);
+    }
+
+    private static function nombreEmpresa(int $empresaId): string
+    {
+        return (string) ((new EmpresaModel())->find($empresaId)['nombre'] ?? 'Seguros Lux');
+    }
+
+    private static function mensajeEnvio(bool $enviado, string $correo, string $hecho = 'Invitación creada'): string
+    {
+        return $enviado
+            ? "{$hecho} y enviada por correo a {$correo}."
+            : "{$hecho}, pero el correo no se pudo enviar. Comparte con la persona el enlace de abajo.";
     }
 
     /**

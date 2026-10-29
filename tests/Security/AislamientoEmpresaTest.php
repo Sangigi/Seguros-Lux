@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Tests\Security;
 
 use App\Models\ClientModel;
+use App\Models\AgentModel;
 use App\Models\EmpresaModel;
 use App\Security\Tenant;
 use PHPUnit\Framework\TestCase;
@@ -250,5 +251,57 @@ class AislamientoEmpresaTest extends TestCase
 
         $this->pdo->prepare('DELETE FROM empresa_canales WHERE identificador = ?')
                   ->execute(['phone-id-de-B']);
+    }
+
+    // ── Panel de coordinación ─────────────────────────────────────────────────
+
+    /**
+     * Una empresa recién creada veía en su panel a los asesores de la otra,
+     * con sus cifras. Esas consultas armaban el SQL en una variable y el
+     * auditor estático no las reconocía como consultas.
+     */
+    public function testElPipelineNoIncluyeAsesoresDeOtraEmpresa(): void
+    {
+        $asesorB = $this->insertarAsesor($this->empresaB);
+
+        try {
+            $ids = array_map('intval', array_column((new AgentModel())->getPipeline(), 'id'));
+        } finally {
+            $this->pdo->prepare('DELETE FROM agentes WHERE id = ?')->execute([$asesorB]);
+        }
+
+        $this->assertNotContains($asesorB, $ids, 'El pipeline de la empresa A muestra asesores de la empresa B.');
+    }
+
+    public function testLaActividadDelEquipoNoIncluyeLaDeOtraEmpresa(): void
+    {
+        $asesorB = $this->insertarAsesor($this->empresaB);
+        $this->pdo->prepare(
+            "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, empresa_id)
+             VALUES (?, ?, 'nota', 'Nota de la empresa B', ?)"
+        )->execute([$this->clienteDeB, $asesorB, $this->empresaB]);
+
+        try {
+            $titulos = array_column((new AgentModel())->getActividadEquipo(), 'titulo');
+        } finally {
+            $this->pdo->prepare('DELETE FROM historial_cliente WHERE agente_id = ?')->execute([$asesorB]);
+            $this->pdo->prepare('DELETE FROM agentes WHERE id = ?')->execute([$asesorB]);
+        }
+
+        $this->assertNotContains(
+            'Nota de la empresa B',
+            $titulos,
+            'La actividad del equipo de la empresa A muestra la de la empresa B.'
+        );
+    }
+
+    private function insertarAsesor(int $empresaId): int
+    {
+        $this->pdo->prepare(
+            "INSERT INTO agentes (nombre, apellido, correo, contrasena, rol, activo, empresa_id)
+             VALUES ('Ramiro', 'DeEmpresaB', 'ramiro@rival.mx', 'x', 'asesor', 1, ?)"
+        )->execute([$empresaId]);
+
+        return (int) $this->pdo->lastInsertId();
     }
 }

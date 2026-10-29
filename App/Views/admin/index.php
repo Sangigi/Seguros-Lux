@@ -34,6 +34,15 @@ $agente      = SessionManager::getAgentData();
 $isSuperadmin= SessionManager::isSuperadmin();
 $_agenteRol  = $agente['rol'] ?? 'coordinador';
 
+// Roles que esta persona puede dar o tocar: solo los que están por debajo
+// del suyo. Un administrador de empresa no puede crear, ascender ni editar a
+// otro administrador, ni fabricar un propietario de plataforma.
+$rolesAsignables = \App\Security\Roles::asignablesPor($_agenteRol);
+$puestosAsignables = array_filter(
+    AgentModel::PUESTOS,
+    static fn(array $p): bool => in_array($p['rol_base'], $rolesAsignables, true)
+);
+
 // Empresa activa: el SQL a mano de esta vista se acota explícitamente a ella.
 $empresaId   = \App\Security\Tenant::requireId();
 
@@ -407,7 +416,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $nombre = trim($_POST['nombre'] ?? '');
         $apell  = trim($_POST['apellido'] ?? '');
         if (!$tid || !$nombre) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
-        $puedeEditar = $isSuperadmin || ($_agenteRol === 'coordinador' && $agentModel->getRol($tid) === 'asesor');
+        $rolObjetivo = $agentModel->getRol($tid);
+        $puedeEditar = ($isSuperadmin && in_array($rolObjetivo, $rolesAsignables, true))
+                    || ($_agenteRol === 'coordinador' && $rolObjetivo === 'asesor');
         if (!$puedeEditar) { echo json_encode(['ok'=>false,'msg'=>'Sin permiso.']); exit; }
         $db->prepare('UPDATE agentes SET nombre=?, apellido=? WHERE id=? AND empresa_id=?')->execute([$nombre, $apell, $tid, $empresaId]);
         echo json_encode(['ok'=>true]);
@@ -416,7 +427,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $tid = (int)($_POST['agente_id'] ?? 0);
         $pw  = trim($_POST['password'] ?? '');
         if (!$tid || strlen($pw) < 6) { echo json_encode(['ok'=>false,'msg'=>'Contraseña mínimo 6 caracteres.']); exit; }
-        $puedeEditar = $isSuperadmin || ($_agenteRol === 'coordinador' && $agentModel->getRol($tid) === 'asesor');
+        $rolObjetivo = $agentModel->getRol($tid);
+        $puedeEditar = ($isSuperadmin && in_array($rolObjetivo, $rolesAsignables, true))
+                    || ($_agenteRol === 'coordinador' && $rolObjetivo === 'asesor');
         if (!$puedeEditar) { echo json_encode(['ok'=>false,'msg'=>'Sin permiso.']); exit; }
         $db->prepare('UPDATE agentes SET contrasena=? WHERE id=? AND empresa_id=?')->execute([password_hash($pw, PASSWORD_BCRYPT), $tid, $empresaId]);
         echo json_encode(['ok'=>true]);
@@ -458,6 +471,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $puesto = trim($_POST['puesto']??$_POST['rol']??''); // 'rol' se acepta por compatibilidad
         if (!$tid || !isset(\App\Models\AgentModel::PUESTOS[$puesto])) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
         if ($tid === $agenteId) { echo json_encode(['ok'=>false,'msg'=>'No puedes cambiar tu propio rol.']); exit; }
+        if (!isset($puestosAsignables[$puesto]) || !in_array($agentModel->getRol($tid), $rolesAsignables, true)) {
+            echo json_encode(['ok'=>false,'msg'=>'No puedes asignar ese puesto ni cambiar el de alguien de tu nivel o superior.']); exit;
+        }
         $agentModel->cambiarPuesto($tid, $puesto);
         echo json_encode(['ok'=>true]);
 
@@ -466,9 +482,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $co=trim($_POST['correo']??''); $te=trim($_POST['telefono']??'');
         $pw=trim($_POST['password']??''); $puesto=trim($_POST['rol']??'asesor');
         if (!$n||!$ap||!$co||!$pw) { echo json_encode(['ok'=>false,'msg'=>'Faltan campos obligatorios.']); exit; }
-        if (!isset(\App\Models\AgentModel::PUESTOS[$puesto])) $puesto='asesor';
+        if (!filter_var($co, FILTER_VALIDATE_EMAIL)) { echo json_encode(['ok'=>false,'msg'=>'El correo no es válido.']); exit; }
+        if (!isset($puestosAsignables[$puesto])) { echo json_encode(['ok'=>false,'msg'=>'No puedes asignar ese puesto.']); exit; }
+        $errPw = \App\Models\InvitacionModel::validarPassword($pw);
+        if ($errPw !== null) { echo json_encode(['ok'=>false,'msg'=>$errPw]); exit; }
         $rolBase = \App\Models\AgentModel::rolBaseDePuesto($puesto, 'asesor');
-        $id = $agentModel->crear($n,$ap,$co,$te,$pw,$rolBase,$puesto);
+        $id = $agentModel->crear($n,$ap,strtolower($co),$te,$pw,$rolBase,$puesto);
+        if ($id === 0) { echo json_encode(['ok'=>false,'msg'=>'No se creó: ya hay un usuario con ese correo en la empresa, o se alcanzó el máximo de usuarios del plan.']); exit; }
         echo json_encode(['ok'=>true,'id'=>$id]);
 
     } elseif ($a === 'eliminar_agente') {
@@ -732,7 +752,7 @@ $stRenov = $db->prepare(
 $stRenov->execute([$empresaId]);
 $renovacionesPendientes = $stRenov->fetchAll(\PDO::FETCH_ASSOC);
 
-$pageTitle = 'Panel de Coordinación';
+$pageTitle = $isSuperadmin ? 'Panel de administración' : 'Panel de Coordinación';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -792,10 +812,11 @@ function closeModal(id){document.getElementById(id)?.classList.remove('active');
         <div>
             <h1 class="page-title">
                 <span class="page-title-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
-                Panel de Coordinación
+                <?php echo htmlspecialchars($pageTitle); ?>
             </h1>
             <p class="page-subtitle">
-                <?php echo $isSuperadmin ? icono('star-fill') . ' Superadmin' : icono('shield-check') . ' Coordinador'; ?>
+                <?php echo icono($isSuperadmin ? 'star-fill' : 'shield-check') . ' '
+                    . htmlspecialchars(AgentModel::labelPuesto($agente['puesto'] ?? null, $_agenteRol)); ?>
                 — <?php echo htmlspecialchars($agente['nombre'].' '.$agente['apellido']); ?>
             </p>
         </div>
@@ -1274,11 +1295,11 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
                     <td class="adm-stop-prop">
                         <?php if ($ag['id'] != $agenteId && ($isSuperadmin || $_agenteRol === 'coordinador')): ?>
                         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                            <?php if ($isSuperadmin): ?>
+                            <?php if ($isSuperadmin && in_array($ag['rol'], $rolesAsignables, true)): ?>
                             <?php $puestoActual = $ag['puesto'] ?? $ag['rol']; ?>
                             <select class="form-select adm-rol-select" style="font-size:11px;padding:3px 6px;width:auto;"
                                     data-agente-id="<?php echo $ag['id']; ?>">
-                                <?php foreach (\App\Models\AgentModel::PUESTOS as $key => $info): ?>
+                                <?php foreach ($puestosAsignables as $key => $info): ?>
                                 <option value="<?php echo $key; ?>" <?php echo $puestoActual===$key?'selected':''; ?>><?php echo htmlspecialchars($info['label']); ?></option>
                                 <?php endforeach; ?>
                             </select>
@@ -1835,10 +1856,10 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
             </div>
             <div class="form-group"><label class="form-label required">Correo</label><input type="email" class="form-input" id="nC"></div>
             <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-input" id="nT"></div>
-            <div class="form-group"><label class="form-label required">Contraseña</label><input type="password" class="form-input" id="nP" placeholder="Mínimo 8 caracteres"></div>
+            <div class="form-group"><label class="form-label required">Contraseña</label><input type="password" class="form-input" id="nP" placeholder="Mínimo 10 caracteres"></div>
             <div class="form-group"><label class="form-label">Puesto</label>
                 <select class="form-select" id="nR">
-                    <?php foreach (\App\Models\AgentModel::PUESTOS as $key => $info): ?>
+                    <?php foreach ($puestosAsignables as $key => $info): ?>
                     <option value="<?php echo $key; ?>"><?php echo htmlspecialchars($info['label']); ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -2063,7 +2084,7 @@ function filtCl(){const tx=(document.getElementById('srchCl')?.value||'').toLowe
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 function chgRol(id,puesto){if(!confirm(`¿Cambiar puesto a "${puesto}"?`))return;post({accion:'cambiar_rol',agente_id:id,puesto}).then(d=>d.ok?toast('Puesto actualizado','success'):toast(d.msg,'error'));}
 function delAg(id,n,activo){const accion=activo?'eliminar_agente':'reactivar_agente';if(!confirm(activo?`¿Desactivar al asesor ${n}?`:`¿Reactivar al asesor ${n}?`))return;post({accion,agente_id:id}).then(d=>{if(d.ok){toast(d.msg||'OK','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
-function crearAgente(){const n=document.getElementById('nN').value.trim(),a=document.getElementById('nA').value.trim(),c=document.getElementById('nC').value.trim(),t=document.getElementById('nT').value.trim(),p=document.getElementById('nP').value.trim(),r=document.getElementById('nR').value;if(!n||!a||!c||!p){toast('Completa los campos requeridos','error');return;}if(p.length<8){toast('Contraseña mínimo 8 caracteres','error');return;}post({accion:'crear_agente',nombre:n,apellido:a,correo:c,telefono:t,password:p,rol:r}).then(d=>{if(d.ok){toast('Asesor creado','success');closeModal('modalCrearAgente');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
+function crearAgente(){const n=document.getElementById('nN').value.trim(),a=document.getElementById('nA').value.trim(),c=document.getElementById('nC').value.trim(),t=document.getElementById('nT').value.trim(),p=document.getElementById('nP').value.trim(),r=document.getElementById('nR').value;if(!n||!a||!c||!p){toast('Completa los campos requeridos','error');return;}if(p.length<10){toast('Contraseña mínimo 10 caracteres','error');return;}post({accion:'crear_agente',nombre:n,apellido:a,correo:c,telefono:t,password:p,rol:r}).then(d=>{if(d.ok){toast('Asesor creado','success');closeModal('modalCrearAgente');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
 function delCot(id,f){if(!confirm(`¿Eliminar cotización ${f}? Esta acción no se puede deshacer.`))return;post({accion:'eliminar_cotizacion',cotizacion_id:id}).then(d=>{if(d.ok){toast('Eliminada','success');setTimeout(()=>location.reload(),900);}else toast(d.msg,'error');});}
 function abrirForzarEstado(id, folio) {
     const estados = ['pendiente','en_proceso','enviada','rechazada','aceptada','pagado'];

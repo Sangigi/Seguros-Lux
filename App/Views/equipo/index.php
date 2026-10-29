@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+use App\Models\AgentModel;
 use App\Models\EmpresaModel;
 use App\Models\InvitacionModel;
 use App\Security\Roles;
@@ -29,11 +30,15 @@ $rolActual   = SessionManager::getRole();
 $asignables  = Roles::asignablesPor($rolActual);
 $csrfToken   = SessionManager::getCsrfToken();
 
+$puedeCrear  = SessionManager::puede(Roles::USUARIOS_CREAR);
+
 $invitaciones = [];
+$miembros     = [];
 $empresa      = null;
 $sinCupo      = false;
 
 if ($empresaId !== null) {
+    $miembros     = (new AgentModel())->getTodos();
     $invitaciones = (new InvitacionModel())->pendientesDe($empresaId);
     $empresaModel = new EmpresaModel();
     $empresa      = $empresaModel->find($empresaId);
@@ -150,6 +155,89 @@ $etiquetasEstado = [
             </form>
         </section>
 
+        <?php if ($puedeCrear): ?>
+        <section class="eq-card">
+            <h2>Crear usuario con contraseña</h2>
+            <p class="sub">
+                Para dar de alta a alguien en el momento, sin esperar a que active un enlace.
+                Tú eliges su contraseña inicial y se la compartes; pídele que la cambie después.
+            </p>
+
+            <form id="formCrear">
+                <div class="eq-grid">
+                    <div>
+                        <label for="c-correo">Correo *</label>
+                        <input id="c-correo" name="correo" type="email" required maxlength="254" <?= $sinCupo ? 'disabled' : '' ?>>
+                    </div>
+                    <div>
+                        <label for="c-nombre">Nombre *</label>
+                        <input id="c-nombre" name="nombre" required maxlength="80" <?= $sinCupo ? 'disabled' : '' ?>>
+                    </div>
+                    <div>
+                        <label for="c-apellido">Apellido</label>
+                        <input id="c-apellido" name="apellido" maxlength="80" <?= $sinCupo ? 'disabled' : '' ?>>
+                    </div>
+                    <div>
+                        <label for="c-telefono">Teléfono</label>
+                        <input id="c-telefono" name="telefono" maxlength="30" <?= $sinCupo ? 'disabled' : '' ?>>
+                    </div>
+                    <div>
+                        <label for="c-rol">Perfil</label>
+                        <select id="c-rol" name="rol" <?= $sinCupo ? 'disabled' : '' ?>>
+                            <?php foreach ($asignables as $rol): ?>
+                                <option value="<?= $h($rol) ?>"><?= $h(Roles::etiqueta($rol)) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="c-password">Contraseña inicial * (mínimo 10 caracteres)</label>
+                        <input id="c-password" name="password" type="password" required minlength="10" maxlength="200"
+                               autocomplete="new-password" <?= $sinCupo ? 'disabled' : '' ?>>
+                    </div>
+                </div>
+
+                <div style="margin-top:18px">
+                    <button type="submit" class="eq-btn prim" <?= $sinCupo ? 'disabled' : '' ?>>Crear usuario</button>
+                </div>
+            </form>
+        </section>
+        <?php endif; ?>
+
+        <section class="eq-card">
+            <h2>Personas en la empresa</h2>
+            <p class="sub">Quienes ya tienen cuenta, activa o no.</p>
+
+            <table class="eq-tabla">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Correo</th>
+                        <th>Perfil</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($miembros as $m): ?>
+                    <tr>
+                        <td><strong><?= $h(trim((string) $m['nombre'] . ' ' . (string) $m['apellido'])) ?></strong></td>
+                        <td><?= $h((string) $m['correo']) ?></td>
+                        <td><?= $h(AgentModel::labelPuesto($m['puesto'] ?? null, (string) $m['rol'])) ?></td>
+                        <td>
+                            <?php if ((int) $m['activo'] === 1): ?>
+                                <span class="eq-badge eq-ok">Activa</span>
+                            <?php else: ?>
+                                <span class="eq-badge eq-off">Desactivada</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($miembros === []): ?>
+                    <tr><td colspan="4" style="color:#94a3b8">Todavía no hay nadie con cuenta en esta empresa.</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </section>
+
         <section class="eq-card">
             <h2>Invitaciones</h2>
             <p class="sub">Las caducadas y canceladas se conservan para dejar rastro de quién invitó a quién.</p>
@@ -250,6 +338,32 @@ $etiquetasEstado = [
             if (ok && data.enlace) {
                 mostrarEnlace(data.enlace);
                 form.reset();
+            }
+
+            boton.disabled = false;
+        });
+    }
+
+    const formCrear = document.getElementById('formCrear');
+
+    if (formCrear) {
+        formCrear.addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+
+            const boton = formCrear.querySelector('button[type=submit]');
+            boton.disabled = true;
+
+            const datos = Object.fromEntries(new FormData(formCrear).entries());
+            datos.accion = 'crear';
+
+            const { ok, data } = await llamar(datos);
+            aviso(data.msg || (ok ? 'Usuario creado.' : 'No se pudo crear el usuario.'), ok);
+            enlace.style.display = 'none';
+
+            if (ok) {
+                formCrear.reset();
+                setTimeout(function () { location.reload(); }, 1500);
+                return;
             }
 
             boton.disabled = false;

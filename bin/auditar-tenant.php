@@ -83,96 +83,200 @@ $totalSql  = 0;
 
 $tablasRegex = implode('|', array_map('preg_quote', TABLAS_TENANT));
 
+/**
+ * Parte un archivo PHP en sentencias y devuelve, de cada una, el texto de sus
+ * cadenas (donde vive el SQL), el código que las rodea, sus comentarios y la
+ * línea en que empieza.
+ *
+ * La unidad es la sentencia completa, hasta su `;`. La versión anterior
+ * juntaba líneas desde la palabra SQL y cortaba en la primera que pareciera
+ * cerrar una cadena: con `SUM(estado='x')` en la segunda línea cortaba antes
+ * del FROM y la consulta ni siquiera se contaba. Además daba por filtrada
+ * cualquier consulta con un `empresa_id =` en las 30 líneas de alrededor,
+ * aunque perteneciera a otra consulta. Así se colaron consultas que
+ * mezclaban asesores de todas las empresas.
+ *
+ * `ambito` identifica la función a la que pertenece la sentencia (0 = fuera
+ * de funciones), para no buscar el filtro de una consulta en otra función.
+ *
+ * @return array<int,array{linea:int,ambito:int,sql:string,codigo:string,comentarios:string}>
+ */
+function sentencias(string $contenido): array
+{
+    $vacia    = ['linea' => 0, 'ambito' => 0, 'sql' => '', 'codigo' => '', 'comentarios' => ''];
+    $actual   = $vacia;
+    $out      = [];
+    $enCadena = false;
+
+    $profundidad      = 0;
+    $funciones        = [];   // pila de [profundidad de apertura, id de ámbito]
+    $funcionPendiente = false;
+    $siguienteAmbito  = 1;
+
+    foreach (token_get_all($contenido) as $t) {
+        [$id, $texto, $linea] = is_array($t) ? $t : [null, $t, 0];
+
+        if (!$enCadena && $id === T_FUNCTION) {
+            $funcionPendiente = true;
+        }
+
+        $corte = !$enCadena
+            && ($texto === ';' || $texto === '{' || $texto === '}' || $id === T_INLINE_HTML || $id === T_CLOSE_TAG);
+        if ($corte) {
+            $out[]  = $actual;
+            $actual = $vacia;
+
+            if ($texto === ';') {
+                $funcionPendiente = false; // método abstracto o `use function`
+            } elseif ($texto === '{') {
+                $profundidad++;
+                if ($funcionPendiente) {
+                    $funciones[]      = [$profundidad, $siguienteAmbito++];
+                    $funcionPendiente = false;
+                }
+            } elseif ($texto === '}') {
+                if ($funciones !== [] && end($funciones)[0] === $profundidad) {
+                    array_pop($funciones);
+                }
+                $profundidad--;
+            }
+            $actual['ambito'] = $funciones === [] ? 0 : end($funciones)[1];
+            continue;
+        }
+
+        if ($actual['linea'] === 0 && $linea > 0 && $id !== T_WHITESPACE) {
+            $actual['linea'] = $linea;
+        }
+
+        if ($texto === '"' || $id === T_START_HEREDOC || $id === T_END_HEREDOC) {
+            $enCadena = $id === T_START_HEREDOC || ($texto === '"' && !$enCadena);
+            continue;
+        }
+
+        if ($id === T_COMMENT || $id === T_DOC_COMMENT) {
+            $actual['comentarios'] .= ' ' . $texto;
+        } elseif ($id === T_CONSTANT_ENCAPSED_STRING) {
+            $actual['sql'] .= ' ' . substr($texto, 1, -1);
+        } elseif ($id === T_ENCAPSED_AND_WHITESPACE) {
+            $actual['sql'] .= $texto;
+        } elseif ($enCadena) {
+            // Variable interpolada: queda en el SQL como marcador y en el
+            // código para poder seguirla.
+            $actual['sql']    .= $texto;
+            $actual['codigo'] .= $texto;
+        } else {
+            $actual['codigo'] .= $texto;
+        }
+    }
+    $out[] = $actual;
+
+    return array_values(array_filter($out, static fn(array $s): bool => $s['linea'] > 0));
+}
+
+/** True si el texto de una sentencia ya filtra por empresa. */
+function filtraEmpresa(array $s): bool
+{
+    return preg_match('/empresa_id\s*(=|IN\b|<=>)/i', $s['sql'])
+        || preg_match('/:__empresa\w*|:empresa\w*/i', $s['sql'])
+        || preg_match('/sqlEmpresa(Pos)?\s*\(|bindEmpresa\s*\(|empresaPos\s*\(/i', $s['codigo']);
+}
+
 foreach ($archivos as $archivo) {
     $contenido = file_get_contents($archivo);
     if ($contenido === false) {
         continue;
     }
 
-    $lineas = explode("\n", $contenido);
+    $lista = sentencias($contenido);
 
-    // Se buscan sentencias SQL dentro de cadenas PHP. Una consulta puede
-    // ocupar varias líneas, así que se junta el texto desde la palabra clave
-    // hasta el cierre de la cadena.
-    $patron = '/\b(SELECT|UPDATE|DELETE\s+FROM|INSERT\s+INTO|REPLACE\s+INTO)\b/i';
+    foreach ($lista as $k => $s) {
+        $sqlNorm = preg_replace('/\s+/', ' ', $s['sql']) ?? $s['sql'];
 
-    foreach ($lineas as $i => $linea) {
-        if (!preg_match($patron, $linea, $m)) {
+        if (!preg_match('/\b(SELECT|UPDATE|DELETE\s+FROM|INSERT\s+INTO|REPLACE\s+INTO)\b/i', $sqlNorm, $m)) {
             continue;
         }
-
-        // Descarta comentarios de documentación.
-        $trim = ltrim($linea);
-        if (str_starts_with($trim, '*') || str_starts_with($trim, '//') || str_starts_with($trim, '#')) {
-            continue;
-        }
-
-        // Reúne la consulta: hasta 25 líneas o hasta que aparezca el cierre.
-        $bloque = '';
-        for ($j = $i; $j < min($i + 25, count($lineas)); $j++) {
-            $bloque .= ' ' . $lineas[$j];
-            if (preg_match('/(\'\s*\)|"\s*\)|SQL;|\'\s*,|"\s*,|;\s*$)/', $lineas[$j]) && $j > $i) {
-                break;
-            }
-        }
-
-        $bloqueNorm = preg_replace('/\s+/', ' ', $bloque) ?? $bloque;
-
-        // ¿Toca alguna tabla aislada?
-        if (!preg_match('/\b(FROM|JOIN|UPDATE|INTO)\s+`?(' . $tablasRegex . ')`?\b/i', $bloqueNorm, $mt)) {
+        if (!preg_match('/\b(FROM|JOIN|UPDATE|INTO)\s+`?(' . $tablasRegex . ')`?\b/i', $sqlNorm, $mt)) {
             continue;
         }
 
         $totalSql++;
-        $tabla  = strtolower($mt[2]);
-        $tipo   = strtoupper(preg_replace('/\s+/', ' ', $m[1]));
+        $tabla = strtolower($mt[2]);
+        $tipo  = strtoupper(preg_replace('/\s+/', ' ', $m[1]));
 
         // ── Exención explícita ───────────────────────────────────────────────
-        // Ventana de varias líneas: la marca suele ir sobre el `prepare(`, y la
-        // palabra clave SQL aparece una o dos líneas más abajo, dentro de la
-        // cadena. Mirar solo la línea anterior dejaría fuera ese caso, que es
-        // el habitual cuando la consulta ocupa varias líneas.
-        $contexto = implode(' ', array_slice($lineas, max(0, $i - 3), 5));
-        if (preg_match('/tenant-ok\s*:/i', $contexto)) {
+        // La marca va en un comentario de la propia sentencia, normalmente en
+        // la línea de encima del `prepare(`.
+        if (preg_match('/tenant-ok\s*:/i', $s['comentarios'])) {
             continue;
         }
 
-        // ── ¿Tiene filtro de empresa? ────────────────────────────────────────
-        $tieneFiltro =
-               preg_match('/empresa_id\s*(=|IN)\s*/i', $bloqueNorm)
-            || preg_match('/sqlEmpresa(Pos)?\s*\(/i', $bloqueNorm)
-            || preg_match('/bindEmpresa\s*\(|empresaPos\s*\(/i', $bloqueNorm)
-            || preg_match('/:__empresa|:empresa/i', $bloqueNorm);
-
-        // Contexto cercano: el filtro puede añadirse en las líneas siguientes
-        // al armar la consulta por partes.
-        if (!$tieneFiltro) {
-            $vecindad = implode(' ', array_slice($lineas, max(0, $i - 3), 30));
-            $tieneFiltro = (bool) preg_match(
-                '/sqlEmpresa(Pos)?\s*\(|bindEmpresa\s*\(|empresaPos\s*\(|empresa_id\s*(=|IN)/i',
-                $vecindad
-            );
-        }
-
-        if ($tieneFiltro) {
+        if (filtraEmpresa($s)) {
             continue;
         }
 
-        // Los INSERT se evalúan aparte: deben asignar empresa_id, salvo que
-        // vayan por el insert() de BaseModel, que lo sella solo.
-        if (str_starts_with($tipo, 'INSERT') || str_starts_with($tipo, 'REPLACE')) {
-            $vecindad = implode(' ', array_slice($lineas, max(0, $i - 2), 25));
-            if (preg_match('/->insert\s*\(|empresa_id/i', $vecindad)) {
-                continue;
+        // Los INSERT deben asignar empresa_id, salvo que vayan por el
+        // insert() de BaseModel, que la sella solo.
+        if ((str_starts_with($tipo, 'INSERT') || str_starts_with($tipo, 'REPLACE'))
+            && preg_match('/empresa_id/i', $sqlNorm . ' ' . $s['codigo'])) {
+            continue;
+        }
+
+        // ── Consultas armadas por partes ─────────────────────────────────────
+        // `$sql = "SELECT ..."; ... $sql .= $this->sqlEmpresa();`, o un
+        // `{$where}` construido antes con el filtro. Cuenta solo si el filtro
+        // se añade a ESA variable, en la misma función y mientras conserva
+        // ese valor: no basta con que otra consulta cercana filtre.
+        $mismaVariable = static function (string $var, int $desde, int $paso) use ($lista, $s): bool {
+            $q = preg_quote($var, '/');
+            for ($j = $desde; $j >= 0 && $j < count($lista); $j += $paso) {
+                $otra = $lista[$j];
+                if ($otra['ambito'] !== $s['ambito']) {
+                    break;
+                }
+                $anade  = (bool) preg_match('/^\s*' . $q . '\s*\.=/', $otra['codigo']);
+                $asigna = (bool) preg_match('/^\s*' . $q . '\s*=(?!=)/', $otra['codigo']);
+                if ($paso > 0 && $asigna) {
+                    return false; // la variable se reasignó: lo de después ya es otra consulta
+                }
+                // Hacia delante también vale usarla con el filtro pegado:
+                // `prepare($sql . $this->sqlEmpresa())`.
+                $usa = $paso > 0 && preg_match('/' . $q . '\s*\.\s*\$this->sqlEmpresa/', $otra['codigo']);
+                if (($anade || $asigna || $usa) && filtraEmpresa($otra)) {
+                    return true;
+                }
+                if ($paso < 0 && $asigna) {
+                    return false; // llegamos a donde nació el valor sin ver filtro
+                }
             }
+            return false;
+        };
+
+        $filtradaPorPartes = false;
+        if (preg_match('/^\s*(\$\w+)\s*\.?=/', $s['codigo'], $mv)) {
+            // La consulta se guarda en una variable: el filtro puede llegar después.
+            $filtradaPorPartes = $mismaVariable($mv[1], $k + 1, 1);
+        }
+        if (!$filtradaPorPartes) {
+            // Variables interpoladas o concatenadas en el SQL: el filtro pudo
+            // venir dentro de ellas.
+            preg_match_all('/\$\w+/', $s['sql'] . ' ' . $s['codigo'], $mi);
+            foreach (array_unique($mi[0]) as $var) {
+                if ($var !== '$this' && $mismaVariable($var, $k - 1, -1)) {
+                    $filtradaPorPartes = true;
+                    break;
+                }
+            }
+        }
+        if ($filtradaPorPartes) {
+            continue;
         }
 
         $hallazgos[] = [
             'archivo' => str_replace($raiz . '/', '', $archivo),
-            'linea'   => $i + 1,
+            'linea'   => $s['linea'],
             'tipo'    => $tipo,
             'tabla'   => $tabla,
-            'sql'     => trim(mb_substr($bloqueNorm, 0, 110)),
+            'sql'     => trim(mb_substr($sqlNorm, 0, 110)),
         ];
     }
 }

@@ -97,6 +97,7 @@ class AgentModel extends BaseModel
      */
     public function cuentasPorCorreo(string $correo): array
     {
+        // tenant-ok: el login ocurre antes de que exista contexto de empresa
         $stmt = $this->db()->prepare(
             'SELECT a.id, a.empresa_id, a.nombre, a.apellido, a.correo, a.contrasena,
                     a.rol, a.puesto, COALESCE(a.activo,1) AS activo,
@@ -166,6 +167,7 @@ class AgentModel extends BaseModel
     public function registrarAcceso(int $id): void
     {
         try {
+            // tenant-ok: se llama en el login con el id de la cuenta ya validada
             $this->db()
                 ->prepare('UPDATE agentes SET ultimo_acceso = NOW() WHERE id = ?')
                 ->execute([$id]);
@@ -187,7 +189,9 @@ class AgentModel extends BaseModel
     {
         $empresaId ??= Tenant::id();
 
-        if ($empresaId === null) {
+        // El propietario no pertenece a ninguna empresa y no se crea desde
+        // dentro de una: con ese rol la cuenta vería todas.
+        if ($empresaId === null || $rol === Roles::PROPIETARIO) {
             return 0;
         }
 
@@ -528,6 +532,8 @@ class AgentModel extends BaseModel
             $where  .= ' AND h.agente_id = ?';
             $params[] = $agenteId;
         }
+        $where  .= $this->sqlEmpresaPos('h');
+        $params  = array_merge($params, $this->empresaPos());
         $params[] = $limit;
 
         $stmt = $this->db()->prepare(
@@ -555,12 +561,15 @@ class AgentModel extends BaseModel
                        SUM(CASE WHEN co.estado IN ('pendiente','enviada') THEN co.precio ELSE 0 END) AS valor_pipeline,
                        SUM(CASE WHEN co.estado='aceptada' THEN co.precio ELSE 0 END) AS valor_cerrado
                 FROM agentes a
-                LEFT JOIN cotizaciones co ON co.agente_id = a.id
-                WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
+                LEFT JOIN cotizaciones co ON co.agente_id = a.id" . $this->sqlEmpresa('co', 'AND', '_co') . "
+                WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1" . $this->sqlEmpresa('a') . "
                 GROUP BY a.id, a.nombre, a.apellido
                 ORDER BY valor_pipeline DESC";
 
-        return $this->db()->query($sql)->fetchAll();
+        $stmt = $this->db()->prepare($sql);
+        $stmt->execute($this->bindEmpresa([], ['', '_co']));
+
+        return $stmt->fetchAll();
     }
 
     /**
@@ -588,12 +597,14 @@ class AgentModel extends BaseModel
                        SUM(YEAR(c.fecha_registro)=YEAR(CURDATE()) AND MONTH(c.fecha_registro)=MONTH(CURDATE())) AS mes,
                        SUM(YEAR(c.fecha_registro)=YEAR(CURDATE() - INTERVAL 1 MONTH) AND MONTH(c.fecha_registro)=MONTH(CURDATE() - INTERVAL 1 MONTH)) AS mes_pasado
                 FROM agentes a
-                LEFT JOIN clientes c ON c.agente_id = a.id
-                WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
+                LEFT JOIN clientes c ON c.agente_id = a.id" . $this->sqlEmpresa('c', 'AND', '_c') . "
+                WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1" . $this->sqlEmpresa('a') . "
                 GROUP BY a.id, a.nombre, a.apellido
                 ORDER BY hoy DESC, semana DESC";
 
-        $porAsesor = $this->db()->query($sql)->fetchAll();
+        $stmt = $this->db()->prepare($sql);
+        $stmt->execute($this->bindEmpresa([], ['', '_c']));
+        $porAsesor = $stmt->fetchAll();
 
         // Totales del equipo completo (suma de la tabla anterior).
         $totales = [
@@ -888,10 +899,10 @@ class AgentModel extends BaseModel
                     CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
              FROM historial_cliente h
              JOIN clientes cl ON cl.id = h.cliente_id
-             WHERE h.agente_id = ?
+             WHERE h.agente_id = ?" . $this->sqlEmpresaPos('h') . "
              ORDER BY h.fecha DESC LIMIT ?"
         );
-        $stmt->execute([$agenteId, $limit]);
+        $stmt->execute(array_merge([$agenteId], $this->empresaPos(), [$limit]));
         return $stmt->fetchAll();
     }
 }

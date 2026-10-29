@@ -3,10 +3,12 @@ declare(strict_types=1);
 
 namespace Tests\Integration;
 
+use App\Models\AgentModel;
 use App\Models\EmpresaModel;
 use App\Models\InvitacionModel;
 use App\Security\Roles;
 use App\Security\Tenant;
+use App\Services\InvitacionCorreo;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -242,5 +244,61 @@ class RegistroInvitacionTest extends TestCase
         $this->pdo->prepare('DELETE FROM agentes WHERE empresa_id = ?')->execute([$segunda]);
         $this->pdo->prepare('DELETE FROM invitaciones WHERE empresa_id = ?')->execute([$segunda]);
         $this->pdo->prepare('DELETE FROM empresas WHERE id = ?')->execute([$segunda]);
+    }
+
+    // ── Alta directa y reenvío ────────────────────────────────────────────────
+
+    public function testElAltaDirectaCreaElUsuarioEnSuEmpresa(): void
+    {
+        $id = (new AgentModel())->crear(
+            'Directo', 'Alta', 'directo@empresa-prueba.mx', '', self::PASSWORD, Roles::ASESOR, null, $this->empresaId
+        );
+
+        $this->assertGreaterThan(0, $id);
+
+        $stmt = $this->pdo->prepare('SELECT empresa_id, rol, contrasena FROM agentes WHERE id = ?');
+        $stmt->execute([$id]);
+        $fila = $stmt->fetch();
+
+        $this->assertSame($this->empresaId, (int) $fila['empresa_id']);
+        $this->assertSame(Roles::ASESOR, $fila['rol']);
+        $this->assertTrue(password_verify(self::PASSWORD, $fila['contrasena']));
+    }
+
+    /**
+     * Un propietario creado dentro de una empresa vería todas: el alta directa
+     * lo rechaza aunque alguien mande ese rol.
+     */
+    public function testNoSePuedeCrearUnPropietarioDesdeUnaEmpresa(): void
+    {
+        $id = (new AgentModel())->crear(
+            'Falso', 'Dueño', 'dueno@empresa-prueba.mx', '', self::PASSWORD, Roles::PROPIETARIO, null, $this->empresaId
+        );
+
+        $this->assertSame(0, $id, 'Se creó un propietario de plataforma dentro de una empresa.');
+    }
+
+    public function testReenviarDevuelveLosDatosParaElCorreo(): void
+    {
+        $inv   = $this->invitar('reenvio@empresa-prueba.mx', Roles::COORDINADOR);
+        $nueva = $this->invitaciones->reenviar((int) $inv['id'], $this->empresaId);
+
+        $this->assertSame('reenvio@empresa-prueba.mx', $nueva['correo']);
+        $this->assertSame('Nuevo Usuario', $nueva['nombre']);
+        $this->assertSame(Roles::COORDINADOR, $nueva['rol']);
+        $this->assertNotSame($inv['token'], $nueva['token'], 'El reenvío no cambió el token.');
+    }
+
+    /** Sin SMTP configurado el correo no sale, pero la invitación sigue en pie. */
+    public function testSinSmtpElCorreoNoSeEnviaPeroNoRompe(): void
+    {
+        $this->assertFalse(InvitacionCorreo::enviar(
+            'alguien@empresa-prueba.mx',
+            'Alguien',
+            'Empresa',
+            Roles::ASESOR,
+            'https://ejemplo.mx/registro?token=x',
+            date('Y-m-d H:i:s')
+        ));
     }
 }

@@ -533,6 +533,7 @@ class VidaSolicitudController
             $places = implode(', ', array_fill(0, count($datos), '?'));
             // $datos lleva empresa_id dentro: el cliente se sella en la empresa resuelta en handle().
             try {
+                // tenant-ok: $datos lleva empresa_id
                 $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
             } catch (\Throwable $e) {
                 // Se registra el error REAL antes de reintentar sin 'origen',
@@ -543,6 +544,7 @@ class VidaSolicitudController
                 $cols   = implode(', ', array_keys($datos));
                 // El reintento quita 'origen', nunca empresa_id: sin empresa el cliente sería invisible.
                 $places = implode(', ', array_fill(0, count($datos), '?'));
+                // tenant-ok: $datos lleva empresa_id
                 $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
             }
 

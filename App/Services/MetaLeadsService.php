@@ -352,6 +352,7 @@ class MetaLeadsService
             $cols   = implode(', ', array_keys($datos));
             // $datos lleva empresa_id dentro.
             $places = implode(', ', array_fill(0, count($datos), '?'));
+            // tenant-ok: $datos lleva empresa_id
             $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
         } catch (\Throwable $e) {
             error_log('[MetaLeadsService] INSERT clientes falló con origen incluido: ' . $e->getMessage());
@@ -359,6 +360,7 @@ class MetaLeadsService
             $cols   = implode(', ', array_keys($datos));
             // El reintento quita 'origen', nunca empresa_id.
             $places = implode(', ', array_fill(0, count($datos), '?'));
+            // tenant-ok: $datos lleva empresa_id
             $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
         }
 

@@ -9,6 +9,7 @@ use App\Models\InvitacionModel;
 use App\Security\Roles;
 use App\Security\SessionManager;
 use App\Security\Tenant;
+use App\Services\InvitacionCorreo;
 
 /**
  * EmpresaController — alta y administración de empresas (API JSON).
@@ -143,12 +144,25 @@ class EmpresaController
             return;
         }
 
+        $enlace  = self::enlaceRegistro($invitacion['token']);
+        $enviado = InvitacionCorreo::enviar(
+            $correoAdmin,
+            trim((string) ($input['admin_nombre'] ?? '') . ' ' . (string) ($input['admin_apellido'] ?? '')),
+            trim((string) $input['nombre']),
+            Roles::SUPERADMIN,
+            $enlace,
+            $invitacion['expira']
+        );
+
         self::responder(201, [
-            'ok'         => true,
-            'msg'        => 'Empresa creada. Falta que su administrador active la cuenta.',
-            'empresa_id' => $empresaId,
-            'enlace'     => self::enlaceRegistro($invitacion['token']),
-            'expira'     => $invitacion['expira'],
+            'ok'             => true,
+            'msg'            => $enviado
+                ? "Empresa creada. Se envió la invitación a {$correoAdmin}; falta que active su cuenta."
+                : 'Empresa creada, pero el correo de invitación no se pudo enviar. Comparte el enlace de abajo con su administrador.',
+            'correo_enviado' => $enviado,
+            'empresa_id'     => $empresaId,
+            'enlace'         => $enlace,
+            'expira'         => $invitacion['expira'],
         ]);
     }
 

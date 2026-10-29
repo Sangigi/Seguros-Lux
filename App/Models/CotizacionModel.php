@@ -44,6 +44,8 @@ class CotizacionModel extends BaseModel
     public static function ventaConcretadaSql(string $alias = 'co'): string
     {
         $a = $alias;
+        // tenant-ok: fragmento correlacionado con la cotización {$a}, que ya
+        // filtra por empresa la consulta que lo incluye
         return "("
             . "{$a}.estado = 'pagado'"
             . " OR EXISTS ("

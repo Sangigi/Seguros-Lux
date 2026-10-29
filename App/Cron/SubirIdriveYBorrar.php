@@ -151,6 +151,7 @@ Tenant::sinRestriccion(function () use ($db, $cotModel, $s3, $bucket, $logFile):
     $errores = 0;
 
     try {
+        // tenant-ok: cron de plataforma, sube los archivos de todas las empresas
         $stmt = $db->query(
             "SELECT ca.id, ca.cotizacion_id, ca.tipo_documento, ca.nombre_original,
                     ca.nombre_archivo, ca.ruta, co.folio,
@@ -229,6 +230,7 @@ Tenant::sinRestriccion(function () use ($db, $cotModel, $s3, $bucket, $logFile):
             $cols = $db->query("SHOW COLUMNS FROM cotizacion_pagos")->fetchAll(\PDO::FETCH_COLUMN);
             log_msg_id("  Columnas en cotizacion_pagos: " . implode(', ', $cols), $logFile);
 
+            // tenant-ok: cron de plataforma, sube los archivos de todas las empresas
             $stmtP = $db->query(
                 "SELECT cp.id, cp.cotizacion_id, cp.nombre_archivo, cp.ruta,
                         co.folio,
@@ -319,6 +321,7 @@ Tenant::sinRestriccion(function () use ($db, $cotModel, $s3, $bucket, $logFile):
         if (empty($chkTabla)) {
             log_msg_id("⚠️  Tabla 'polizas' no existe. Saltando fase 1c.", $logFile);
         } else {
+            // tenant-ok: cron de plataforma, sube los archivos de todas las empresas
             $stmtPol = $db->query(
                 "SELECT p.id, p.cliente_id, p.nombre_archivo, p.ruta, p.cotizacion_id,
                         CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre,
