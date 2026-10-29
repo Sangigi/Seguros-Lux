@@ -1,5 +1,5 @@
 /**
- * crm-events.js — CRM EIRA
+ * crm-events.js — CRM Seguros Lux
  *
  * UN SOLO punto de entrada para todos los eventos de click.
  * Usar SIEMPRE data-action en los botones y manejarlos aquí.

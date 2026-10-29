@@ -74,7 +74,7 @@ $h = static fn(?string $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 
 
 <?php require __DIR__ . '/../partials/_navbar.php'; ?>
 
-<main class="plat-wrap">
+<main class="main-content plat-wrap">
 
     <h1 style="font-size:22px;margin:0 0 20px">Empresas de la plataforma</h1>
 

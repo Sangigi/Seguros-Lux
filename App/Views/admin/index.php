@@ -192,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
 <body>
 <div class="toolbar-screen">
     <button class="btn-back"  id="emiCkBack">← Volver</button>
-    <button class="btn-print" id="emiCkPrint">🖨️ Guardar como PDF</button>
+    <button class="btn-print" id="emiCkPrint"><?= icono('printer') ?> Guardar como PDF</button>
     <span>Imprimir → Destino: «Guardar como PDF»</span>
 </div>
 <script src="/js/emi_checklist_pdf.js" defer></script>
@@ -202,20 +202,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
             <img src="/images/logo_blanco.png" alt="LuxSeguros" style="height:52px;width:auto;object-fit:contain;">
         </div>
         <div class="brand-text">
-            <h1>Seguros Lux · EIRA</h1>
+            <h1>Seguros Lux</h1>
             <p>Sistema de Gestión de Seguros</p>
         </div>
     </div>
     <div class="doc-meta">
         <div class="folio-badge"><?= htmlspecialchars($cot['folio'] ?? ('#'.$cotId)) ?></div>
-        <p><?= $esRenovacion ? '🔄 Checklist de Renovación' : 'Checklist de Emisión' ?></p>
+        <p><?= $esRenovacion ? icono('arrow-repeat') . ' Checklist de Renovación' : 'Checklist de Emisión' ?></p>
         <p>Generado: <?= date('d/m/Y H:i') ?></p>
         <p>Coordinador: <?= htmlspecialchars(($agente['nombre'] ?? '') . ' ' . ($agente['apellido'] ?? '')) ?></p>
     </div>
 </div>
 <?php if ($esRenovacion): ?>
 <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 40px;display:flex;align-items:center;gap:12px;font-size:13px;color:#92400e;">
-    <span style="font-size:18px;">🔄</span>
+    <span style="font-size:18px;"><?= icono('arrow-repeat') ?></span>
     <div>
         <strong>Renovación de póliza</strong> — Esta emisión es una renovación.
         <?php if ($numPolizaAnterior && strpos($numPolizaAnterior, 'Renovación') === false): ?>
@@ -234,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
         <span class="label"><?= $esRenovacion ? 'Tipo' : 'Tipo de cobertura' ?></span>
         <span class="value" style="<?= $esRenovacion ? 'color:#d97706;font-weight:800;' : '' ?>">
             <?php if ($esRenovacion): ?>
-                🔄 Renovación
+                <?= icono('arrow-repeat') ?> Renovación
                 <?php if ($numPolizaAnterior && strpos($numPolizaAnterior, 'Renovación') === false): ?>
                 <br><span style="font-size:11px;font-weight:600;font-family:'Courier New',monospace;color:#92400e;">Póliza ant.: <?= htmlspecialchars($numPolizaAnterior) ?></span>
                 <?php endif; ?>
@@ -287,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
     </table>
 </div>
 <div class="doc-footer">
-    <span>EIRA · <span class="gold">Seguros Lux</span> — Documento generado el <?= date('d/m/Y H:i') ?></span>
+    <span><span class="gold">Seguros Lux</span> — Documento generado el <?= date('d/m/Y H:i') ?></span>
     <span style="color:#dc2626;font-size:9px;">● Requerido &nbsp;</span>
     <span>Confidencial — Uso interno</span>
 </div>
@@ -527,11 +527,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $db->prepare(
                 "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha, empresa_id)
                  VALUES (?, ?, 'cambio_estado', ?, ?, NOW(), ?)"
-            )->execute([$infoCot['cliente_id'], $agenteId, "🔧 Estado forzado: $folioDesc", $msg, $empresaId]);
+            )->execute([$infoCot['cliente_id'], $agenteId, "Estado forzado: $folioDesc", $msg, $empresaId]);
 
             $db->prepare(
                 "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en, empresa_id)
-                 VALUES (?, 'sistema', '🔧 Estado de cotización forzado', ?, 1, 'orange', ?, 0, NOW(), ?)"
+                 VALUES (?, 'sistema', 'Estado de cotización forzado', ?, 1, 'orange', ?, 0, NOW(), ?)"
             )->execute([$infoCot['agente_id'], $msg, "/cliente/{$infoCot['cliente_id']}", $empresaId]);
         }
         
@@ -626,15 +626,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 
         if ($clienteId) {
             $desc = 'Renovada por coordinador.' . ($nuevoNumero ? " Nueva póliza: {$nuevoNumero}." : '') . ($archivoGuardado ? ' | Comprobante adjunto.' : '');
-            $db->prepare("INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha, empresa_id) VALUES (?, ?, 'nota', '✅ Póliza renovada', ?, NOW(), ?)")->execute([$clienteId, $agenteId, $desc, $empresaId]);
-            $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND empresa_id = ? AND titulo = '🔄 Solicitud de renovación'")->execute([$clienteId, $empresaId]);
+            $db->prepare("INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha, empresa_id) VALUES (?, ?, 'nota', 'Póliza renovada', ?, NOW(), ?)")->execute([$clienteId, $agenteId, $desc, $empresaId]);
+            $db->prepare("UPDATE historial_cliente SET titulo = 'Renovación gestionada' WHERE cliente_id = ? AND empresa_id = ? AND titulo = '🔄 Solicitud de renovación'")->execute([$clienteId, $empresaId]);
         }
         echo json_encode(['ok'=>true, 'archivo_guardado'=>$archivoGuardado]);
     } elseif ($a === 'renov_marcar_gestionada') {
         $clienteId = (int)($_POST['cliente_id'] ?? 0);
         $fecha     = trim($_POST['fecha'] ?? '');
         if (!$clienteId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
-        $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND empresa_id = ? AND titulo = '🔄 Solicitud de renovación' AND DATE(fecha) = DATE(?)")->execute([$clienteId, $empresaId, $fecha ?: date('Y-m-d')]);
+        $db->prepare("UPDATE historial_cliente SET titulo = 'Renovación gestionada' WHERE cliente_id = ? AND empresa_id = ? AND titulo = '🔄 Solicitud de renovación' AND DATE(fecha) = DATE(?)")->execute([$clienteId, $empresaId, $fecha ?: date('Y-m-d')]);
         echo json_encode(['ok'=>true]);
 
     } else {
@@ -795,7 +795,7 @@ function closeModal(id){document.getElementById(id)?.classList.remove('active');
                 Panel de Coordinación
             </h1>
             <p class="page-subtitle">
-                <?php echo $isSuperadmin ? '⭐ Superadmin' : '🛡️ Coordinador'; ?>
+                <?php echo $isSuperadmin ? icono('star-fill') . ' Superadmin' : icono('shield-check') . ' Coordinador'; ?>
                 — <?php echo htmlspecialchars($agente['nombre'].' '.$agente['apellido']); ?>
             </p>
         </div>
@@ -838,7 +838,7 @@ $arrow = static function (int $ahora, int $antes): string {
 ?>
 <div class="card" style="margin-bottom:24px;">
     <div class="card-header">
-        <h3 class="card-title">🆕 Leads / Clientes Nuevos</h3>
+        <h3 class="card-title"><?= icono('plus-circle') ?> Leads / Clientes Nuevos</h3>
         <span style="font-size:12px;color:var(--text-muted);">Control de entrada de leads por periodo y por asesor</span>
     </div>
     <div class="card-body">
@@ -895,15 +895,15 @@ $arrow = static function (int $ahora, int $antes): string {
             <div style="display:flex;gap:20px;margin-top:8px;font-size:12px;flex-wrap:wrap;">
                 <button type="button" class="origen-leyenda-btn" data-action="adm-detalle-origen" data-bucket="campana"
                         style="background:none;border:none;cursor:pointer;padding:0;font-size:12px;color:inherit;">
-                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#8b5cf6;margin-right:5px;"></span>📢 Campaña (landing de anuncios): <strong><?php echo $origenMes['campana']; ?></strong>
+                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#8b5cf6;margin-right:5px;"></span><?= icono('megaphone') ?> Campaña (landing de anuncios): <strong><?php echo $origenMes['campana']; ?></strong>
                 </button>
                 <button type="button" class="origen-leyenda-btn" data-action="adm-detalle-origen" data-bucket="formulario"
                         style="background:none;border:none;cursor:pointer;padding:0;font-size:12px;color:inherit;">
-                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#0ea5e9;margin-right:5px;"></span>📋 Formularios propios (vida, autos, GMM, empresas): <strong><?php echo $origenMes['formulario']; ?></strong>
+                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#0ea5e9;margin-right:5px;"></span><?= icono('clipboard') ?> Formularios propios (vida, autos, GMM, empresas): <strong><?php echo $origenMes['formulario']; ?></strong>
                 </button>
                 <button type="button" class="origen-leyenda-btn" data-action="adm-detalle-origen" data-bucket="manual"
                         style="background:none;border:none;cursor:pointer;padding:0;font-size:12px;color:inherit;">
-                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#f59e0b;margin-right:5px;"></span>👤 Alta manual (asesor): <strong><?php echo $origenMes['manual']; ?></strong>
+                    <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#f59e0b;margin-right:5px;"></span><?= icono('person') ?> Alta manual (asesor): <strong><?php echo $origenMes['manual']; ?></strong>
                 </button>
             </div>
         </div>
@@ -1036,9 +1036,9 @@ $arrow = static function (int $ahora, int $antes): string {
             <option value="aceptada">Aceptada</option><option value="rechazada">Rechazada</option>
             <option value="pagado">Pagado</option>
         </select>
-        <button id="btnExportarExcel" class="btn btn-outline btn-sm">📊 Excel</button>
-        <button id="btnExportarPdf"   class="btn btn-outline btn-sm">📄 PDF</button>
-        <a href="/exportar?formato=excel&tipo=ranking" class="btn btn-outline btn-sm">🏆 Ranking</a>
+        <button id="btnExportarExcel" class="btn btn-outline btn-sm"><?= icono('bar-chart') ?> Excel</button>
+        <button id="btnExportarPdf"   class="btn btn-outline btn-sm"><?= icono('file-earmark-pdf') ?> PDF</button>
+        <a href="/exportar?formato=excel&tipo=ranking" class="btn btn-outline btn-sm"><?= icono('trophy') ?> Ranking</a>
     </div>
 </div>
 <div class="card" style="margin-bottom:24px;">
@@ -1088,10 +1088,10 @@ $totCerr = array_sum(array_column($pipeline,'cerradas'));
 $totPerd = array_sum(array_column($pipeline,'perdidas'));
 ?>
 <div class="kpi4">
-    <div class="stat-card warning"><div class="stat-card-value"><?php echo $totPend; ?></div><div class="stat-card-label">⏳ Pendientes</div></div>
-    <div class="stat-card info">   <div class="stat-card-value"><?php echo $totEnv; ?></div>  <div class="stat-card-label">📤 Enviadas al Cliente</div></div>
-    <div class="stat-card success"><div class="stat-card-value"><?php echo $totCerr; ?></div>  <div class="stat-card-label">✅ Cerradas</div></div>
-    <div class="stat-card danger"> <div class="stat-card-value"><?php echo $totPerd; ?></div>  <div class="stat-card-label">❌ Perdidas</div></div>
+    <div class="stat-card warning"><div class="stat-card-value"><?php echo $totPend; ?></div><div class="stat-card-label"><?= icono('hourglass-split') ?> Pendientes</div></div>
+    <div class="stat-card info">   <div class="stat-card-value"><?php echo $totEnv; ?></div>  <div class="stat-card-label"><?= icono('upload') ?> Enviadas al Cliente</div></div>
+    <div class="stat-card success"><div class="stat-card-value"><?php echo $totCerr; ?></div>  <div class="stat-card-label"><?= icono('check-circle-fill') ?> Cerradas</div></div>
+    <div class="stat-card danger"> <div class="stat-card-value"><?php echo $totPerd; ?></div>  <div class="stat-card-label"><?= icono('x-circle-fill') ?> Perdidas</div></div>
 </div>
 <div class="card">
     <div class="card-header">
@@ -1100,7 +1100,7 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
     </div>
     <div class="card-body" style="padding:0;">
         <table class="adt">
-            <thead><tr><th>Asesor</th><th>⏳</th><th>📤</th><th>✅</th><th>❌</th><th>Valor en Proceso</th><th>Ingreso Cerrado</th><th>Barra</th></tr></thead>
+            <thead><tr><th>Asesor</th><th title="Pendientes" aria-label="Pendientes"><?= icono('hourglass-split') ?></th><th title="Enviadas al cliente" aria-label="Enviadas al cliente"><?= icono('upload') ?></th><th title="Cerradas" aria-label="Cerradas"><?= icono('check-circle-fill') ?></th><th title="Perdidas" aria-label="Perdidas"><?= icono('x-circle-fill') ?></th><th>Valor en Proceso</th><th>Ingreso Cerrado</th><th>Barra</th></tr></thead>
             <tbody>
             <?php foreach ($pipeline as $p):
                 $tot = $p['pendientes']+$p['enviadas']+$p['cerradas']+$p['perdidas'];
@@ -1156,8 +1156,8 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
         </div>
         <div class="act-feed" id="actFeed">
         <?php
-        $icons = ['registro'=>['🧑','#e0f2fe'],'llamada'=>['📞','#f0fdf4'],'cotizacion'=>['📄','#fef3c7'],
-                  'cita'=>['📅','#fdf4ff'],'nota'=>['📝','#f8fafc'],'venta'=>['🎉','#dcfce7'],'cambio_estado'=>['🔄','#f1f5f9']];
+        $icons = ['registro'=>[icono('person'),'#e0f2fe'],'llamada'=>[icono('telephone'),'#f0fdf4'],'cotizacion'=>[icono('file-earmark-text'),'#fef3c7'],
+                  'cita'=>[icono('calendar-event'),'#fdf4ff'],'nota'=>[icono('pencil-square'),'#f8fafc'],'venta'=>[icono('stars'),'#dcfce7'],'cambio_estado'=>[icono('arrow-repeat'),'#f1f5f9']];
         foreach ($actividad as $act):
             $ic = $icons[$act['tipo']] ?? ['•','#f8fafc'];
             $diff = time()-strtotime($act['fecha']);
@@ -1168,7 +1168,7 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
             <div style="flex:1;">
                 <div style="font-size:13px;font-weight:600;"><?php echo htmlspecialchars($act['titulo']); ?></div>
                 <div style="font-size:11px;color:var(--text-muted);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;">
-                    <span>👤 <?php echo htmlspecialchars($act['agente_nombre']); ?></span>
+                    <span><?= icono('person') ?> <?php echo htmlspecialchars($act['agente_nombre']); ?></span>
                     <span>·</span><span><?php echo htmlspecialchars($act['cliente_nombre']); ?></span>
                     <span>·</span><span><?php echo $hace; ?></span>
                 </div>
@@ -1190,7 +1190,7 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
                 $scis = $db->prepare("SELECT COUNT(*) FROM citas WHERE agente_id=? AND empresa_id=? AND estado='programada' AND fecha>=CURDATE()"); $scis->execute([$filtroActAgente, $empresaId]); $aci=(int)$scis->fetchColumn();
         ?>
         <div class="card" style="margin-bottom:16px;">
-            <div class="card-header"><h3 class="card-title">📋 Perfil del Asesor</h3></div>
+            <div class="card-header"><h3 class="card-title"><?= icono('clipboard') ?> Perfil del Asesor</h3></div>
             <div class="card-body">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
                     <div class="ava" style="width:44px;height:44px;font-size:17px;"><?php echo strtoupper(substr($asFi['nombre'],0,1).substr($asFi['apellido'],0,1)); ?></div>
@@ -1292,7 +1292,7 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
                                     data-nombre="<?php echo htmlspecialchars($ag['nombre'],ENT_QUOTES); ?>"
                                     data-apellido="<?php echo htmlspecialchars($ag['apellido'],ENT_QUOTES); ?>"
                                     data-rol="<?php echo htmlspecialchars($ag['rol'],ENT_QUOTES); ?>">
-                                ✏️
+                                <?= icono('pencil') ?>
                             </button>
                             <?php endif; ?>
 
@@ -1325,7 +1325,7 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
                                     data-id="<?php echo $ag['id']; ?>"
                                     data-nombre="<?php echo htmlspecialchars($ag['nombre'].' '.$ag['apellido'],ENT_QUOTES); ?>"
                                     style="<?php echo in_array($ag['rol'], ['coordinador', 'superadmin']) ? '' : 'display:none;'; ?>">
-                                📋
+                                <?= icono('clock-history') ?>
                             </button>
                             <?php endif; ?>
                         </div>
@@ -1398,13 +1398,13 @@ $totalRenov = count($renovacionesPendientes);
 $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['dias_vence']) && (int)$r['dias_vence'] <= 7));
 ?>
 <div class="kpi4" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
-    <div class="stat-card warning"><div class="stat-card-value"><?= $totalRenov ?></div><div class="stat-card-label">🔁 Solicitudes</div></div>
-    <div class="stat-card <?= $urgentes > 0 ? 'danger' : 'success' ?>"><div class="stat-card-value"><?= $urgentes ?></div><div class="stat-card-label">🚨 Urgentes (≤7 días)</div></div>
-    <div class="stat-card info"><div class="stat-card-value"><?= $totalRenov - $urgentes ?></div><div class="stat-card-label">📋 En seguimiento</div></div>
+    <div class="stat-card warning"><div class="stat-card-value"><?= $totalRenov ?></div><div class="stat-card-label"><?= icono('arrow-repeat') ?> Solicitudes</div></div>
+    <div class="stat-card <?= $urgentes > 0 ? 'danger' : 'success' ?>"><div class="stat-card-value"><?= $urgentes ?></div><div class="stat-card-label"><?= icono('exclamation-octagon') ?> Urgentes (≤7 días)</div></div>
+    <div class="stat-card info"><div class="stat-card-value"><?= $totalRenov - $urgentes ?></div><div class="stat-card-label"><?= icono('clipboard') ?> En seguimiento</div></div>
 </div>
 <?php if (empty($renovacionesPendientes)): ?>
 <div class="card" style="text-align:center;padding:56px;">
-    <div style="font-size:48px;margin-bottom:12px;">✅</div>
+    <div style="font-size:48px;margin-bottom:12px;color:#16a34a;"><?= icono('check-circle-fill') ?></div>
     <div style="font-size:16px;font-weight:700;color:var(--text-primary);">Sin solicitudes de renovación</div>
     <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">Cuando un asesor solicite renovar una póliza, aparecerá aquí.</div>
 </div>
@@ -1435,8 +1435,8 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
             <div style="flex:1;min-width:220px;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-                    <?php if ($vencida): ?><span class="badge badge-danger">🚨 Póliza vencida</span>
-                    <?php elseif ($urgente): ?><span class="badge badge-warning">⚠️ Urgente — <?= $dias ?>d restantes</span>
+                    <?php if ($vencida): ?><span class="badge badge-danger"><?= icono('exclamation-octagon') ?> Póliza vencida</span>
+                    <?php elseif ($urgente): ?><span class="badge badge-warning"><?= icono('exclamation-triangle-fill') ?> Urgente —<?= $dias ?>d restantes</span>
                     <?php elseif ($dias !== null): ?><span class="badge badge-info"><?= $dias ?>d para vencer</span>
                     <?php endif; ?>
                     <?php if (!empty($r['poliza_estado'])): ?>
@@ -1445,28 +1445,28 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                 </div>
                 <div style="font-size:15px;font-weight:700;margin-bottom:4px;"><?= htmlspecialchars($r['cliente_nombre']) ?></div>
                 <div style="font-size:12px;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
-                    <?php if ($r['cliente_correo']): ?><span>✉️ <?= htmlspecialchars($r['cliente_correo']) ?></span><?php endif; ?>
-                    <?php if ($r['cliente_tel']): ?><span>📞 <?= htmlspecialchars($r['cliente_tel']) ?></span><?php endif; ?>
-                    <span>👤 Asesor: <strong><?= htmlspecialchars($r['asesor_nombre']) ?></strong></span>
+                    <?php if ($r['cliente_correo']): ?><span><?= icono('envelope') ?> <?= htmlspecialchars($r['cliente_correo']) ?></span><?php endif; ?>
+                    <?php if ($r['cliente_tel']): ?><span><?= icono('telephone') ?> <?= htmlspecialchars($r['cliente_tel']) ?></span><?php endif; ?>
+                    <span><?= icono('person') ?> Asesor:<strong><?= htmlspecialchars($r['asesor_nombre']) ?></strong></span>
                 </div>
                 <?php if (!empty($r['numero_poliza']) || !empty($r['compania'])): ?>
                 <div style="font-size:12px;color:var(--text-secondary);display:flex;gap:10px;flex-wrap:wrap;">
-                    <?php if ($r['compania']): ?><span>🏢 <?= htmlspecialchars($r['compania']) ?></span><?php endif; ?>
+                    <?php if ($r['compania']): ?><span><?= icono('building') ?> <?= htmlspecialchars($r['compania']) ?></span><?php endif; ?>
                     <?php if ($r['numero_poliza']): ?><span># <code style="font-size:11px;"><?= htmlspecialchars($r['numero_poliza']) ?></code></span><?php endif; ?>
-                    <?php if ($r['frecuencia_renovacion']): ?><span>🔄 <?= ucfirst($r['frecuencia_renovacion']) ?></span><?php endif; ?>
-                    <?php if ($fechaFin): ?><span>⏳ Vence: <strong><?= $fechaFin ?></strong></span><?php endif; ?>
+                    <?php if ($r['frecuencia_renovacion']): ?><span><?= icono('arrow-repeat') ?> <?= ucfirst($r['frecuencia_renovacion']) ?></span><?php endif; ?>
+                    <?php if ($fechaFin): ?><span><?= icono('hourglass-split') ?> Vence:<strong><?= $fechaFin ?></strong></span><?php endif; ?>
                 </div>
                 <?php endif; ?>
                 <?php if (!empty($r['descripcion'])): ?>
                 <div style="margin-top:8px;padding:6px 10px;background:var(--bg-secondary);border-radius:6px;font-size:11px;color:var(--text-muted);">
-                    💬 <?= htmlspecialchars($r['descripcion']) ?>
+                    <?= icono('chat-dots') ?> <?= htmlspecialchars($r['descripcion']) ?>
                 </div>
                 <?php endif; ?>
-                <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">📅 Solicitado: <?= $fechaSol ?></div>
+                <div style="margin-top:8px;font-size:11px;color:var(--text-muted);"><?= icono('calendar-event') ?> Solicitado: <?= $fechaSol ?></div>
             </div>
             <div style="display:flex;flex-direction:column;gap:8px;min-width:190px;align-items:flex-end;">
                 <?php if ($r['cliente_id']): ?>
-                <a href="/cliente/<?= (int)$r['cliente_id'] ?>" class="btn btn-outline btn-sm" style="width:100%;text-align:center;">👁 Ver cliente</a>
+                <a href="/cliente/<?= (int)$r['cliente_id'] ?>" class="btn btn-outline btn-sm" style="width:100%;text-align:center;"><?= icono('eye') ?> Ver cliente</a>
                 <?php endif; ?>
                 <?php if ($r['poliza_id']): ?>
                 <button class="btn btn-primary btn-sm" style="width:100%;"
@@ -1477,14 +1477,14 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                         data-compania="<?= htmlspecialchars($r['compania'] ?? '', ENT_QUOTES) ?>"
                         data-fecha-fin="<?= htmlspecialchars($r['fecha_fin'] ?? '', ENT_QUOTES) ?>"
                         data-frecuencia="<?= htmlspecialchars($r['frecuencia_renovacion'] ?? 'anual', ENT_QUOTES) ?>">
-                    🔁 Gestionar renovación
+                    <?= icono('arrow-repeat') ?> Gestionar renovación
                 </button>
                 <?php endif; ?>
                 <button class="btn btn-ghost btn-sm" style="width:100%;color:var(--success-color);"
                         data-action="adm-renovMarcarGestionada"
                         data-cliente-id="<?= (int)$r['cliente_id'] ?>"
                         data-fecha="<?= htmlspecialchars($r['fecha'] ?? '', ENT_QUOTES) ?>">
-                    ✅ Marcar gestionada
+                    <?= icono('check-circle-fill') ?> Marcar gestionada
                 </button>
             </div>
         </div>
@@ -1497,7 +1497,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 <!-- Modal: Gestionar Renovación -->
 <div class="modal-overlay" id="modalGestionarRenovacion">
     <div class="modal" style="max-width:560px;">
-        <div class="modal-header"><h3 class="modal-title">🔁 Gestionar Renovación</h3><button class="modal-close" data-close="modalGestionarRenovacion">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title"><?= icono('arrow-repeat') ?> Gestionar Renovación</h3><button class="modal-close" data-close="modalGestionarRenovacion">&times;</button></div>
         <div class="modal-body">
             <input type="hidden" id="grPolizaId"><input type="hidden" id="grClienteId">
             <div style="background:var(--info-light);border:1px solid var(--info-color,#3b82f6);border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:13px;">
@@ -1509,21 +1509,21 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                 <div class="form-group"><label class="form-label">Nueva fecha de vencimiento</label><input type="date" class="form-input" id="grFechaFin"></div>
             </div>
             <div class="form-group">
-                <label class="form-label">💳 Comprobante de pago (PDF/imagen) <span style="font-size:11px;color:var(--text-muted);">— opcional</span></label>
+                <label class="form-label"><?= icono('credit-card') ?> Comprobante de pago (PDF/imagen) <span style="font-size:11px;color:var(--text-muted);">— opcional</span></label>
                 <input type="file" class="form-input" id="grArchivoPoliza" accept=".pdf,.jpg,.jpeg,.png,.webp" style="padding:6px;">
                 <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">El archivo respaldará el pago y marcará la renovación como confirmada automáticamente.</p>
             </div>
             <div class="form-group"><label class="form-label">Nuevo número de póliza (si cambió)</label><input type="text" class="form-input" id="grNuevoNumero" placeholder="Dejar vacío para mantener el actual"></div>
             <div class="form-group"><label class="form-label">Notas del coordinador</label><textarea class="form-input" id="grNotas" rows="2" style="resize:vertical;"></textarea></div>
             <div class="form-group">
-                <label class="form-label">📎 Nueva póliza (PDF/imagen) <span style="font-size:11px;color:var(--text-muted);">— opcional</span></label>
+                <label class="form-label"><?= icono('paperclip') ?> Nueva póliza (PDF/imagen) <span style="font-size:11px;color:var(--text-muted);">— opcional</span></label>
                 <input type="file" class="form-input" id="grArchivoPoliza" accept=".pdf,.jpg,.jpeg,.png,.webp" style="padding:6px;">
                 <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">El archivo se adjuntará a la póliza y se marcará como renovación.</p>
             </div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalGestionarRenovacion">Cancelar</button>
-            <button class="btn btn-primary" data-action="adm-confirmarRenovacion">💾 Guardar renovación</button>
+            <button class="btn btn-primary" data-action="adm-confirmarRenovacion"><?= icono('floppy') ?> Guardar renovación</button>
         </div>
     </div>
 </div>
@@ -1566,10 +1566,10 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                 if (grFile && grFile.files[0]) fd.append('nueva_poliza_archivo', grFile.files[0]);
                 btn.disabled = true; btn.textContent = 'Guardando…';
                 fetch('/admin', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
-                    btn.disabled = false; btn.textContent = '💾 Guardar renovación';
-                    if (d.ok) { if (typeof showToast === 'function') showToast('Póliza renovada y marcada como vigente' + (d.archivo_guardado ? ' · 📎 archivo adjunto' : ''), 'success'); if (typeof closeModal === 'function') closeModal('modalGestionarRenovacion'); setTimeout(() => location.reload(), 1200); }
+                    btn.disabled = false; btn.innerHTML = iconoSvg('floppy') + ' Guardar renovación';
+                    if (d.ok) { if (typeof showToast === 'function') showToast('Póliza renovada y marcada como vigente' + (d.archivo_guardado ? ' · ' + iconoSvg('paperclip') + ' archivo adjunto' : ''), 'success'); if (typeof closeModal === 'function') closeModal('modalGestionarRenovacion'); setTimeout(() => location.reload(), 1200); }
                     else { if (typeof showToast === 'function') showToast(d.msg || 'Error al guardar', 'error'); }
-                }).catch(() => { btn.disabled = false; btn.textContent = '💾 Guardar renovación'; if (typeof showToast === 'function') showToast('Error de conexión', 'error'); });
+                }).catch(() => { btn.disabled = false; btn.innerHTML = iconoSvg('floppy') + ' Guardar renovación'; if (typeof showToast === 'function') showToast('Error de conexión', 'error'); });
                 break;
             }
             case 'adm-renovMarcarGestionada': {
@@ -1589,7 +1589,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 
 <?php elseif ($tab === 'polizas'): ?>
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-    <h2 style="font-size:17px;font-weight:600;margin:0;">📋 Historial de Pólizas</h2>
+    <h2 style="font-size:17px;font-weight:600;margin:0;"><?= icono('clipboard') ?> Historial de Pólizas</h2>
     <select id="polFiltroAsesor" class="form-select" style="width:auto;font-size:13px;">
         <option value="">Todos los asesores</option>
         <?php foreach ($agLista as $ag): ?>
@@ -1598,10 +1598,10 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
     </select>
     <select id="polFiltroEstado" class="form-select" style="width:auto;font-size:13px;">
         <option value="">Todos los estados</option>
-        <option value="pagada">✅ Pagadas</option>
-        <option value="pendiente">⏳ Pendientes de pago</option>
-        <option value="por_vencer">⚠️ Por vencer (≤30 días)</option>
-        <option value="vencida">❌ Vencidas</option>
+        <option value="pagada">Pagadas</option>
+        <option value="pendiente">Pendientes de pago</option>
+        <option value="por_vencer">Por vencer (≤30 días)</option>
+        <option value="vencida">Vencidas</option>
     </select>
     
     <?php if ($isSuperadmin): ?>
@@ -1611,7 +1611,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
     </label>
     <?php endif; ?>
     
-    <button class="btn btn-outline btn-sm" id="btnCargarPolizas">🔄 Cargar / Actualizar</button>
+    <button class="btn btn-outline btn-sm" id="btnCargarPolizas"><?= icono('arrow-repeat') ?> Cargar / Actualizar</button>
 </div>
 <div id="polKpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;"></div>
 <div class="card">
@@ -1640,7 +1640,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                     var d = JSON.parse(text);
                     if(!d.ok){document.getElementById('polTablaWrap').innerHTML='<p style="padding:20px;color:red;">'+d.msg+'</p>';return;}
                     
-                    var kd=[['Total',d.total,''],['✅ Pagadas',d.pagadas,'success'],['⏳ Pendientes',d.pendientes,'warning'],['⚠️ Por vencer',d.por_vencer,'danger']];
+                    var kd=[['Total',d.total,''],[iconoSvg('check-circle-fill')+' Pagadas',d.pagadas,'success'],[iconoSvg('hourglass-split')+' Pendientes',d.pendientes,'warning'],[iconoSvg('exclamation-triangle-fill')+' Por vencer',d.por_vencer,'danger']];
                     document.getElementById('polKpis').innerHTML=kd.map(([l,v,c])=>`<div class="stat-card ${c}" style="padding:12px 16px;"><div class="stat-card-value">${v}</div><div class="stat-card-label">${l}</div></div>`).join('');
                     
                     var filtE = document.getElementById('polFiltroEstado').value;
@@ -1658,10 +1658,10 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                         var isEliminada = p.eliminado_en !== null && p.eliminado_en !== undefined;
                         var dias = parseInt(p.dias_restantes);
                         var diasTxt = isEliminada ? '—' : (isNaN(dias) ? '—' : (dias<0 ? `<span style="color:var(--danger-color);">Vencida hace ${Math.abs(dias)}d</span>` : `<span style="color:${dias<=5?'var(--danger-color)':dias<=15?'var(--warning-color)':'inherit'}">${dias} días</span>`));
-                        var pagoBadge = (p.pago_confirmado==1||p.pago_confirmado===true) ? `<span class="badge badge-success">✅ Pagada</span>` : `<span class="badge badge-warning">⏳ Pendiente</span>`;
-                        var estadoHtml = isEliminada ? '<span class="badge badge-danger">🗑️ Eliminada</span>' : (estadoBadge[p.estado]??p.estado);
+                        var pagoBadge = (p.pago_confirmado==1||p.pago_confirmado===true) ? `<span class="badge badge-success">${iconoSvg('check-circle-fill')} Pagada</span>` : `<span class="badge badge-warning">${iconoSvg('hourglass-split')} Pendiente</span>`;
+                        var estadoHtml = isEliminada ? '<span class="badge badge-danger">' + iconoSvg('trash') + ' Eliminada</span>' : (estadoBadge[p.estado]??p.estado);
                         
-                        var colAccion = viendoPapelera ? (isEliminada ? `<td><button class="btn btn-sm btn-outline btn-restaurar-poliza" style="color:#16a34a;border-color:#16a34a;" data-id="${p.id}">♻️ Restaurar</button></td>` : `<td>—</td>`) : '';
+                        var colAccion = viendoPapelera ? (isEliminada ? `<td><button class="btn btn-sm btn-outline btn-restaurar-poliza" style="color:#16a34a;border-color:#16a34a;" data-id="${p.id}">${iconoSvg('recycle')} Restaurar</button></td>` : `<td>—</td>`) : '';
 
                         return `<tr style="${isEliminada ? 'opacity:0.6; background:#fef2f2;' : ''}">
                             <td><a href="/cliente/${p.cliente_id_ref}" style="font-weight:600;color:var(--accent-color);">${p.cliente_nombre??'—'}</a><br><span style="font-size:11px;color:var(--text-muted);">${p.asesor_nombre??''}</span></td>
@@ -1770,12 +1770,13 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
                         title="Forzar estado (solo SA)"
                         data-action="adm-forzarEstado"
                         data-id="<?php echo $cot['id']; ?>"
-                        data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>">🔧</button>
+                        data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>"><?= icono('wrench') ?></button>
                 <?php endif; ?>
                 <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);"
+                        title="Eliminar cotización" aria-label="Eliminar cotización"
                         data-action="adm-eliminarCot"
                         data-id="<?php echo $cot['id']; ?>"
-                        data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>">🗑</button>
+                        data-folio="<?php echo htmlspecialchars($cot['folio']??'#'.$cot['id'],ENT_QUOTES); ?>"><?= icono('trash') ?></button>
             </td>
         <?php endforeach; ?>
         </tbody></table>
@@ -1786,7 +1787,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 <?php elseif ($tab === 'configuracion' && $isSuperadmin): ?>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
     <div class="card">
-        <div class="card-header"><h3 class="card-title">📞 Números de Empresa para ATC</h3></div>
+        <div class="card-header"><h3 class="card-title"><?= icono('telephone') ?> Números de Empresa para ATC</h3></div>
         <div class="card-body">
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Visibles para todos los asesores en su panel.</p>
             <?php for ($i=1;$i<=3;$i++): $num=$atcMap["atc_numero_{$i}"]['valor']??''; $nom=$atcMap["atc_nombre_{$i}"]['valor']??''; ?>
@@ -1802,14 +1803,14 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
         </div>
     </div>
     <div class="card">
-        <div class="card-header"><h3 class="card-title">👁️ Vista previa — Asesores</h3></div>
+        <div class="card-header"><h3 class="card-title"><?= icono('eye') ?> Vista previa — Asesores</h3></div>
         <div class="card-body">
             <?php foreach ($atcData as $row):
                 if (strpos($row['clave'],'atc_numero')!==0||empty($row['valor'])) continue;
                 $idx=$row['clave'][-1]; $nombre=$atcMap["atc_nombre_{$idx}"]['valor']??'Línea '.$idx;
             ?>
             <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--bg-secondary);border-radius:var(--border-radius-sm);margin-bottom:10px;border-left:3px solid var(--accent-color);">
-                <span style="font-size:24px;">📞</span>
+                <span style="font-size:24px;"><?= icono('telephone') ?></span>
                 <div><div style="font-weight:700;font-size:14px;"><?php echo htmlspecialchars($row['valor']); ?></div><div style="font-size:12px;color:var(--text-secondary);"><?php echo htmlspecialchars($nombre); ?></div></div>
                 <a href="tel:<?php echo preg_replace('/\D/','',$row['valor']); ?>" style="margin-left:auto;background:var(--accent-color);color:#fff;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:600;text-decoration:none;">Llamar</a>
             </div>
@@ -1854,13 +1855,13 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 <div class="modal-overlay" id="modalAdminVerCot">
     <div class="modal modal-lg">
         <div class="modal-header">
-            <h3 class="modal-title">📋 Detalle — <span id="adminCotFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+            <h3 class="modal-title"><?= icono('clipboard') ?> Detalle — <span id="adminCotFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
             <button class="modal-close" data-close="modalAdminVerCot">&times;</button>
         </div>
         <div class="modal-body" id="adminCotContent" style="min-height:120px;"></div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalAdminVerCot">Cerrar</button>
-            <button class="btn btn-ghost" data-action="adm-verDocs">📎 Ver documentos</button>
+            <button class="btn btn-ghost" data-action="adm-verDocs"><?= icono('paperclip') ?> Ver documentos</button>
         </div>
     </div>
 </div>
@@ -1869,7 +1870,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 <div class="modal-overlay" id="modalAdminDocs">
     <div class="modal modal-lg">
         <div class="modal-header">
-            <h3 class="modal-title">📎 Documentos — <span id="adminDocsFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+            <h3 class="modal-title"><?= icono('paperclip') ?> Documentos — <span id="adminDocsFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
             <button class="modal-close" data-close="modalAdminDocs">&times;</button>
         </div>
         <div class="modal-body" id="adminDocsContent" style="min-height:160px;"><div style="text-align:center;padding:32px;color:var(--text-muted);">Cargando...</div></div>
@@ -1881,7 +1882,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 <div class="modal-overlay" id="modalEditarAgente">
     <div class="modal" style="max-width:480px;">
         <div class="modal-header">
-            <h3 class="modal-title">✏️ Editar agente</h3>
+            <h3 class="modal-title"><?= icono('pencil') ?> Editar agente</h3>
             <button class="modal-close" data-close="modalEditarAgente">&times;</button>
         </div>
         <div class="modal-body">
@@ -1905,7 +1906,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalEditarAgente">Cancelar</button>
-            <button class="btn btn-primary" data-action="adm-guardarEdicionAgente">💾 Guardar</button>
+            <button class="btn btn-primary" data-action="adm-guardarEdicionAgente"><?= icono('floppy') ?> Guardar</button>
         </div>
     </div>
 </div>
@@ -1914,7 +1915,7 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
 <div class="modal-overlay" id="modalHistorialCoord">
     <div class="modal modal-lg">
         <div class="modal-header">
-            <h3 class="modal-title">📋 Historial del coordinador</h3>
+            <h3 class="modal-title"><?= icono('clock-history') ?> <span>Historial del coordinador</span></h3>
             <button class="modal-close" data-close="modalHistorialCoord">&times;</button>
         </div>
         <div class="modal-body" id="historialCoordBody" style="min-height:200px;">
@@ -2100,14 +2101,14 @@ async function guardarEdicionAgente() {
 
 // PARCHE: Ver historial coordinador
 function verHistorialCoord(id, nombre) {
-    document.querySelector('#modalHistorialCoord .modal-title').textContent = `📋 Historial de ${nombre||'coordinador'}`;
+    document.querySelector('#modalHistorialCoord .modal-title span').textContent = `Historial de ${nombre||'coordinador'}`;
     document.getElementById('historialCoordBody').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>';
     openModal('modalHistorialCoord');
     const fd=new FormData(); fd.append('accion','get_historial_coordinador'); fd.append('agente_id',id);
     fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
         if(!d.ok){document.getElementById('historialCoordBody').innerHTML='<p style="color:var(--danger-color);text-align:center;padding:24px;">Error al cargar.</p>';return;}
         if(!d.historial.length){document.getElementById('historialCoordBody').innerHTML='<p style="color:var(--text-muted);text-align:center;padding:40px;">Sin acciones registradas.</p>';return;}
-        const typeIcon={cobro:'💳',comprobante:'📄',renovacion:'🔁',nota:'📝'};
+        const typeIcon={cobro:iconoSvg('credit-card'),comprobante:iconoSvg('file-earmark-text'),renovacion:iconoSvg('arrow-repeat'),nota:iconoSvg('pencil-square')};
         let html='<div style="display:flex;flex-direction:column;">';
         d.historial.forEach(h=>{
             html+=`<div style="display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border-color);">
@@ -2153,7 +2154,7 @@ document.addEventListener('dblclick',e=>{
     const eBadge={pendiente:'badge-warning',enviada:'badge-info',aceptada:'badge-success',rechazada:'badge-danger',pagado:'badge-success'};
     const eLabel={pendiente:'Pendiente',enviada:'Enviada',aceptada:'Aceptada',rechazada:'Rechazada',pagado:'Pagado'};
     document.getElementById('adminCotFolio').textContent=cot.folio||'#'+cot.id;
-    document.getElementById('adminCotContent').innerHTML=`<div style="display:flex;flex-direction:column;gap:12px;"><div style="background:linear-gradient(135deg,#0f2940,#1a3a5c);border-radius:10px;padding:18px 22px;color:#fff;"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"><div><div style="font-size:10px;opacity:.65;text-transform:uppercase;">Folio</div><div style="font-family:'Courier New',monospace;font-size:17px;font-weight:800;">${cot.folio||'Sin folio'}</div></div><span class="badge ${eBadge[cot.estado]||'badge-neutral'}" style="font-size:12px;padding:5px 12px;">${eLabel[cot.estado]||cot.estado}</span></div><div style="margin-top:10px;font-size:13px;opacity:.85;">📋 ${cot.compania} — ${cot.tipo_cobertura||''}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Cliente</div><div style="font-weight:600;">${cot.cliente_nombre}</div></div><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Asesor</div><div style="font-weight:600;">${cot.agente_nombre}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Prima</div><div style="font-size:20px;font-weight:800;color:var(--success-color);">$${parseFloat(cot.precio||0).toLocaleString('es-MX',{minimumFractionDigits:2})}</div></div><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Fecha</div><div style="font-weight:600;">${cot.fecha?new Date(cot.fecha+'T12:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—'}</div></div></div></div>`;
+    document.getElementById('adminCotContent').innerHTML=`<div style="display:flex;flex-direction:column;gap:12px;"><div style="background:linear-gradient(135deg,#0f2940,#1a3a5c);border-radius:10px;padding:18px 22px;color:#fff;"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"><div><div style="font-size:10px;opacity:.65;text-transform:uppercase;">Folio</div><div style="font-family:'Courier New',monospace;font-size:17px;font-weight:800;">${cot.folio||'Sin folio'}</div></div><span class="badge ${eBadge[cot.estado]||'badge-neutral'}" style="font-size:12px;padding:5px 12px;">${eLabel[cot.estado]||cot.estado}</span></div><div style="margin-top:10px;font-size:13px;opacity:.85;">${iconoSvg('clipboard')} ${cot.compania} — ${cot.tipo_cobertura||''}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Cliente</div><div style="font-weight:600;">${cot.cliente_nombre}</div></div><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Asesor</div><div style="font-weight:600;">${cot.agente_nombre}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Prima</div><div style="font-size:20px;font-weight:800;color:var(--success-color);">$${parseFloat(cot.precio||0).toLocaleString('es-MX',{minimumFractionDigits:2})}</div></div><div style="background:var(--bg-secondary);border-radius:8px;padding:12px;"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">Fecha</div><div style="font-weight:600;">${cot.fecha?new Date(cot.fecha+'T12:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—'}</div></div></div></div>`;
     openModal('modalAdminVerCot');}catch(_){}
 });
 window._adminCotId=null;
@@ -2161,13 +2162,13 @@ window._adminCotId=null;
 function tituloOrigen(bucket){
     const mes = '<?php echo date("F Y"); ?>';
     const labels = {
-        campana: '📢 Campaña (landing de anuncios) — ' + mes,
-        formulario:   '📋 Formularios propios (vida, autos, GMM, empresas) — ' + mes,
-        manual:       '👤 Alta manual (asesor) — ' + mes,
+        campana: 'Campaña (landing de anuncios) — ' + mes,
+        formulario:   'Formularios propios (vida, autos, GMM, empresas) — ' + mes,
+        manual:       'Alta manual (asesor) — ' + mes,
     };
     return labels[bucket] || ('Detalle — ' + mes);
 }
-function tituloPeriodo(periodo){const labels={hoy:'Hoy',ayer:'Ayer',semana:'Esta semana',semana_pasada:'Semana pasada',quincena:'Quincena actual',mes:'Este mes',mes_pasado:'Mes pasado'};return '🆕 Leads / Clientes nuevos — ' + (labels[periodo]||periodo);}
+function tituloPeriodo(periodo){const labels={hoy:'Hoy',ayer:'Ayer',semana:'Esta semana',semana_pasada:'Semana pasada',quincena:'Quincena actual',mes:'Este mes',mes_pasado:'Mes pasado'};return 'Leads / Clientes nuevos — ' + (labels[periodo]||periodo);}
 function abrirDetalleClientes(accion, params, titulo){
     document.getElementById('detalleClientesTitulo').textContent = titulo;
     document.getElementById('detalleClientesBody').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div>';
@@ -2179,7 +2180,7 @@ function abrirDetalleClientes(accion, params, titulo){
         const body = document.getElementById('detalleClientesBody');
         if (!d.ok) { body.innerHTML = '<p style="color:var(--danger-color);text-align:center;padding:24px;">Error al cargar.</p>'; return; }
         if (!d.detalle.length) { body.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px;">Sin clientes en este periodo.</p>'; return; }
-        const ramoLabels = {autos:'🚗 Autos', vida:'❤️ Vida', gastos_medicos:'🏥 GMM', empresas:'🏢 Empresas'};
+        const ramoLabels = {autos:iconoSvg('car-front')+' Autos', vida:iconoSvg('heart-fill')+' Vida', gastos_medicos:iconoSvg('hospital')+' GMM', empresas:iconoSvg('building')+' Empresas'};
         const rows = d.detalle.map(c => {
             const nombreCliente = [c.nombre, c.apellido_paterno, c.apellido_materno].filter(Boolean).join(' ');
             const agente = (c.agente_nombre || c.agente_apellido) ? `${c.agente_nombre||''} ${c.agente_apellido||''}`.trim() : '<span style="color:var(--text-muted);">Sin asesor</span>';
@@ -2199,7 +2200,7 @@ function abrirDetalleClientes(accion, params, titulo){
             </table></div>`;
     }).catch(()=>{document.getElementById('detalleClientesBody').innerHTML = '<p style="color:var(--danger-color);text-align:center;padding:24px;">Error de conexión.</p>';});
 }
-function abrirDocumentosAdmin(cotId){if(!cotId)return;document.getElementById('adminDocsFolio').textContent='...';document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);">⏳ Cargando...</div>';openModal('modalAdminDocs');const fd=new FormData();fd.append('accion','get_documentos_admin');fd.append('cotizacion_id',cotId);fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(!d.ok){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error al cargar documentos.</div>';return;}document.getElementById('adminDocsFolio').textContent=d.folio||'#'+cotId;if(!d.docs?.length){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:48px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-size:15px;font-weight:600;">Sin documentos adjuntos</div></div>';return;}const cards=d.docs.map(doc=>{const bi=doc.en_idrive?'<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">☁️ iDrive</span>':'<span style="font-size:10px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 8px;border-radius:99px;">Local</span>';const th=doc.es_imagen&&doc.url_local?`<div style="height:110px;border-radius:7px;overflow:hidden;margin-bottom:10px;cursor:pointer;" data-href="${doc.url_local}"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`:`<div style="height:110px;background:var(--bg-secondary);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;">${doc.es_pdf||doc.url_local?'📄':'📎'}</div>`;const bd=doc.url_local?`<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="flex:1;text-align:center;font-size:11px;">⬇ Descargar</a>`:`<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;">${doc.en_idrive?'Solo en ☁️ iDrive':'No disponible'}</span>`;return `<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;display:flex;flex-direction:column;">${th}<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">${doc.tipo_label}</div><div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px;" title="${doc.nombre_orig}">${doc.nombre_orig}</div><div style="display:flex;align-items:center;gap:8px;">${bi}${bd}</div></div>`;}).join('');document.getElementById('adminDocsContent').innerHTML=`<p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">${d.docs.length} documento${d.docs.length!==1?'s':''}</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;">${cards}</div>`;document.querySelectorAll('#adminDocsContent [data-href]').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.href,'_blank')));}).catch(()=>{document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error de conexión.</div>';});}
+function abrirDocumentosAdmin(cotId){if(!cotId)return;document.getElementById('adminDocsFolio').textContent='...';document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--text-muted);">'+iconoSvg('hourglass-split')+' Cargando...</div>';openModal('modalAdminDocs');const fd=new FormData();fd.append('accion','get_documentos_admin');fd.append('cotizacion_id',cotId);fetch('/admin',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(!d.ok){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error al cargar documentos.</div>';return;}document.getElementById('adminDocsFolio').textContent=d.folio||'#'+cotId;if(!d.docs?.length){document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:48px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">'+iconoSvg('inbox')+'</div><div style="font-size:15px;font-weight:600;">Sin documentos adjuntos</div></div>';return;}const cards=d.docs.map(doc=>{const bi=doc.en_idrive?'<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">'+iconoSvg('cloud')+' iDrive</span>':'<span style="font-size:10px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 8px;border-radius:99px;">Local</span>';const th=doc.es_imagen&&doc.url_local?`<div style="height:110px;border-radius:7px;overflow:hidden;margin-bottom:10px;cursor:pointer;" data-href="${doc.url_local}"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`:`<div style="height:110px;background:var(--bg-secondary);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;">${doc.es_pdf||doc.url_local?iconoSvg('file-earmark-text'):iconoSvg('paperclip')}</div>`;const bd=doc.url_local?`<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="flex:1;text-align:center;font-size:11px;">⬇ Descargar</a>`:`<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;">${doc.en_idrive?'Solo en '+iconoSvg('cloud')+' iDrive':'No disponible'}</span>`;return `<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;display:flex;flex-direction:column;">${th}<div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">${doc.tipo_label}</div><div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px;" title="${doc.nombre_orig}">${doc.nombre_orig}</div><div style="display:flex;align-items:center;gap:8px;">${bi}${bd}</div></div>`;}).join('');document.getElementById('adminDocsContent').innerHTML=`<p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">${d.docs.length} documento${d.docs.length!==1?'s':''}</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;">${cards}</div>`;document.querySelectorAll('#adminDocsContent [data-href]').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.href,'_blank')));}).catch(()=>{document.getElementById('adminDocsContent').innerHTML='<div style="text-align:center;padding:40px;color:var(--danger-color);">Error de conexión.</div>';});}
 
 // ── Paginación clientes del asesor (CORREGIDA) ──────────────────────────────
 (function(){

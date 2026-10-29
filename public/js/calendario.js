@@ -16,9 +16,9 @@
 let citaActualId = null;
 
 const TIPO_LABEL = {
-    llamada     : '📞 Llamada telefónica',
-    videollamada: '💻 Videollamada',
-    presencial  : '🤝 Presencial'
+    llamada     : iconoSvg('telephone') + ' Llamada telefónica',
+    videollamada: iconoSvg('camera-video') + ' Videollamada',
+    presencial  : iconoSvg('person-check') + ' Presencial'
 };
 
 const ESTADO_BADGE = {
@@ -155,7 +155,7 @@ function abrirDia(dia, mes, anio) {
     if (citasDia.length === 0) {
         document.getElementById('modalDiaContent').innerHTML = `
             <div class="empty-state" style="padding:32px 0;">
-                <div class="empty-state-icon" style="width:56px;height:56px;font-size:22px;">📅</div>
+                <div class="empty-state-icon" style="width:56px;height:56px;font-size:22px;">${iconoSvg('calendar-event')}</div>
                 <div class="empty-state-title" style="font-size:15px;">Sin citas este día</div>
                 <p class="empty-state-description">Puedes crear una nueva cita desde el botón inferior.</p>
             </div>`;

@@ -83,7 +83,7 @@ class CitaController
                 // aquí: una consulta por id sin él es exactamente por donde se
                 // cuela el acceso a la fila de otra empresa.
                 \Database\Connection::getConnection()
-                    ->prepare('UPDATE citas SET comentarios = CONCAT(COALESCE(comentarios,""), "\n🎥 Meet: ", ?) WHERE id = ? AND empresa_id = ?')
+                    ->prepare('UPDATE citas SET comentarios = CONCAT(COALESCE(comentarios,""), "\nMeet: ", ?) WHERE id = ? AND empresa_id = ?')
                     ->execute([$meetLink, $citaId, Tenant::requireId()]);
             }
 

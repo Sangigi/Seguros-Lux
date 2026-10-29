@@ -33,15 +33,15 @@ $porVehiculo      = $clienteModel->getTopVehiculos($agenteId);
 $topClientes      = $cotizacionModel->getTopClientes($agenteId, $ramoParam);
 $actividad        = $historialModel->getRecentByAgenteId($agenteId);
 
-$iconosAct = ['registro'=>'👤','cotizacion'=>'📋','venta'=>'✅','cita'=>'📅','llamada'=>'📞','nota'=>'📝','cambio_estado'=>'🔄'];
-$actividad = array_map(fn($a) => array_merge($a, ['icono' => $iconosAct[$a['tipo']] ?? '•']), $actividad);
+$iconosAct = ['registro'=>'person','cotizacion'=>'clipboard','venta'=>'check-circle-fill','cita'=>'calendar-event','llamada'=>'telephone','nota'=>'pencil-square','cambio_estado'=>'arrow-repeat'];
+$actividad = array_map(fn($a) => array_merge($a, ['icono' => isset($iconosAct[$a['tipo']]) ? icono($iconosAct[$a['tipo']]) : '•']), $actividad);
 
 $ramoLabels = [
-    'todos'          => ['label'=>'Todos los ramos',        'icon'=>'📊', 'color'=>'#64748b'],
-    'autos'          => ['label'=>'Autos',                  'icon'=>'🚗', 'color'=>'#0ea5e9'],
-    'vida'           => ['label'=>'Vida',                   'icon'=>'❤️', 'color'=>'#c9a227'],
-    'gastos_medicos' => ['label'=>'Gastos Médicos Mayores', 'icon'=>'🏥', 'color'=>'#10b981'],
-    'empresas'       => ['label'=>'Empresas',               'icon'=>'🏢', 'color'=>'#8b5cf6'],
+    'todos'          => ['label'=>'Todos los ramos',        'icon'=>'bar-chart',  'color'=>'#64748b'],
+    'autos'          => ['label'=>'Autos',                  'icon'=>'car-front',  'color'=>'#0ea5e9'],
+    'vida'           => ['label'=>'Vida',                   'icon'=>'heart-fill', 'color'=>'#c9a227'],
+    'gastos_medicos' => ['label'=>'Gastos Médicos Mayores', 'icon'=>'hospital',   'color'=>'#10b981'],
+    'empresas'       => ['label'=>'Empresas',               'icon'=>'building',   'color'=>'#8b5cf6'],
 ];
 $ramoActualInfo = $ramoLabels[$ramoFiltro];
 
@@ -114,7 +114,7 @@ $pageTitle = 'Reportes';
             <a href="?ramo=<?php echo $slug; ?>"
                class="ramo-tab <?php echo $ramoFiltro === $slug ? 'active' : ''; ?>"
                style="<?php echo $ramoFiltro === $slug ? 'background:'.$info['color'].';' : ''; ?>">
-                <?php echo $info['icon']; ?> <?php echo $info['label']; ?>
+                <?php echo icono($info['icon']); ?> <?php echo $info['label']; ?>
             </a>
             <?php endforeach; ?>
         </div>
@@ -123,7 +123,7 @@ $pageTitle = 'Reportes';
         <?php if ($ramoFiltro !== 'todos'): ?>
         <div class="ramo-banner"
              style="background:<?php echo $ramoActualInfo['color']; ?>15;border:1.5px solid <?php echo $ramoActualInfo['color']; ?>40;">
-            <span style="font-size:20px;"><?php echo $ramoActualInfo['icon']; ?></span>
+            <span style="font-size:20px;"><?php echo icono($ramoActualInfo['icon']); ?></span>
             <span style="color:<?php echo $ramoActualInfo['color']; ?>;">
                 Mostrando estadísticas de <strong><?php echo $ramoActualInfo['label']; ?></strong>
             </span>

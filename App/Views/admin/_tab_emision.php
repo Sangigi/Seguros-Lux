@@ -157,19 +157,19 @@ try {
 <div class="kpi4" style="margin-bottom:20px;">
     <div class="stat-card info">
         <div class="stat-card-value"><?= $kpiCots ?></div>
-        <div class="stat-card-label">📋 Nuevas en emisión</div>
+        <div class="stat-card-label"><?= icono('clipboard') ?> Nuevas en emisión</div>
     </div>
     <div class="stat-card info" style="border-color:#d97706;">
         <div class="stat-card-value" style="color:#d97706;"><?= $kpiRenov ?></div>
-        <div class="stat-card-label">🔄 Renovaciones en emisión</div>
+        <div class="stat-card-label"><?= icono('arrow-repeat') ?> Renovaciones en emisión</div>
     </div>
     <div class="stat-card success">
         <div class="stat-card-value"><?= $kpiConPol ?></div>
-        <div class="stat-card-label">📄 Con póliza subida</div>
+        <div class="stat-card-label"><?= icono('file-earmark-text') ?> Con póliza subida</div>
     </div>
     <div class="stat-card warning">
         <div class="stat-card-value"><?= $kpiPendPago ?></div>
-        <div class="stat-card-label">⏳ Pago pendiente</div>
+        <div class="stat-card-label"><?= icono('hourglass-split') ?> Pago pendiente</div>
     </div>
 </div>
 
@@ -189,8 +189,8 @@ try {
     </select>
     <select name="emi_pago" class="filter-select">
         <option value="">Todos los pagos</option>
-        <option value="pendiente"  <?= $emiEstatoPago==='pendiente'  ?'selected':'' ?>>⏳ Pago pendiente</option>
-        <option value="confirmado" <?= $emiEstatoPago==='confirmado' ?'selected':'' ?>>✅ Pago confirmado</option>
+        <option value="pendiente"  <?= $emiEstatoPago==='pendiente'  ?'selected':'' ?>>Pago pendiente</option>
+        <option value="confirmado" <?= $emiEstatoPago==='confirmado' ?'selected':'' ?>>Pago confirmado</option>
     </select>
     <!-- Toggle: ver completadas (pagadas + emitidas) -->
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
@@ -207,7 +207,7 @@ try {
     ⏱ Ventana de edición del coordinador: <strong><?= $EDIT_WINDOW_HORAS ?> hora<?= $EDIT_WINDOW_HORAS != 1 ? 's' : '' ?></strong> desde el registro del pago.
     <?php if ($isSuperadmin): ?>
     <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;margin-left:8px;"
-            data-action="emi-editarVentana">⚙️ Cambiar</button>
+            data-action="emi-editarVentana"><?= icono('gear') ?> Cambiar</button>
     <?php endif; ?>
 </div>
 
@@ -242,8 +242,8 @@ try {
                 'pagado'    =>'badge-success',
             ];
             $BADGE_PAGO = [
-                'pendiente'  => ['badge-warning', '⏳ Pendiente'],
-                'confirmado' => ['badge-success',  '✅ Confirmado'],
+                'pendiente'  => ['badge-warning', icono('hourglass-split') . ' Pendiente'],
+                'confirmado' => ['badge-success',  icono('check-circle-fill') . ' Confirmado'],
                 'rechazado'  => ['badge-danger',   '✗ Rechazado'],
             ];
             foreach ($emiCots as $cot):
@@ -279,7 +279,7 @@ try {
                     <?php if ($esRenovacion): ?>
                     <div style="margin-top:3px;">
                         <span style="display:inline-flex;align-items:center;gap:3px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:4px;font-size:10px;font-weight:700;padding:1px 6px;white-space:nowrap;">
-                            🔄 Renovación
+                            <?= icono('arrow-repeat') ?> Renovación
                         </span>
                         <?php if ($numPolizaAnterior): ?>
                         <div style="font-size:10px;color:var(--text-muted);margin-top:2px;font-family:monospace;" title="Póliza anterior">
@@ -324,12 +324,12 @@ try {
                    class="emi-btn-view" 
                    style="padding:2px 6px; font-size:11px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; background:#0f172a; color:#fff; border-radius:4px;"
                    title="Ver archivo de la póliza">
-                   👁 Ver Póliza
+                   <?= icono('eye') ?> Ver Póliza
                 </a>
             <?php endif; ?>
         </div>
     <?php else: ?>
-        <span class="emi-pill pill-pend" title="Falta emitir/subir póliza original">⏳ Pendiente</span>
+        <span class="emi-pill pill-pend" title="Falta emitir/subir póliza original"><?= icono('hourglass-split') ?> Pendiente</span>
     <?php endif; ?>
 </td>
                 <?php
@@ -343,14 +343,14 @@ try {
                 <td class="emi-stop-prop">
                     <?php if ($esEmitidaPagada): ?>
                         <div style="color:#10b981; font-size:12px; font-weight:700; margin-bottom:8px; text-align:center;">
-                            ✔️ Emitida y Pagada
+                            <?= icono('check-lg') ?> Emitida y Pagada
                         </div>
                         <?php if ($tieneComp): ?>
                             <button class="btn btn-ghost btn-sm"
                                     data-action="emi-verComprobante"
                                     data-comprobante-id="<?= (int)$cot['comprobante_id'] ?>"
                                     style="width:100%; margin-bottom:4px;">
-                                👁 Ver comprobante
+                                <?= icono('eye') ?> Ver comprobante
                             </button>
                             <?php if ($puedeEditar): ?>
                             <button class="btn btn-outline btn-sm"
@@ -359,11 +359,11 @@ try {
                                     data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
                                     data-asesor-id="<?= (int)$cot['asesor_id'] ?>"
                                     style="width:100%; margin-bottom:4px;">
-                                🔄 Cambiar cobro
+                                <?= icono('arrow-repeat') ?> Cambiar cobro
                             </button>
                             <?php else: ?>
                             <div style="font-size:10px;color:var(--text-muted);text-align:center;margin-bottom:4px;">
-                                🔒 Ventana de edición cerrada
+                                <?= icono('lock') ?> Ventana de edición cerrada
                             </div>
                             <?php if ($isSuperadmin && $tieneComp): ?>
                             <button class="btn btn-ghost btn-sm"
@@ -379,7 +379,7 @@ try {
                     <?php elseif ($puedeRegistrarPago): ?>
                         <?php if ($enProceso): ?>
                         <div style="font-size:10px;color:var(--success-color);font-weight:700;margin-bottom:6px;">
-                            ✅ Docs. recibidos, listo para cobro
+                            <?= icono('check-circle-fill') ?> Docs. recibidos, listo para cobro
                         </div>
                         <!-- NUEVO: Botón para rechazar expediente completo -->
                         <button class="btn btn-sm btn-danger"
@@ -391,7 +391,7 @@ try {
                         </button>
                     <?php else: ?>
                             <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;">
-                                📁 <?= (int)$cot['total_archivos'] ?> doc(s) subidos
+                                <?= icono('folder') ?> <?= (int)$cot['total_archivos'] ?> doc(s) subidos
                             </div>
                         <?php endif; ?>
                         <button class="btn btn-primary btn-sm"
@@ -400,7 +400,7 @@ try {
                                 data-folio="<?= htmlspecialchars($cot['folio'] ?? '#'.$cot['id'], ENT_QUOTES) ?>"
                                 data-asesor-id="<?= (int)$cot['asesor_id'] ?>"
                                 style="width:100%; margin-bottom:4px;">
-                            💳 Registrar pago
+                            <?= icono('credit-card') ?> Registrar pago
                         </button>
 
                     <?php else: ?>
@@ -412,9 +412,9 @@ try {
                     <a href="/admin?accion=emi_pdf_checklist&cotizacion_id=<?= $cot['id'] ?>"
                        target="_blank" class="btn btn-outline btn-sm" style="display:block;text-align:center;">
                         <?php if ($esRenovacion): ?>
-                            🔄 Checklist Renovación<?= $numPolizaAnterior ? '<br><span style="font-size:10px;font-family:monospace;opacity:.75;">'.htmlspecialchars($numPolizaAnterior).'</span>' : '' ?>
+                            <?= icono('arrow-repeat') ?> Checklist Renovación<?= $numPolizaAnterior ? '<br><span style="font-size:10px;font-family:monospace;opacity:.75;">'.htmlspecialchars($numPolizaAnterior).'</span>' : '' ?>
                         <?php else: ?>
-                            📋 Checklist
+                            <?= icono('clipboard') ?> Checklist
                         <?php endif; ?>
                     </a>
                 </td>
@@ -449,7 +449,7 @@ try {
 <div class="modal-overlay" id="modalEmiDetalle">
     <div class="modal modal-lg">
         <div class="modal-header">
-            <h3 class="modal-title">📄 Expediente — <span id="emiDetalleFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+            <h3 class="modal-title"><?= icono('file-earmark-text') ?> Expediente — <span id="emiDetalleFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
             <button class="modal-close" data-close="modalEmiDetalle">&times;</button>
         </div>
         <div class="modal-body" id="emiDetalleBody" style="min-height:200px;">
@@ -458,7 +458,7 @@ try {
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalEmiDetalle">Cerrar</button>
             <button class="btn btn-primary" id="btnEmiRegistrarPagoDesdeDetalle" style="display:none;">
-                💳 Registrar pago
+                <?= icono('credit-card') ?> Registrar pago
             </button>
         </div>
     </div>
@@ -470,7 +470,7 @@ try {
 <div class="modal-overlay" id="modalEmiComprobante">
     <div class="modal" style="max-width:560px;">
         <div class="modal-header">
-            <h3 class="modal-title">💳 Registrar pago — <span id="emiCompFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+            <h3 class="modal-title"><?= icono('credit-card') ?> Registrar pago — <span id="emiCompFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
             <button class="modal-close" data-close="modalEmiComprobante">&times;</button>
         </div>
         <div class="modal-body">
@@ -533,7 +533,7 @@ try {
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalEmiComprobante">Cancelar</button>
-            <button class="btn btn-primary" id="btnEmiGuardarComprobante">💾 Confirmar pago</button>
+            <button class="btn btn-primary" id="btnEmiGuardarComprobante"><?= icono('floppy') ?> Confirmar pago</button>
         </div>
     </div>
 </div>
@@ -544,7 +544,7 @@ try {
 <div class="modal-overlay" id="modalEmiVerComp">
     <div class="modal" style="max-width:480px;">
         <div class="modal-header">
-            <h3 class="modal-title">✅ Comprobante de pago</h3>
+            <h3 class="modal-title"><?= icono('check-circle-fill') ?> Comprobante de pago</h3>
             <button class="modal-close" data-close="modalEmiVerComp">&times;</button>
         </div>
         <div class="modal-body" id="emiVerCompBody">
@@ -634,7 +634,7 @@ try {
                         <span class="badge badge-neutral">Cobertura: ${d.tipo_cobertura || '—'}</span>
                     </div>
                     <div style="font-size:13px;color:var(--text-secondary);">
-                        👤 <strong>${d.cliente_nombre}</strong> &nbsp;·&nbsp; Asesor: ${d.asesor_nombre}
+                        ${iconoSvg('person')} <strong>${d.cliente_nombre}</strong> &nbsp;·&nbsp; Asesor: ${d.asesor_nombre}
                     </div>
                 </div>`;
                 if (!d.docs || !d.docs.length) {
@@ -644,7 +644,7 @@ try {
                     d.docs.forEach(doc => {
                         const thumb = doc.es_imagen && doc.url_local
                             ? `<div style="height:90px;border-radius:6px;overflow:hidden;margin-bottom:8px;cursor:pointer;" data-action="emi-openImg"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`
-                            : `<div style="height:90px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;">${doc.es_pdf ? '📄' : '📎'}</div>`;
+                            : `<div style="height:90px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;">${doc.es_pdf ? iconoSvg('file-earmark-text') : iconoSvg('paperclip')}</div>`;
                         const dl = doc.url_local
                             ? `<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="width:100%;text-align:center;font-size:11px;">⬇ Descargar</a>`
                             : `<span style="font-size:11px;color:var(--text-muted);">No disponible</span>`;
@@ -718,7 +718,7 @@ try {
         try {
             const r = await fetch('/admin', { method: 'POST', body: fd });
             const d = await r.json();
-            btn.disabled = false; btn.textContent = '💾 Confirmar pago';
+            btn.disabled = false; btn.innerHTML = iconoSvg('floppy') + ' Confirmar pago';
             document.getElementById('emiCompProgress').style.display = 'none';
             if (d.ok) {
                 if (typeof toast === 'function') toast('Pago confirmado. Notificación enviada al asesor.', 'success');
@@ -728,7 +728,7 @@ try {
                 if (typeof toast === 'function') toast(d.msg || 'Error al guardar', 'error');
             }
         } catch {
-            btn.disabled = false; btn.textContent = '💾 Confirmar pago';
+            btn.disabled = false; btn.innerHTML = iconoSvg('floppy') + ' Confirmar pago';
             document.getElementById('emiCompProgress').style.display = 'none';
             if (typeof toast === 'function') toast('Error de conexión', 'error');
         }
@@ -760,8 +760,8 @@ try {
                                 ${c.referencia ? `<div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Referencia</div><div style="font-family:monospace;">${c.referencia}</div></div>` : ''}
                             </div>
                         </div>
-                        ${c.comentarios ? `<div style="background:var(--bg-secondary);border-radius:8px;padding:12px;font-size:13px;color:var(--text-secondary);">💬 ${c.comentarios}</div>` : ''}
-                        ${c.url_local ? `<a href="${c.url_local}" target="_blank" class="btn btn-outline" style="text-align:center;">📄 Ver archivo del comprobante</a>` : ''}
+                        ${c.comentarios ? `<div style="background:var(--bg-secondary);border-radius:8px;padding:12px;font-size:13px;color:var(--text-secondary);">${iconoSvg('chat-dots')} ${c.comentarios}</div>` : ''}
+                        ${c.url_local ? `<a href="${c.url_local}" target="_blank" class="btn btn-outline" style="text-align:center;">${iconoSvg('file-earmark-text')} Ver archivo del comprobante</a>` : ''}
                         <div style="font-size:11px;color:var(--text-muted);text-align:right;">Registrado: ${c.creado_en}</div>
                     </div>`;
             })

@@ -24,7 +24,7 @@ class ExportController
         $filtroAgente = ($isAdmin && isset($_GET['agente_id'])) ? (int)$_GET['agente_id'] : ($isAdmin ? null : $agenteId);
 
         $fechaGenerado = date('d/m/Y H:i');
-        $nombreArchivo = 'EIRA_' . strtoupper($tipo) . '_' . date('Y-m-d');
+        $nombreArchivo = 'SegurosLux_' . strtoupper($tipo) . '_' . date('Y-m-d');
 
         if ($tipo === 'cotizaciones') {
             $filtroEstado = $_GET['estado'] ?? null;

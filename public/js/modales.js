@@ -1,5 +1,5 @@
 /**
- * modales.js — CRM EIRA
+ * modales.js — CRM Seguros Lux
  */
 document.addEventListener('DOMContentLoaded', () => {
 

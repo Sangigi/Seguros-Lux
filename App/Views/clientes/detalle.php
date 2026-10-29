@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         if ((int)$stCitaCount->fetchColumn() >= 20) {
             echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene 20 citas registradas (límite máximo).']); exit;
         }
-        if ($tipo==='videollamada'&&$enlace) $com=($com?$com."\n":'').'🎥 Enlace: '.$enlace;
+        if ($tipo==='videollamada'&&$enlace) $com=($com?$com."\n":'').'Enlace: '.$enlace;
         $citaModel->crear($clienteId,$agenteId,$tipo,$fecha,$hora,$com,SessionManager::getRamo());
         $historialModel->registrar($clienteId,$agenteId,'cita','Cita programada — '.ucfirst($tipo),"$fecha a las $hora");
         echo json_encode(['ok'=>true]); exit;
@@ -238,7 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 $clienteId,
                 $agenteId,
                 'cotizacion',
-                '🔁 Renovación cargada',
+                'Renovación cargada',
                 'Se adjuntó póliza renovada y se generó cotización pendiente de pago.'
             );
         }
@@ -319,7 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 foreach ($coords as $cid) {
                     $stmt->execute([
                         $cid, 'emision',
-                        "📤 Expediente listo y Póliza subida — {$folio}",
+                        "Expediente listo y Póliza subida — {$folio}",
                         "El asesor completó el expediente de {$clienteNombre} ({$datCot['compania']}) y adjuntó la póliza. Pendiente de pago.",
                         "/admin?tab=emision",
                         $empresaId
@@ -327,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 }
                 
                 $historialModel->registrar($clienteId, $agenteId, 'cotizacion', 
-                    "📤 Expediente enviado a revisión — {$folio}", 
+                    "Expediente enviado a revisión — {$folio}",
                     "Póliza subida. Pendiente confirmación de pago por el coordinador."
                 );
             }
@@ -631,14 +631,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             foreach ($coords as $cid) {
                 $stmt->execute([
                     $cid, 'emision',
-                    "📤 Expediente listo — {$folio}",
+                    "Expediente listo — {$folio}",
                     "El asesor envió el expediente completo de {$clienteNombre} ({$datCot['compania']}) para emisión y cobro.",
                     "/admin?tab=emision",
                     $empresaId,
                 ]);
             }
             $historialModel->registrar($clienteId, $agenteId, 'cotizacion',
-                "📤 Expediente enviado al coordinador — {$folio}",
+                "Expediente enviado al coordinador — {$folio}",
                 "Todos los documentos requeridos están completos. Pendiente de cobro por coordinador."
             );
             echo json_encode(['ok'=>true,'msg'=>'Expediente enviado al coordinador. Se notificará cuando el pago sea confirmado.']); exit;
@@ -730,7 +730,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 
             $historialModel->registrar(
                 $clienteId, $agenteId, 'cotizacion',
-                '🔁 Renovación enviada a coordinador',
+                'Renovación enviada a coordinador',
                 'Póliza ' . ($numPoliza ?: $pol['numero_poliza']) . ' — ' . $pol['compania'] . ($comentarios ? " | {$comentarios}" : '')
             );
 
@@ -747,7 +747,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             foreach ($coords as $cid) {
                 $stNotif->execute([
                     $cid, 'emision',
-                    "🔁 Renovación lista — {$clienteNombre}",
+                    "Renovación lista — {$clienteNombre}",
                     "El asesor subió la póliza renovada de {$clienteNombre} ({$pol['compania']}). Pendiente de cobro.",
                     '/admin?tab=emision',
                     $empresaId,
@@ -951,11 +951,11 @@ $estadosCliente=['nuevo'=>['label'=>'Nuevo','class'=>'badge-info'],'contactado'=
 $estadosCot=['pendiente'=>['label'=>'Pendiente','class'=>'badge-warning'],'enviada'=>['label'=>'Enviada','class'=>'badge-info'],
     'aceptada'=>['label'=>'Aceptada','class'=>'badge-success'],'rechazada'=>['label'=>'Rechazada','class'=>'badge-danger'],
     'pagado'=>['label'=>'Pagado','class'=>'badge-success']];
-$estadosPoliza=['vigente'=>['label'=>'Vigente','class'=>'badge-success','emoji'=>'✅'],
-    'por_vencer'=>['label'=>'Por vencer','class'=>'badge-warning','emoji'=>'⚠️'],
-    'vencida'=>['label'=>'Vencida','class'=>'badge-danger','emoji'=>'❌'],
-    'cancelada'=>['label'=>'Cancelada','class'=>'badge-neutral','emoji'=>'🚫']];
-$iconosH=['registro'=>'👤','llamada'=>'📞','cotizacion'=>'📋','cita'=>'📅','nota'=>'📝','venta'=>'✅','cambio_estado'=>'🔄'];
+$estadosPoliza=['vigente'=>['label'=>'Vigente','class'=>'badge-success','icono'=>'check-circle-fill'],
+    'por_vencer'=>['label'=>'Por vencer','class'=>'badge-warning','icono'=>'exclamation-triangle-fill'],
+    'vencida'=>['label'=>'Vencida','class'=>'badge-danger','icono'=>'x-circle-fill'],
+    'cancelada'=>['label'=>'Cancelada','class'=>'badge-neutral','icono'=>'ban']];
+$iconosH=['registro'=>'person','llamada'=>'telephone','cotizacion'=>'clipboard','cita'=>'calendar-event','nota'=>'pencil-square','venta'=>'check-circle-fill','cambio_estado'=>'arrow-repeat'];
 
 $estadoInfo    =$estadosCliente[$cliente['estado_cliente']]??['label'=>'—','class'=>'badge-neutral'];
 $nombreCompleto=$cliente['nombre'].' '.$cliente['apellido_paterno'].' '.$cliente['apellido_materno'];
@@ -1031,9 +1031,9 @@ $pageTitle=$nombreCompleto;
                 <div class="client-header-info">
                     <h1 class="client-header-name"><?php echo htmlspecialchars($nombreCompleto); ?></h1>
                     <div class="client-header-meta">
-                        <span>✉️ <?php echo htmlspecialchars($cliente['correo']); ?></span>
-                        <?php if (!empty($cliente['telefono'])): ?><span>📞 <?php echo htmlspecialchars($cliente['telefono']); ?></span><?php endif; ?>
-                        <?php if (!empty($cliente['ciudad'])): ?><span>📍 <?php echo htmlspecialchars($cliente['ciudad']); ?></span><?php endif; ?>
+                        <span><?= icono('envelope') ?> <?php echo htmlspecialchars($cliente['correo']); ?></span>
+                        <?php if (!empty($cliente['telefono'])): ?><span><?= icono('telephone') ?> <?php echo htmlspecialchars($cliente['telefono']); ?></span><?php endif; ?>
+                        <?php if (!empty($cliente['ciudad'])): ?><span><?= icono('geo-alt') ?> <?php echo htmlspecialchars($cliente['ciudad']); ?></span><?php endif; ?>
                     </div>
                     <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                         <span class="badge" style="background:rgba(255,255,255,.25);color:#fff;"><?php echo $estadoInfo['label']; ?></span>
@@ -1046,7 +1046,7 @@ $pageTitle=$nombreCompleto;
                     </div>
                 </div>
                 <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>"
-                   class="btn" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);white-space:nowrap;">📋 Nueva Cotización</a>
+                   class="btn" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);white-space:nowrap;"><?= icono('clipboard') ?> Nueva Cotización</a>
             </div>
         </div>
 
@@ -1057,7 +1057,7 @@ $pageTitle=$nombreCompleto;
                 <div class="card mb-24">
                     <div class="card-header">
                         <h3 class="card-title">Información Personal</h3>
-                        <button class="btn btn-sm btn-outline" data-action="det-open" data-modal="modalEditarCliente">✏️ Editar</button>
+                        <button class="btn btn-sm btn-outline" data-action="det-open" data-modal="modalEditarCliente"><?= icono('pencil') ?> Editar</button>
                     </div>
                     <div class="card-body">
                         <div class="info-grid">
@@ -1087,8 +1087,8 @@ $pageTitle=$nombreCompleto;
                         <!-- ── Vehículo del cliente ──────────────────────────────────────────────── -->
 <div class="card" style="margin-bottom:20px;">
     <div class="card-header">
-        <h3 class="card-title">🚗 Vehículo</h3>
-        <button type="button" class="btn btn-outline btn-sm" id="btnEditarVehiculo">✏️ Editar</button>
+        <h3 class="card-title"><?= icono('car-front') ?> Vehículo</h3>
+        <button type="button" class="btn btn-outline btn-sm" id="btnEditarVehiculo"><?= icono('pencil') ?> Editar</button>
     </div>
     <div class="card-body" id="vehiculoViewMode">
         <?php if (!empty($vehiculo)): ?>
@@ -1116,13 +1116,13 @@ $pageTitle=$nombreCompleto;
         </div>
         <?php if (!empty($vehiculo['tiene_adaptaciones'])): ?>
         <div style="margin-top:12px;background:var(--info-light);border-radius:8px;padding:12px;font-size:13px;">
-            <strong>🔧 Adaptaciones / Modificaciones:</strong><br>
+            <strong><?= icono('wrench') ?> Adaptaciones / Modificaciones:</strong><br>
             <?= nl2br(htmlspecialchars($vehiculo['adaptaciones_texto'] ?: ($vehiculo['detalle_adaptaciones'] ?? '—'))) ?>
         </div>
         <?php endif; ?>
         <?php if (!empty($vehiculo['info_adicional'])): ?>
         <div style="margin-top:8px;background:var(--bg-secondary);border-radius:8px;padding:12px;font-size:12px;color:var(--text-secondary);">
-            📝 <?= nl2br(htmlspecialchars($vehiculo['info_adicional'])) ?>
+            <?= icono('pencil-square') ?> <?= nl2br(htmlspecialchars($vehiculo['info_adicional'])) ?>
         </div>
         <?php endif; ?>
         <?php else: ?>
@@ -1265,14 +1265,14 @@ $pageTitle=$nombreCompleto;
  
         <div style="display:flex;gap:10px;margin-top:16px;">
             <button type="button" class="btn btn-outline btn-sm" id="btnCancelarVehiculo">Cancelar</button>
-            <button type="button" class="btn btn-primary btn-sm" id="btnGuardarVehiculo">💾 Guardar vehículo</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btnGuardarVehiculo"><?= icono('floppy') ?> Guardar vehículo</button>
         </div>
     </div>
 </div>
                         <?php endif; ?>
 
                         <?php if (in_array($ramoCliente, ['vida','gastos_medicos'], true)): ?>
-                        <div class="section-subtitle"><?php echo $ramoCliente==='vida'?'❤️ Seguro de Vida':'🏥 Gastos Médicos'; ?></div>
+                        <div class="section-subtitle"><?php echo $ramoCliente==='vida'?icono('heart-fill').' Seguro de Vida':icono('hospital').' Gastos Médicos'; ?></div>
                         <div class="info-grid">
                             <div class="info-item"><span class="info-label">Sexo</span><span class="info-value"><?php echo ucfirst($cliente['sexo']??'—'); ?></span></div>
                             <div class="info-item"><span class="info-label">Fecha Nacimiento</span><span class="info-value"><?php echo $cliente['fecha_nacimiento']?date('d/m/Y',strtotime($cliente['fecha_nacimiento'])):'—'; ?></span></div>
@@ -1282,7 +1282,7 @@ $pageTitle=$nombreCompleto;
                         <?php endif; ?>
 
                         <?php if ($ramoCliente === 'empresas'): ?>
-                        <div class="section-subtitle">🏢 Datos Empresariales</div>
+                        <div class="section-subtitle"><?= icono('building') ?> Datos Empresariales</div>
                         <div class="info-grid">
                             <div class="info-item"><span class="info-label">Giro / Industria</span><span class="info-value"><?php echo htmlspecialchars($cliente['giro_empresa']??'—'); ?></span></div>
                             <div class="info-item"><span class="info-label">Núm. Empleados</span><span class="info-value"><?php echo $cliente['num_empleados']??'—'; ?></span></div>
@@ -1333,7 +1333,7 @@ $pageTitle=$nombreCompleto;
                         ?>
                         <?php if (empty($polizas) && empty($allDocPoliza)): ?>
                         <div style="text-align:center;padding:28px 0;color:var(--text-muted);">
-                            <div style="font-size:36px;margin-bottom:8px;">📄</div>
+                            <div style="font-size:36px;margin-bottom:8px;"><?= icono('file-earmark-text') ?></div>
                             <p style="font-size:13px;margin-bottom:10px;">Sin pólizas registradas.</p>
                             <!-- <?php if ($puedeGestionarPolizas): ?>
                             <button class="btn btn-primary btn-sm" data-action="det-open" data-modal="modalSubirPoliza">Subir primera póliza</button>
@@ -1342,12 +1342,12 @@ $pageTitle=$nombreCompleto;
                         <?php elseif (empty($polizas) && !empty($allDocPoliza)): ?>
                         <!-- El coordinador subió documentos de póliza pero no hay póliza en la tabla polizas -->
                         <div style="margin-bottom:12px;">
-                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">📋 Documentos de póliza registrados por el coordinador:</p>
+                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;"><?= icono('clipboard') ?> Documentos de póliza registrados por el coordinador:</p>
                             <?php foreach ($allDocPoliza as $_dp):
                                 $_rutaF = dirname(__DIR__,3).'/uploads/cotizaciones/'.(int)($_dp['cotizacion_id'] ?? 0).'/'.$_dp['nombre_archivo'];
                                 $_urlD  = file_exists($_rutaF) ? '/archivo?file=cotizaciones/'.(int)$_dp['cotizacion_id'].'/'.$_dp['nombre_archivo'] : null;
                                 $_extD  = strtolower(pathinfo($_dp['nombre_original'] ?? '', PATHINFO_EXTENSION));
-                                $_iconD = $_extD === 'pdf' ? '📄' : '🖼️';
+                                $_iconD = icono($_extD === 'pdf' ? 'file-earmark-pdf' : 'image');
                             ?>
                             <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;">
                                 <span style="font-size:22px;"><?php echo $_iconD; ?></span>
@@ -1363,7 +1363,7 @@ $pageTitle=$nombreCompleto;
                         </div>
                         <?php else: ?>
                         <?php foreach ($polizas as $pol):
-                            $epI   =$estadosPoliza[$pol['estado']]??['label'=>'—','class'=>'badge-neutral','emoji'=>'📄'];
+                            $epI   =$estadosPoliza[$pol['estado']]??['label'=>'—','class'=>'badge-neutral','icono'=>'file-earmark-text'];
                             $dias  =(int)($pol['dias_restantes']??999);
                             $dCss  =$dias<=7?'dias-danger':($dias<=30?'dias-warn':'dias-ok');
                             $cCss  =$pol['estado']==='vencida'?'vencida':($pol['estado']==='por_vencer'?'por_vencer':'');
@@ -1378,42 +1378,42 @@ $pageTitle=$nombreCompleto;
                             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;">
                                 <div style="flex:1;min-width:0;">
                                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-                                        <span class="badge <?php echo $epI['class']; ?>"><?php echo $epI['emoji'].' '.$epI['label']; ?></span>
+                                        <span class="badge <?php echo $epI['class']; ?>"><?php echo icono($epI['icono']).' '.$epI['label']; ?></span>
                                         <?php if ($pagada): ?>
-                                        <span class="badge-pagado">✅ Pagada</span>
+                                        <span class="badge-pagado"><?= icono('check-circle-fill') ?> Pagada</span>
                                         <?php else: ?>
-                                        <span class="badge-pendiente-pago">⏳ Pago pendiente</span>
+                                        <span class="badge-pendiente-pago"><?= icono('hourglass-split') ?> Pago pendiente</span>
                                         <?php endif; ?>
-                                        <?php if ($pol['idrive_subido']): ?><span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;">☁️ iDrive</span><?php endif; ?>
+                                        <?php if ($pol['idrive_subido']): ?><span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:99px;font-weight:600;"><?= icono('cloud') ?> iDrive</span><?php endif; ?>
                                         <?php if (!empty($pol['compania'])): ?><span style="font-size:12px;font-weight:600;"><?php echo htmlspecialchars($pol['compania']); ?></span><?php endif; ?>
                                     </div>
                                     <?php if (!empty($pol['numero_poliza'])): ?>
                                     <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;"># <?php echo htmlspecialchars($pol['numero_poliza']); ?></div>
                                     <?php endif; ?>
                                     <div style="font-size:12px;color:var(--text-secondary);display:flex;gap:12px;flex-wrap:wrap;">
-                                        <?php if ($pol['fecha_inicio']): ?><span>📅 <?php echo date('d/m/Y',strtotime($pol['fecha_inicio'])); ?></span><?php endif; ?>
+                                        <?php if ($pol['fecha_inicio']): ?><span><?= icono('calendar-event') ?> <?php echo date('d/m/Y',strtotime($pol['fecha_inicio'])); ?></span><?php endif; ?>
                                         <?php if ($pol['fecha_fin']): ?>
-                                        <span>⏳ <?php echo date('d/m/Y',strtotime($pol['fecha_fin'])); ?></span>
+                                        <span><?= icono('hourglass-split') ?> <?php echo date('d/m/Y',strtotime($pol['fecha_fin'])); ?></span>
                                         <?php if (!in_array($pol['estado'],['vencida','cancelada'],true)): ?>
                                         <span class="poliza-dias <?php echo $dCss; ?>"><?php echo $dias; ?> días</span>
                                         <?php endif; ?>
                                         <?php endif; ?>
-                                        <?php if (!empty($pol['frecuencia_renovacion'])): ?><span>🔄 <?php echo ucfirst($pol['frecuencia_renovacion']); ?></span><?php endif; ?>
+                                        <?php if (!empty($pol['frecuencia_renovacion'])): ?><span><?= icono('arrow-repeat') ?> <?php echo ucfirst($pol['frecuencia_renovacion']); ?></span><?php endif; ?>
                                     </div>
                                     <?php if (!empty($pol['notas'])): ?><div style="font-size:12px;color:var(--text-muted);margin-top:6px;"><?php echo htmlspecialchars($pol['notas']); ?></div><?php endif; ?>
                                 </div>
                                 <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">
                                         <?php if (!empty($pol['cotizacion_id'])): ?>
                                     <a href="/cotizaciones?ver=<?php echo (int)$pol['cotizacion_id']; ?>"
-                                       style="font-size:11px;color:var(--accent-color);" title="Ver cotización vinculada">📋 Cotización</a>
+                                       style="font-size:11px;color:var(--accent-color);" title="Ver cotización vinculada"><?= icono('clipboard') ?> Cotización</a>
                                     <?php endif; ?>
                                     <?php if ($puedeGestionarPolizas): ?>
                                         <?php if ($urlP): ?>
-                                    <a href="<?php echo $urlP; ?>" target="_blank" class="btn btn-sm btn-outline" title="Ver">👁</a>
+                                    <a href="<?php echo $urlP; ?>" target="_blank" class="btn btn-sm btn-outline" title="Ver"><?= icono('eye') ?></a>
                                     <a href="<?php echo $urlP; ?>" download="<?php echo htmlspecialchars($pol['nombre_original']); ?>" class="btn btn-sm btn-outline" title="Descargar">⬇</a>
                                         <?php endif; ?>
-                                    <button class="btn btn-sm btn-outline" data-action="det-editarPoliza" data-pol="<?php echo htmlspecialchars(json_encode($pol),ENT_QUOTES); ?>" title="Editar">✏️</button>
-                                    <button class="btn btn-sm btn-outline" data-action="det-eliminarPoliza" data-id="<?php echo $pol['id']; ?>" title="Eliminar" style="color:var(--danger-color,#ef4444);">🗑</button>
+                                    <button class="btn btn-sm btn-outline" data-action="det-editarPoliza" data-pol="<?php echo htmlspecialchars(json_encode($pol),ENT_QUOTES); ?>" title="Editar"><?= icono('pencil') ?></button>
+                                    <button class="btn btn-sm btn-outline" data-action="det-eliminarPoliza" data-id="<?php echo $pol['id']; ?>" title="Eliminar" style="color:var(--danger-color,#ef4444);"><?= icono('trash') ?></button>
                                     <?php elseif ($urlP): ?>
                                     <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Archivo en custodia</span>
                                     <?php endif; ?>
@@ -1424,7 +1424,7 @@ $pageTitle=$nombreCompleto;
                                             data-poliza-id="<?php echo (int)$pol['id']; ?>"
                                             data-poliza-num="<?php echo htmlspecialchars($pol['numero_poliza'] ?? 'Sin número'); ?>"
                                             title="Solicitar renovación de póliza">
-                                        🔄 Renovar
+                                        <?= icono('arrow-repeat') ?> Renovar
                                     </button>
                                 </div>
                             </div>
@@ -1437,12 +1437,12 @@ $pageTitle=$nombreCompleto;
                 <!-- ═══ PAGOS ═══ -->
                 <?php if (!empty($pagosPorCot)): ?>
                 <div class="card mb-24">
-                    <div class="card-header"><h3 class="card-title">💰 Pagos Registrados</h3></div>
+                    <div class="card-header"><h3 class="card-title"><?= icono('cash-coin') ?> Pagos Registrados</h3></div>
                     <div class="card-body">
                         <?php foreach ($cotizaciones as $cot):
                             if (empty($pagosPorCot[(int)$cot['id']])) continue;
                             $pagos=$pagosPorCot[(int)$cot['id']];
-                            $metodosLabel=['spei'=>'🏦 SPEI','contado'=>'💵 Contado','meses_sin_intereses'=>'💳 MSI'];
+                            $metodosLabel=['spei'=>icono('bank').' SPEI','contado'=>icono('cash').' Contado','meses_sin_intereses'=>icono('credit-card').' MSI'];
                         ?>
                         <div style="margin-bottom:18px;">
                             <div style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">
@@ -1470,13 +1470,13 @@ $pageTitle=$nombreCompleto;
                                 }
                             ?>
                             <div class="pago-row">
-                                <div style="font-size:20px;">💰</div>
+                                <div style="font-size:20px;"><?= icono('cash-coin') ?></div>
                                 <div style="flex:1;">
                                     <div style="font-weight:600;"><?php echo $mLabel; ?></div>
                                     <div style="font-size:11px;color:var(--text-muted);"><?php echo date('d/m/Y', strtotime($pago['fecha_pago'] ?? $pago['creada_en'] ?? 'now')); ?><?php if ($pago['notas']): ?> · <?php echo htmlspecialchars($pago['notas']); ?><?php endif; ?></div>
                                 </div>
                                 <?php if ($pago['monto']>0): ?><div style="font-weight:700;color:var(--success-color,#22c55e);">$<?php echo number_format((float)$pago['monto'],2); ?></div><?php endif; ?>
-                                <?php if ($urlPago): ?><a href="<?php echo $urlPago; ?>" target="_blank" class="btn btn-sm btn-outline" title="Ver comprobante">📎</a><?php endif; ?>
+                                <?php if ($urlPago): ?><a href="<?php echo $urlPago; ?>" target="_blank" class="btn btn-sm btn-outline" title="Ver comprobante"><?= icono('paperclip') ?></a><?php endif; ?>
                             </div>
                             <?php endforeach; ?>
                         </div>
@@ -1493,7 +1493,7 @@ $pageTitle=$nombreCompleto;
                         <p style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px 0;">Sin actividad registrada.</p>
                         <?php else: ?>
                         <div id="histFeed">
-                        <?php foreach ($historial as $ev): $inf=$iconosH[$ev['tipo']]??'•'; ?>
+                        <?php foreach ($historial as $ev): $inf=isset($iconosH[$ev['tipo']])?icono($iconosH[$ev['tipo']]):'•'; ?>
                         <div class="timeline-item hist-item">
                             <div class="timeline-marker"><?php echo $inf; ?></div>
                             <div style="flex:1;">
@@ -1534,16 +1534,16 @@ $pageTitle=$nombreCompleto;
                 <div class="card mb-24">
                     <div class="card-header"><h3 class="card-title">Acciones Rápidas</h3></div>
                     <div class="card-body">
-                        <a href="mailto:<?php echo htmlspecialchars($cliente['correo']); ?>" class="quick-action-btn">✉️ Enviar Correo</a>
+                        <a href="mailto:<?php echo htmlspecialchars($cliente['correo']); ?>" class="quick-action-btn"><?= icono('envelope') ?> Enviar Correo</a>
                         <?php if (!empty($cliente['telefono'])): ?>
-                        <a href="tel:<?php echo htmlspecialchars($cliente['telefono']); ?>" class="quick-action-btn">📞 Llamar al Cliente</a>
-                        <a href="https://wa.me/<?php echo preg_replace('/\D/','',$cliente['telefono']); ?>" target="_blank" class="quick-action-btn">💬 WhatsApp</a>
+                        <a href="tel:<?php echo htmlspecialchars($cliente['telefono']); ?>" class="quick-action-btn"><?= icono('telephone') ?> Llamar al Cliente</a>
+                        <a href="https://wa.me/<?php echo preg_replace('/\D/','',$cliente['telefono']); ?>" target="_blank" class="quick-action-btn"><?= icono('whatsapp') ?> WhatsApp</a>
                         <?php endif; ?>
-                        <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="quick-action-btn">📋 Nueva Cotización</a>
-                        <button class="quick-action-btn" data-action="det-open" data-modal="modalCita">📅 Programar Cita</button>
-                        <button class="quick-action-btn" data-action="det-open" data-modal="modalNota">📝 Agregar Nota</button>
+                        <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="quick-action-btn"><?= icono('clipboard') ?> Nueva Cotización</a>
+                        <button class="quick-action-btn" data-action="det-open" data-modal="modalCita"><?= icono('calendar-event') ?> Programar Cita</button>
+                        <button class="quick-action-btn" data-action="det-open" data-modal="modalNota"><?= icono('pencil-square') ?> Agregar Nota</button>
                         <!-- <?php if ($puedeGestionarPolizas): ?>
-                        <button class="quick-action-btn" data-action="det-open" data-modal="modalSubirPoliza">📄 Subir Póliza</button>
+                        <button class="quick-action-btn" data-action="det-open" data-modal="modalSubirPoliza"><?= icono('file-earmark-text') ?> Subir Póliza</button>
                         <?php endif; ?> -->
                     </div>
                 </div>
@@ -1571,8 +1571,8 @@ $pageTitle=$nombreCompleto;
                         ?>
                         <?php
 $BADGE_PAGO_CL = [
-    'pendiente'  => ['badge-warning', '⏳ Pago pendiente'],
-    'confirmado' => ['badge-success', '✅ Pagado'],
+    'pendiente'  => ['badge-warning', icono('hourglass-split').' Pago pendiente'],
+    'confirmado' => ['badge-success', icono('check-circle-fill').' Pagado'],
     'rechazado'  => ['badge-danger',  '✗ Rechazado'],
 ];
 
@@ -1601,7 +1601,7 @@ $BADGE_PAGO_CL = [
                                         ]);
                                         if (!empty($_partes)): ?>
                                     <div style="font-size:11px;color:var(--text-muted);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;">
-                                        🚗 <span><?= htmlspecialchars(implode(' ', $_partes)) ?></span>
+                                        <?= icono('car-front') ?> <span><?= htmlspecialchars(implode(' ', $_partes)) ?></span>
                                         <?php if (!empty($_dr['gps'])): ?><span>· GPS: <?= ucfirst($_dr['gps']) ?></span><?php endif; ?>
                                         <?php if (!empty($_dr['rines_lujo'])): ?><span>· Rines: <?= ucfirst($_dr['rines_lujo']) ?></span><?php endif; ?>
                                     </div>
@@ -1672,7 +1672,7 @@ $BADGE_PAGO_CL = [
     ?>
 
     <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
-       class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion">&#9999;&#65039; Editar</a>
+       class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion"><?= icono('pencil') ?> Editar</a>
     
     <?php if ($yaPagada): ?>
         <span style="font-size:11px;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:6px;font-weight:600;">&#10003; Pago confirmado</span>
@@ -1689,13 +1689,13 @@ $BADGE_PAGO_CL = [
     data-es-renovacion="<?php echo $es_renovacion_cot ? '1' : '0'; ?>"
     data-cot-num-poliza="<?php echo htmlspecialchars(str_replace('Renovación - ', '', $cot['tipo_cobertura'] ?? ''), ENT_QUOTES); ?>"
     data-action="abrir-emision">
-    📝 Emitir y Subir Póliza
+    <?= icono('pencil-square') ?> Emitir y Subir Póliza
 </button>
     <?php endif; ?>
 
     <?php if ($bloquear_boton_emision && !$yaPagada): ?>
         <div style="flex-basis: 100%; background-color: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; padding: 6px 10px; border-radius: 6px; margin-top: 4px; font-size: 11px;">
-            <strong>⚠️ Faltan:</strong> <?php echo htmlspecialchars(implode(', ', $documentos_faltantes)); ?>
+            <strong><?= icono('exclamation-triangle-fill') ?> Faltan:</strong> <?php echo htmlspecialchars(implode(', ', $documentos_faltantes)); ?>
         </div>
     <?php endif; ?>
 <?php endif; ?>
@@ -1705,7 +1705,7 @@ $BADGE_PAGO_CL = [
                                 <?php foreach ($archs as $arch):
                                     if (!empty($arch['eliminado_en'])) continue;
                                     $extA=strtolower(pathinfo($arch['nombre_original']??$arch['nombre_archivo']??'',PATHINFO_EXTENSION));
-                                    $iconA=$extA==='pdf'?'📄':'🖼️';
+                                    $iconA=icono($extA==='pdf'?'file-earmark-pdf':'image');
                                     $rutaFA=dirname(__DIR__,3).'/uploads/cotizaciones/'.$cot['id'].'/'.($arch['nombre_archivo']??'');
                                     $urlA=file_exists($rutaFA)?'/archivo?file=cotizaciones/'.$cot['id'].'/'.$arch['nombre_archivo']:null;
                                 ?>
@@ -1713,7 +1713,7 @@ $BADGE_PAGO_CL = [
                                     <span><?php echo $iconA; ?></span>
                                     <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?php echo htmlspecialchars($arch['nombre_original']??$arch['nombre_archivo']??''); ?></span>
                                     <?php if ($urlA): ?><a href="<?php echo $urlA; ?>" target="_blank" class="btn btn-sm btn-outline" style="padding:2px 8px;font-size:10px;">Ver</a><?php endif; ?>
-                                    <button data-action="det-eliminarArchivo" data-id="<?php echo $arch['id']; ?>" class="btn btn-sm" style="padding:2px 8px;font-size:10px;color:var(--danger-color,#ef4444);background:none;border:1px solid var(--danger-color,#ef4444);" title="Eliminar">🗑</button>
+                                    <button data-action="det-eliminarArchivo" data-id="<?php echo $arch['id']; ?>" class="btn btn-sm" style="padding:2px 8px;font-size:10px;color:var(--danger-color,#ef4444);background:none;border:1px solid var(--danger-color,#ef4444);" title="Eliminar"><?= icono('trash') ?></button>
                                 </div>
                                 <?php endforeach; ?>
                             </div>
@@ -1728,10 +1728,10 @@ $BADGE_PAGO_CL = [
                             <div class="checklist-wrap" style="margin-top:10px;">
                                 <div class="checklist-header">
                                     <span style="font-size:12px;font-weight:700;color:var(--text-secondary);">
-                                        📋 Documentos (<?php echo $cl['completos']; ?>/<?php echo $cl['total']; ?>)
+                                        <?= icono('clipboard') ?> Documentos (<?php echo $cl['completos']; ?>/<?php echo $cl['total']; ?>)
                                     </span>
                                     <?php if ($cl['listo']): ?>
-                                    <span style="font-size:11px;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:99px;font-weight:700;">✅ Completo</span>
+                                    <span style="font-size:11px;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:99px;font-weight:700;"><?= icono('check-circle-fill') ?> Completo</span>
                                     <?php else: ?>
                                     <span style="font-size:11px;background:#fef9c3;color:#a16207;padding:2px 8px;border-radius:99px;font-weight:700;">⚠ Faltan docs</span>
                                     <?php endif; ?>
@@ -1751,7 +1751,7 @@ $BADGE_PAGO_CL = [
                                 <div style="margin-top:8px;">
                                     <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
                                        class="btn btn-sm btn-outline" style="font-size:11px;width:100%;text-align:center;padding:5px 10px;">
-                                        📎 Subir documentos faltantes
+                                        <?= icono('paperclip') ?> Subir documentos faltantes
                                     </a>
                                 </div>
                                 <?php endif; ?>
@@ -1794,13 +1794,13 @@ $BADGE_PAGO_CL = [
             </div>
             <div class="form-group"><label class="form-label">Tipo</label>
                 <select class="form-select" id="citaTipo">
-                    <option value="llamada">📞 Llamada</option><option value="videollamada">💻 Videollamada</option><option value="presencial">🤝 Presencial</option>
+                    <option value="llamada">Llamada</option><option value="videollamada">Videollamada</option><option value="presencial">Presencial</option>
                 </select>
             </div>
             <div class="form-group" id="grupoEnlaceMeet" style="display:none;">
                 <label class="form-label">Enlace de Videollamada</label>
                 <div style="display:flex;gap:8px;"><input type="text" class="form-input" id="citaEnlace" placeholder="https://meet.google.com/...">
-                    <button type="button" class="btn btn-outline btn-sm" data-action="det-generarMeet" style="white-space:nowrap;">🎥 Generar</button></div>
+                    <button type="button" class="btn btn-outline btn-sm" data-action="det-generarMeet" style="white-space:nowrap;"><?= icono('camera-video') ?> Generar</button></div>
             </div>
             <div class="form-group"><label class="form-label">Comentarios</label>
                 <textarea class="form-textarea" id="citaComentarios" placeholder="Objetivo de la cita..."></textarea></div>
@@ -1816,7 +1816,7 @@ $BADGE_PAGO_CL = [
 <?php if ($puedeGestionarPolizas): ?>
 <div class="modal-overlay" id="modalSubirPoliza">
     <div class="modal" style="max-width:580px;">
-        <div class="modal-header"><h3 class="modal-title">📄 Subir Póliza</h3><button class="modal-close" data-close="modalSubirPoliza">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title"><?= icono('file-earmark-text') ?> Subir Póliza</h3><button class="modal-close" data-close="modalSubirPoliza">&times;</button></div>
         <div class="modal-body">
             <div class="form-row">
                 <div class="form-group"><label class="form-label">Compañía</label>
@@ -1835,10 +1835,10 @@ $BADGE_PAGO_CL = [
             <div class="form-row">
                 <div class="form-group"><label class="form-label">Frecuencia de Renovación</label>
                     <select class="form-select" id="polizaFrecuencia">
-                        <option value="anual">🔄 Anual</option>
-                        <option value="trimestral">🔄 Trimestral</option>
-                        <option value="mensual">🔄 Mensual</option>
-                        <option value="semanal">🔄 Semanal</option>
+                        <option value="anual">Anual</option>
+                        <option value="trimestral">Trimestral</option>
+                        <option value="mensual">Mensual</option>
+                        <option value="semanal">Semanal</option>
                     </select>
                 </div>
                 <div class="form-group"><label class="form-label">Vincular a cotización</label>
@@ -1856,7 +1856,7 @@ $BADGE_PAGO_CL = [
                 <div id="polizaDropZone" data-action="det-triggerPolizaFile"
                      style="border:2px dashed var(--border-color,#e5e7eb);border-radius:10px;padding:24px;text-align:center;cursor:pointer;background:var(--bg-secondary);">
                     <input type="file" id="polizaFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;">
-                    <div style="font-size:28px;margin-bottom:6px;">📄</div>
+                    <div style="font-size:28px;margin-bottom:6px;"><?= icono('file-earmark-text') ?></div>
                     <div style="font-size:13px;color:var(--text-muted);">Clic para seleccionar archivo</div>
                 </div>
                 <div id="polizaFileInfo" style="display:none;align-items:center;gap:10px;padding:10px;background:var(--bg-secondary);border-radius:8px;margin-top:6px;">
@@ -1867,7 +1867,7 @@ $BADGE_PAGO_CL = [
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalSubirPoliza">Cancelar</button>
-            <button class="btn btn-primary" id="btnGuardarPoliza" data-action="det-guardarPoliza">💾 Guardar Póliza</button>
+            <button class="btn btn-primary" id="btnGuardarPoliza" data-action="det-guardarPoliza"><?= icono('floppy') ?> Guardar Póliza</button>
         </div>
     </div>
 </div>
@@ -1877,7 +1877,7 @@ $BADGE_PAGO_CL = [
 <?php if ($puedeGestionarPolizas): ?>
 <div class="modal-overlay" id="modalEditarPoliza">
     <div class="modal" style="max-width:520px;">
-        <div class="modal-header"><h3 class="modal-title">✏️ Editar Póliza</h3><button class="modal-close" data-close="modalEditarPoliza">&times;</button></div>
+        <div class="modal-header"><h3 class="modal-title"><?= icono('pencil') ?> Editar Póliza</h3><button class="modal-close" data-close="modalEditarPoliza">&times;</button></div>
         <div class="modal-body">
             <input type="hidden" id="editPolizaId">
             <div class="form-row">
@@ -1902,8 +1902,8 @@ $BADGE_PAGO_CL = [
                 </div>
                 <div class="form-group"><label class="form-label">Estado</label>
                     <select class="form-select" id="editPolizaEstado">
-                        <option value="vigente">✅ Vigente</option><option value="por_vencer">⚠️ Por vencer</option>
-                        <option value="vencida">❌ Vencida</option><option value="cancelada">🚫 Cancelada</option>
+                        <option value="vigente">Vigente</option><option value="por_vencer">Por vencer</option>
+                        <option value="vencida">Vencida</option><option value="cancelada">Cancelada</option>
                     </select>
                 </div>
             </div>
@@ -1921,7 +1921,7 @@ $BADGE_PAGO_CL = [
 <div class="modal-overlay" id="modalRenovacion">
     <div class="modal" style="max-width:480px;">
         <div class="modal-header">
-            <h3 class="modal-title">🔄 Solicitar Renovación de Póliza</h3>
+            <h3 class="modal-title"><?= icono('arrow-repeat') ?> Solicitar Renovación de Póliza</h3>
             <button class="modal-close" data-close="modalRenovacion">&times;</button>
         </div>
 
@@ -1929,7 +1929,7 @@ $BADGE_PAGO_CL = [
             <input type="hidden" id="renovPolizaId" value="">
 
             <div style="background:var(--info-light,#eff6ff);border:1px solid var(--info-color,#3b82f6);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;">
-                <strong>📄 Póliza:</strong>
+                <strong><?= icono('file-earmark-text') ?> Póliza:</strong>
                 <span id="renovPolizaNum" style="color:var(--accent-color);font-weight:600;"></span>
             </div>
 
@@ -1951,7 +1951,7 @@ $BADGE_PAGO_CL = [
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalRenovacion">Cancelar</button>
             <button class="btn btn-primary" id="btnConfirmarRenovacion" data-action="det-confirmarRenovacion">
-                🔄 Confirmar Renovación
+                <?= icono('arrow-repeat') ?> Confirmar Renovación
             </button>
         </div>
     </div>
@@ -1972,9 +1972,9 @@ function postJSON(data){const fd=new FormData();Object.entries(data).forEach(([k
 function guardarNota(){const t=document.getElementById('notaTexto').value.trim();if(!t){showToast('Escribe una nota','error');return;}postJSON({accion:'nota',texto:t}).then(d=>{if(d.ok){showToast('Nota guardada','success');closeModal('modalNota');setTimeout(()=>location.reload(),900);}else showToast(d.msg||'Error','error');}).catch(()=>showToast('Error de conexión','error'));}
 function guardarCita(){const fecha=document.getElementById('citaFecha').value,hora=document.getElementById('citaHora').value,tipo=document.getElementById('citaTipo').value,com=document.getElementById('citaComentarios').value;if(!fecha||!hora){showToast('Indica fecha y hora','error');return;}const enlace=document.getElementById('citaEnlace')?.value||'';const fd=new FormData();fd.append('accion','cita');fd.append('tipo',tipo);fd.append('fecha',fecha);fd.append('hora',hora);fd.append('comentarios',com);fd.append('enlace_meet',enlace);fetch(`/cliente/${clienteId}`,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok){showToast('Cita programada','success');closeModal('modalCita');}else showToast(d.msg||'Error','error');}).catch(()=>showToast('Error de conexión','error'));}
 function cambiarEstadoCliente(estado){if(!estado)return;postJSON({accion:'cambiar_estado',estado}).then(d=>{if(d.ok){showToast('Estado actualizado','success');setTimeout(()=>location.reload(),900);}else showToast(d.msg||'Error','error');}).catch(()=>showToast('Error de conexión','error'));document.getElementById('selectEstadoCliente').value='';}
-function onPolizaFile(input){const file=input.files[0];if(!file)return;if(file.size>20*1024*1024){showToast('El archivo supera 20MB','error');input.value='';return;}document.getElementById('polizaFileName').textContent='📎 '+file.name;document.getElementById('polizaFileInfo').style.display='flex';document.getElementById('polizaDropZone').style.borderColor='var(--success-color,#22c55e)';}
+function onPolizaFile(input){const file=input.files[0];if(!file)return;if(file.size>20*1024*1024){showToast('El archivo supera 20MB','error');input.value='';return;}document.getElementById('polizaFileName').textContent=file.name;document.getElementById('polizaFileInfo').style.display='flex';document.getElementById('polizaDropZone').style.borderColor='var(--success-color,#22c55e)';}
 function quitarPolizaFile(){document.getElementById('polizaFile').value='';document.getElementById('polizaFileInfo').style.display='none';document.getElementById('polizaDropZone').style.borderColor='var(--border-color,#e5e7eb)';}
-function guardarPoliza(){const file=document.getElementById('polizaFile').files[0];if(!file){showToast('Selecciona un archivo','error');return;}const btn=document.getElementById('btnGuardarPoliza');btn.disabled=true;btn.textContent='Subiendo...';const fd=new FormData();fd.append('accion','subir_poliza');fd.append('archivo_poliza',file);fd.append('compania',document.getElementById('polizaCompania').value);fd.append('numero_poliza',document.getElementById('polizaNumero').value);fd.append('fecha_inicio',document.getElementById('polizaFechaInicio').value);fd.append('fecha_fin',document.getElementById('polizaFechaFin').value);fd.append('frecuencia_renovacion',document.getElementById('polizaFrecuencia').value);fd.append('cotizacion_id',document.getElementById('polizaCotizacion').value);fd.append('notas',document.getElementById('polizaNotas').value);fetch(`/cliente/${clienteId}`,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{btn.disabled=false;btn.textContent='💾 Guardar Póliza';if(d.ok){showToast('Póliza guardada'+(d.en_idrive?' · ☁️ iDrive':''),'success');closeModal('modalSubirPoliza');setTimeout(()=>location.reload(),900);}else showToast(d.msg||'Error al guardar','error');}).catch(()=>{btn.disabled=false;btn.textContent='💾 Guardar Póliza';showToast('Error de conexión','error');});}
+function guardarPoliza(){const file=document.getElementById('polizaFile').files[0];if(!file){showToast('Selecciona un archivo','error');return;}const btn=document.getElementById('btnGuardarPoliza');btn.disabled=true;btn.textContent='Subiendo...';const fd=new FormData();fd.append('accion','subir_poliza');fd.append('archivo_poliza',file);fd.append('compania',document.getElementById('polizaCompania').value);fd.append('numero_poliza',document.getElementById('polizaNumero').value);fd.append('fecha_inicio',document.getElementById('polizaFechaInicio').value);fd.append('fecha_fin',document.getElementById('polizaFechaFin').value);fd.append('frecuencia_renovacion',document.getElementById('polizaFrecuencia').value);fd.append('cotizacion_id',document.getElementById('polizaCotizacion').value);fd.append('notas',document.getElementById('polizaNotas').value);fetch(`/cliente/${clienteId}`,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{btn.disabled=false;btn.innerHTML=iconoSvg('floppy')+' Guardar Póliza';if(d.ok){showToast('Póliza guardada'+(d.en_idrive?' · '+iconoSvg('cloud')+' iDrive':''),'success');closeModal('modalSubirPoliza');setTimeout(()=>location.reload(),900);}else showToast(d.msg||'Error al guardar','error');}).catch(()=>{btn.disabled=false;btn.innerHTML=iconoSvg('floppy')+' Guardar Póliza';showToast('Error de conexión','error');});}
 function editarPoliza(pol){document.getElementById('editPolizaId').value=pol.id;document.getElementById('editPolizaCompania').value=pol.compania||'';document.getElementById('editPolizaNumero').value=pol.numero_poliza||'';document.getElementById('editPolizaInicio').value=pol.fecha_inicio||'';document.getElementById('editPolizaFin').value=pol.fecha_fin||'';document.getElementById('editPolizaFrecuencia').value=pol.frecuencia_renovacion||'anual';document.getElementById('editPolizaEstado').value=pol.estado||'vigente';document.getElementById('editPolizaNotas').value=pol.notas||'';openModal('modalEditarPoliza');}
 function guardarEdicionPoliza(){const id=document.getElementById('editPolizaId').value;const fd=new FormData();fd.append('accion','editar_poliza');fd.append('poliza_id',id);fd.append('compania',document.getElementById('editPolizaCompania').value);fd.append('numero_poliza',document.getElementById('editPolizaNumero').value);fd.append('fecha_inicio',document.getElementById('editPolizaInicio').value);fd.append('fecha_fin',document.getElementById('editPolizaFin').value);fd.append('frecuencia_renovacion',document.getElementById('editPolizaFrecuencia').value);fd.append('estado',document.getElementById('editPolizaEstado').value);fd.append('notas',document.getElementById('editPolizaNotas').value);fetch(`/cliente/${clienteId}`,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok){showToast('Póliza actualizada','success');closeModal('modalEditarPoliza');setTimeout(()=>location.reload(),900);}else showToast(d.msg||'Error','error');}).catch(()=>showToast('Error de conexión','error'));}
 function eliminarPoliza(id) {
@@ -2035,7 +2035,7 @@ function showToast(msg,type='success'){const c=document.getElementById('toastCon
 
         // Cambiar título del modal
         const titulo = document.querySelector('#modalSubirPoliza .modal-title');
-        if (titulo) titulo.textContent = '🔁 Subir Póliza Renovada — ' + folio;
+        if (titulo) titulo.textContent = 'Subir Póliza Renovada — ' + folio;
 
         // Aviso informativo
         let aviso = document.getElementById('_renovAviso');
@@ -2046,12 +2046,12 @@ function showToast(msg,type='success'){const c=document.getElementById('toastCon
             const body = document.querySelector('#modalSubirPoliza .modal-body');
             if (body) body.prepend(aviso);
         }
-        aviso.innerHTML = '🔁 <strong>Renovación</strong> — Cotización <strong>' + folio + '</strong> vinculada automáticamente. Los documentos del cliente se heredan de la emisión anterior, solo sube el nuevo archivo de póliza.';
+        aviso.innerHTML = iconoSvg('arrow-repeat') + ' <strong>Renovación</strong> — Cotización <strong>' + folio + '</strong> vinculada automáticamente. Los documentos del cliente se heredan de la emisión anterior, solo sube el nuevo archivo de póliza.';
         aviso.style.display = '';
     } else {
         // Modo normal: restaurar
         const titulo = document.querySelector('#modalSubirPoliza .modal-title');
-        if (titulo) titulo.textContent = '📄 Subir Póliza';
+        if (titulo) titulo.innerHTML = iconoSvg('file-earmark-text') + ' Subir Póliza';
         const aviso = document.getElementById('_renovAviso');
         if (aviso) aviso.style.display = 'none';
     }
@@ -2127,7 +2127,7 @@ function showToast(msg,type='success'){const c=document.getElementById('toastCon
 <div class="modal-overlay" id="modalConfirmarPago">
     <div class="modal" style="max-width:520px;">
         <div class="modal-header">
-            <h3 class="modal-title">&#128176; Confirmar Pago</h3>
+            <h3 class="modal-title"><?= icono('cash-coin') ?> Confirmar Pago</h3>
             <button class="modal-close" data-close="modalConfirmarPago">&times;</button>
         </div>
         <div class="modal-body">
@@ -2145,19 +2145,19 @@ function showToast(msg,type='success'){const c=document.getElementById('toastCon
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:4px;">
                     <div class="metodo-pago-card" id="mpCard_spei" data-action="det-metodoPago" data-metodo="spei"
                          style="border:2px solid var(--border-color);border-radius:8px;padding:10px;text-align:center;cursor:pointer;transition:all .2s;">
-                        <div style="font-size:20px;">&#127970;</div>
+                        <div style="font-size:20px;"><?= icono('bank') ?></div>
                         <div style="font-size:11px;font-weight:700;margin-top:3px;">SPEI</div>
                         <div style="font-size:10px;color:var(--text-muted);">Transferencia</div>
                     </div>
                     <div class="metodo-pago-card" id="mpCard_contado" data-action="det-metodoPago" data-metodo="contado"
                          style="border:2px solid var(--border-color);border-radius:8px;padding:10px;text-align:center;cursor:pointer;transition:all .2s;">
-                        <div style="font-size:20px;">&#128181;</div>
+                        <div style="font-size:20px;"><?= icono('cash') ?></div>
                         <div style="font-size:11px;font-weight:700;margin-top:3px;">Efectivo</div>
                         <div style="font-size:10px;color:var(--text-muted);">En sucursal</div>
                     </div>
                     <div class="metodo-pago-card" id="mpCard_meses_sin_intereses" data-action="det-metodoPago" data-metodo="meses_sin_intereses"
                          style="border:2px solid var(--border-color);border-radius:8px;padding:10px;text-align:center;cursor:pointer;transition:all .2s;">
-                        <div style="font-size:20px;">&#128179;</div>
+                        <div style="font-size:20px;"><?= icono('credit-card') ?></div>
                         <div style="font-size:11px;font-weight:700;margin-top:3px;">MSI</div>
                         <div style="font-size:10px;color:var(--text-muted);">Meses sin intereses</div>
                     </div>
@@ -2166,10 +2166,10 @@ function showToast(msg,type='success'){const c=document.getElementById('toastCon
 
             <!-- Aviso segun metodo -->
             <div id="pagoAvisoTransf" style="display:none;padding:10px 14px;background:#fef9c3;border:1px solid #ca8a04;border-radius:8px;font-size:12px;margin-bottom:12px;">
-                &#9888;&#65039; <strong>Comprobante obligatorio:</strong> Para SPEI o MSI debes subir el recibo o comprobante de pago.
+                <?= icono('exclamation-triangle-fill') ?> <strong>Comprobante obligatorio:</strong> Para SPEI o MSI debes subir el recibo o comprobante de pago.
             </div>
             <div id="pagoAvisoEfectivo" style="display:none;padding:10px 14px;background:#f0fdf4;border:1px solid #16a34a;border-radius:8px;font-size:12px;margin-bottom:12px;">
-                &#128722; <strong>Pago en sucursal:</strong> El cliente realizo el pago en efectivo. No se requiere comprobante digital.
+                <?= icono('cash') ?> <strong>Pago en sucursal:</strong> El cliente realizo el pago en efectivo. No se requiere comprobante digital.
             </div>
 
             <!-- Upload comprobante (solo spei/msi) -->
@@ -2178,11 +2178,11 @@ function showToast(msg,type='success'){const c=document.getElementById('toastCon
                 <div id="pagoDropZone" data-action="det-triggerPagoFile"
                      style="border:2px dashed var(--border-color);border-radius:8px;padding:16px;text-align:center;cursor:pointer;background:var(--bg-secondary);transition:all .2s;">
                     <input type="file" id="pagoComprobanteFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;">
-                    <div style="font-size:24px;margin-bottom:4px;">&#128196;</div>
+                    <div style="font-size:24px;margin-bottom:4px;"><?= icono('file-earmark-text') ?></div>
                     <div style="font-size:12px;color:var(--text-muted);">Clic para seleccionar archivo</div>
                 </div>
                 <div id="pagoFileInfo" style="display:none;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #16a34a;border-radius:6px;margin-top:6px;font-size:12px;">
-                    <span>&#128206;</span><span id="pagoFileName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                    <span><?= icono('paperclip') ?></span><span id="pagoFileName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
                     <button data-action="det-quitarPago" style="background:none;border:none;color:var(--danger-color,#ef4444);cursor:pointer;font-size:14px;">&times;</button>
                 </div>
             </div>
@@ -2293,7 +2293,7 @@ document.getElementById('pagoComprobanteFile')?.addEventListener('change', funct
 <div class="modal-overlay" id="modalEditarCliente">
     <div class="modal" style="max-width:640px;">
         <div class="modal-header">
-            <h3 class="modal-title">✏️ Editar Datos del Cliente</h3>
+            <h3 class="modal-title"><?= icono('pencil') ?> Editar Datos del Cliente</h3>
             <button class="modal-close" data-close="modalEditarCliente">&times;</button>
         </div>
         <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
@@ -2355,7 +2355,7 @@ document.getElementById('pagoComprobanteFile')?.addEventListener('change', funct
 
             <!-- Campos extra por ramo -->
             <?php if ($ramoCliente === 'autos'): ?>
-            <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px;padding-top:14px;border-top:1px solid var(--border-color);">🚗 Vehículo</div>
+            <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px;padding-top:14px;border-top:1px solid var(--border-color);"><?= icono('car-front') ?> Vehículo</div>
             <div class="form-row">
                 <div class="form-group"><label class="form-label">Marca</label>
                     <input type="text" class="form-input" id="ec_marca" value="<?php echo htmlspecialchars($cliente['marca']??''); ?>"></div>
@@ -2386,7 +2386,7 @@ document.getElementById('pagoComprobanteFile')?.addEventListener('change', funct
             <?php endif; ?>
 
             <?php if ($ramoCliente === 'empresas'): ?>
-            <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px;padding-top:14px;border-top:1px solid var(--border-color);">🏢 Datos Empresariales</div>
+            <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px;padding-top:14px;border-top:1px solid var(--border-color);"><?= icono('building') ?> Datos Empresariales</div>
             <div class="form-row">
                 <div class="form-group"><label class="form-label">Giro / Industria</label>
                     <input type="text" class="form-input" id="ec_giro_empresa" value="<?php echo htmlspecialchars($cliente['giro_empresa']??''); ?>"></div>
@@ -2400,7 +2400,7 @@ document.getElementById('pagoComprobanteFile')?.addEventListener('change', funct
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalEditarCliente">Cancelar</button>
-            <button class="btn btn-primary" id="btnGuardarEdicionCliente" data-action="det-guardarEdicionCliente">💾 Guardar Cambios</button>
+            <button class="btn btn-primary" id="btnGuardarEdicionCliente" data-action="det-guardarEdicionCliente"><?= icono('floppy') ?> Guardar Cambios</button>
         </div>
     </div>
 </div>
@@ -2449,7 +2449,7 @@ function guardarEdicionCliente() {
         .then(r => r.json())
         .then(d => {
             btn.disabled = false;
-            btn.textContent = '💾 Guardar Cambios';
+            btn.innerHTML = iconoSvg('floppy') + ' Guardar Cambios';
             if (d.ok) {
                 showToast('Datos actualizados correctamente', 'success');
                 closeModal('modalEditarCliente');
@@ -2460,7 +2460,7 @@ function guardarEdicionCliente() {
         })
         .catch(() => {
             btn.disabled = false;
-            btn.textContent = '💾 Guardar Cambios';
+            btn.innerHTML = iconoSvg('floppy') + ' Guardar Cambios';
             showToast('Error de conexión', 'error');
         });
 }
@@ -2514,7 +2514,7 @@ function guardarEdicionCliente() {
             .then(r => r.json())
             .then(d => {
                 btnSave.disabled = false;
-                btnSave.textContent = '💾 Guardar vehículo';
+                btnSave.innerHTML = iconoSvg('floppy') + ' Guardar vehículo';
                 if (d.ok) {
                     showToast('Vehículo actualizado', 'success');
                     setTimeout(() => location.reload(), 900);
@@ -2524,7 +2524,7 @@ function guardarEdicionCliente() {
             })
             .catch(() => {
                 btnSave.disabled = false;
-                btnSave.textContent = '💾 Guardar vehículo';
+                btnSave.innerHTML = iconoSvg('floppy') + ' Guardar vehículo';
                 showToast('Error de conexión', 'error');
             });
     });
@@ -2602,7 +2602,7 @@ document.addEventListener('click', function(e) {
                 .then(r => r.json())
                 .then(d => {
                     el.disabled = false;
-                    el.textContent = '📝 Emitir y Subir Póliza';
+                    el.innerHTML = iconoSvg('pencil-square') + ' Emitir y Subir Póliza';
                     if (d.ok) {
                         showToast(d.msg || 'Expediente enviado a Emisión', 'success');
                         setTimeout(() => location.reload(), 1500);
@@ -2612,7 +2612,7 @@ document.addEventListener('click', function(e) {
                 })
                 .catch(() => {
                     el.disabled = false;
-                    el.textContent = '📝 Emitir y Subir Póliza';
+                    el.innerHTML = iconoSvg('pencil-square') + ' Emitir y Subir Póliza';
                     showToast('Error de conexión', 'error');
                 });
             break;

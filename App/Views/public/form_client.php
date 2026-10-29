@@ -195,7 +195,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
                         <div class="field-group"><label class="form-label-custom">Correo <span class="required">*</span></label><input type="email" class="form-input" id="correo" placeholder="tu@correo.com"><div class="error-msg" id="error-correo">Correo inválido.</div></div>
                         <div class="field-group"><label class="form-label-custom">Teléfono / WhatsApp <span class="required">*</span></label>
                             <div style="display:flex;gap:8px;">
-                                <select id="lada" class="form-input" style="flex:0 0 auto;width:auto;padding-right:36px;"><option value="52">🇲🇽 +52</option><option value="1">🇺🇸 +1</option><option value="34">🇪🇸 +34</option></select>
+                                <select id="lada" class="form-input" style="flex:0 0 auto;width:auto;padding-right:36px;"><option value="52">MX +52</option><option value="1">US +1</option><option value="34">ES +34</option></select>
                                 <input type="tel" class="form-input" id="telefono" placeholder="55 1234 5678" maxlength="10" style="flex:1;">
                             </div>
                             <div class="error-msg" id="error-telefono">Ingresa tu teléfono.</div>
@@ -474,6 +474,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 
 <div style="text-align:center;padding:20px;font-size:13px;color:#94a3b8;">©LUX Seguros. Todos los derechos reservados.</div>
 
+<script src="/js/iconos.js"></script>
 <script src="/js/formulario_cliente.js"></script>
 
 <script nonce="<?= htmlspecialchars($nonce, ENT_QUOTES) ?>">
@@ -984,7 +985,7 @@ function mostrarConfirmacionVehicular(d, nombre, apPat, apMat, correo, telefono,
     setConf('conf-tipo',      lblTipoVeh || '—');
     setConf('conf-auto',      marcaTxt + ' ' + modelo + ' ' + anio);
     setConf('conf-asegurado', _vehRadioSel.asegurado === 'si' ? 'Sí' : (_vehRadioSel.asegurado === 'no' ? 'No' : '—'));
-    setConf('conf-tipo-cita', _vehRadioSel.tipoCita === 'videollamada' ? '💻 Videollamada' : '📞 Llamada telefónica');
+    setConf('conf-tipo-cita', _vehRadioSel.tipoCita === 'videollamada' ? 'Videollamada' : 'Llamada telefónica');
     setConf('conf-fecha',     fechaFmt);
     setConf('conf-hora',      (_vehSelectedTime || '') + ' hrs');
     setConf('conf-canal',     _vehCanales.join(', '));
@@ -992,7 +993,7 @@ function mostrarConfirmacionVehicular(d, nombre, apPat, apMat, correo, telefono,
     // ── Mensaje de confirmación ───────────────────────────────────────────────
     var cMsg = document.getElementById('mensajePersonalizado');
     if (cMsg) {
-        cMsg.innerHTML = '🎉 <strong>¡Cita registrada con éxito!</strong><br>'
+        cMsg.innerHTML = iconoSvg('stars') + ' <strong>¡Cita registrada con éxito!</strong><br>'
             + 'En breve un asesor de Seguros LUX se pondrá en contacto contigo.';
         cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;'
             + 'border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;text-align:center;';
@@ -1136,7 +1137,7 @@ function showConfirmacionVidaGmm(p) {
     function setConf(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
     setConf('conf-nombre', p.nombre); setConf('conf-correo', p.correo); setConf('conf-telefono', p.telefono);
 
-    var ramoLabel = p.ramo === 'gmm' ? '🏥 Gastos Médicos Mayores' : '❤️ Seguro de Vida';
+    var ramoLabel = p.ramo === 'gmm' ? iconoSvg('hospital') + ' Gastos Médicos Mayores' : iconoSvg('heart-fill') + ' Seguro de Vida';
     var MONTHS2   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     var pts       = p.fecha_preferida.split('-');
     var fechaFmt  = pts[2] + ' de ' + (MONTHS2[parseInt(pts[1]) - 1] || '') + ' ' + pts[0];
@@ -1204,7 +1205,7 @@ function showConfirmacionSimple(nombre, correo, telefono) {
     setConf('conf-nombre', nombre); setConf('conf-correo', correo); setConf('conf-telefono', telefono);
     var cMsg = document.getElementById('mensajePersonalizado');
     if (cMsg) {
-        cMsg.innerHTML = '🎉 <strong>¡Gracias, ' + nombre + '!</strong><br>Nuestro equipo te contactará a la brevedad.';
+        cMsg.innerHTML = iconoSvg('stars') + ' <strong>¡Gracias, ' + nombre + '!</strong><br>Nuestro equipo te contactará a la brevedad.';
         cMsg.style.cssText = 'display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;'
             + 'border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:.9rem;line-height:1.6;text-align:center;';
     }

@@ -142,7 +142,7 @@
   <div class="container">
     <div class="hero-emp-grid">
       <div>
-        <span style="display:inline-block;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#a78bfa;background:rgba(167,139,250,.12);padding:5px 12px;border-radius:99px;margin-bottom:18px;">🏢 Seguros Empresariales</span>
+        <span style="display:inline-block;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#a78bfa;background:rgba(167,139,250,.12);padding:5px 12px;border-radius:99px;margin-bottom:18px;"><?= icono('building') ?> Seguros Empresariales</span>
         <h1>Protege tu empresa.<br><em>Escala sin riesgos.</em></h1>
         <p class="lead">Flotillas, GMM colectivo, responsabilidad civil, daños, interrupción de negocios y más. Un asesor dedicado que entiende tu industria.</p>
         <ul class="emp-bullets">
@@ -153,7 +153,7 @@
         </ul>
         <div style="display:flex;gap:14px;flex-wrap:wrap;">
           <a href="#cotizar" class="btn btn-primary">Cotizar ahora</a>
-          <a href="tel:5541232311" class="btn btn-ghost" style="border-color:rgba(255,255,255,.35);color:#fff;">📞 55 4123 2311</a>
+          <a href="tel:5541232311" class="btn btn-ghost" style="border-color:rgba(255,255,255,.35);color:#fff;"><?= icono('telephone') ?> 55 4123 2311</a>
         </div>
       </div>
 
@@ -235,9 +235,9 @@
           </button>
 
           <div class="emp-trust">
-            <span>🔒 Datos protegidos</span>
-            <span>📋 Sin spam</span>
-            <span>⚡ Respuesta en &lt; 24 h</span>
+            <span><?= icono('lock') ?> Datos protegidos</span>
+            <span><?= icono('clipboard-check') ?> Sin spam</span>
+            <span><?= icono('lightning-charge') ?> Respuesta en &lt; 24 h</span>
           </div>
         </form>
       </div>
@@ -254,32 +254,32 @@
     </div>
     <div class="cobertura-grid">
       <div class="cobertura-card">
-        <div class="cobertura-icon">🚗</div>
+        <div class="cobertura-icon"><?= icono('car-front') ?></div>
         <h4>Flotilla Vehicular</h4>
         <p>Cobertura amplia para toda tu flota: daños, robo total, RC ampliada, asistencia vial 24/7. Descuentos por volumen desde 3 unidades.</p>
       </div>
       <div class="cobertura-card">
-        <div class="cobertura-icon">🏥</div>
+        <div class="cobertura-icon"><?= icono('hospital') ?></div>
         <h4>GMM Colectivo</h4>
         <p>Gastos Médicos Mayores para empleados y familiares. Mejor prima que pólizas individuales. Fortalece tu paquete de beneficios.</p>
       </div>
       <div class="cobertura-card">
-        <div class="cobertura-icon">⚖️</div>
+        <div class="cobertura-icon"><?= icono('journal-text') ?></div>
         <h4>Responsabilidad Civil</h4>
         <p>Protege a tu empresa ante reclamaciones de terceros por daños materiales o corporales derivados de tu operación.</p>
       </div>
       <div class="cobertura-card">
-        <div class="cobertura-icon">🏭</div>
+        <div class="cobertura-icon"><?= icono('buildings') ?></div>
         <h4>Daños e Incendio</h4>
         <p>Protección para instalaciones, maquinaria, inventario y equipos contra incendio, robo, inundación y otros eventos.</p>
       </div>
       <div class="cobertura-card">
-        <div class="cobertura-icon">⏸️</div>
+        <div class="cobertura-icon"><?= icono('pause-circle') ?></div>
         <h4>Interrupción de Negocios</h4>
         <p>Cubre la pérdida de ingresos cuando tu empresa no puede operar por un siniestro cubierto. Mantén el flujo durante la emergencia.</p>
       </div>
       <div class="cobertura-card">
-        <div class="cobertura-icon">❤️</div>
+        <div class="cobertura-icon"><?= icono('heart-fill') ?></div>
         <h4>Vida Grupo</h4>
         <p>Seguro de vida colectivo para proteger a los empleados y sus familias. Deducible fiscalmente y con administración centralizada.</p>
       </div>
@@ -327,7 +327,7 @@
     </p>
     <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
       <a href="#cotizar" class="btn" style="background:#fff;color:var(--emp-primary);font-weight:700;">Solicitar cotización</a>
-      <a href="https://wa.me/5215514605959" target="_blank" class="btn btn-ghost" style="border-color:rgba(255,255,255,.4);color:#fff;">💬 WhatsApp directo</a>
+      <a href="https://wa.me/5215514605959" target="_blank" class="btn btn-ghost" style="border-color:rgba(255,255,255,.4);color:#fff;"><?= icono('whatsapp') ?> WhatsApp directo</a>
     </div>
   </div>
 </section>
@@ -338,6 +338,7 @@
   <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347M12 2C6.48 2 2 6.48 2 12c0 1.77.46 3.45 1.27 4.9L2 22l5.25-1.38C8.66 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2z"/></svg>
 </a>
 
+<script src="/js/iconos.js" defer></script>
 <script src="../js/landing.js" defer></script>
 <script src="../js/empresas.js" defer></script>
 </body>

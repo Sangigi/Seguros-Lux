@@ -90,8 +90,8 @@ function initBlogPreview() {
   };
 
   const placeholderEmoji = () => {
-    const emojis = ['📰', '📝', '💡', '🛡️', '🚗', '⚕️'];
-    return emojis[Math.floor(Math.random() * emojis.length)];
+    const iconos = ['newspaper', 'pencil-square', 'lightbulb', 'shield-check', 'car-front', 'heart-pulse'];
+    return iconoSvg(iconos[Math.floor(Math.random() * iconos.length)]);
   };
 
   fetch(WP_ENDPOINT, { headers: { 'Accept': 'application/json' } })

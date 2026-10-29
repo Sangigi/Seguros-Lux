@@ -885,6 +885,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   </div>
 </footer>
 
+<script src="/js/iconos.js" defer></script>
 <script src="js/landing.js" defer></script>
 </body>
 </html>

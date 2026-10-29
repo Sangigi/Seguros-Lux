@@ -40,8 +40,8 @@
 
     function flashTitleBriefly() {
         const original = document.title;
-        if (document.title.startsWith('🔔 ')) return;
-        document.title = '🔔 ' + original;
+        if (document.title.startsWith('(Nuevo) ')) return;
+        document.title = '(Nuevo) ' + original;
         setTimeout(() => { document.title = original; }, 4000);
     }
 
@@ -114,7 +114,7 @@
 
         toast.innerHTML =
             '<div style="display:flex;align-items:flex-start;gap:8px;">' +
-                '<span style="font-size:16px;line-height:1;flex-shrink:0;">🔔</span>' +
+                '<span style="font-size:16px;line-height:1;flex-shrink:0;">' + iconoSvg('bell') + '</span>' +
                 '<div style="flex:1;min-width:0;">' +
                     '<div style="font-size:13px;font-weight:700;color:#f3c332;">' + escapeHtml(item.titulo || 'Nuevo aviso') + '</div>' +
                     '<div style="font-size:12px;margin-top:3px;line-height:1.35;color:rgba(255,255,255,.9);">' + escapeHtml(item.mensaje || '') + '</div>' +

@@ -34,7 +34,7 @@ const PLANES = {
             },
             {
                 nombre: 'Amplio Total', tagline: 'Todo lo esencial más protección real ante imprevistos.',
-                precio: '', popular: true, popularTag: '⭐ Mejor relación',
+                precio: '', popular: true, popularTag: iconoSvg('star-fill') + ' Mejor relación',
                 incluidas: ['Todo lo del plan Amplio', 'Auto sustituto (hasta 10 días)', 'Cero deducible en cristales', 'RC ampliada (mayor suma)'],
                 excluidas: ['Cobertura en EUA y Canadá'],
             },
@@ -261,10 +261,10 @@ function initFormCotizador() {
         .then(d => {
             if (d.ok) {
                 let extraMsg = d.advertencia
-                    ? `<p style="color:#b45309;background:#fef3c7;border-radius:8px;padding:10px 14px;margin:10px auto 0;max-width:400px;font-size:14px;">⚠️ ${d.advertencia}</p>`
+                    ? `<p style="color:#b45309;background:#fef3c7;border-radius:8px;padding:10px 14px;margin:10px auto 0;max-width:400px;font-size:14px;">${iconoSvg('exclamation-triangle-fill')} ${d.advertencia}</p>`
                     : '';
                 form.innerHTML = `<div style="text-align:center;padding:32px 16px;">
-                    <div style="font-size:52px;margin-bottom:10px;">✅</div>
+                    <div style="font-size:52px;margin-bottom:10px;color:#16a34a;">${iconoSvg('check-circle-fill')}</div>
                     <h3 style="color:var(--accent);margin-bottom:8px;">¡Solicitud recibida!</h3>
                     <p style="color:#555;max-width:400px;margin:0 auto;">
                         Un asesor de Seguros Lux te contactará por WhatsApp y correo
@@ -272,7 +272,7 @@ function initFormCotizador() {
                     </p>${extraMsg}
                 </div>`;
             } else if (d.citas_activas) {
-                alert('⚠️ ' + d.msg);
+                alert(d.msg);
                 if (btn) { btn.disabled = false; btn.textContent = 'Cotiza ahora'; }
             } else {
                 alert('Error: ' + (d.msg || 'Intenta de nuevo.'));

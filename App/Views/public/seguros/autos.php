@@ -477,10 +477,10 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
           <p class="sub">Recibe tu cotización.</p>
         </div>
         <div class="quote-tabs">
-          <button class="quote-tab active" data-quote="auto">🚗 Auto</button>
-          <button class="quote-tab" data-quote="moto">🏍️ Moto</button>
-          <button class="quote-tab" data-quote="camion">🚚 Camión</button>
-          <button class="quote-tab" data-quote="flotilla">🚐 Flotilla</button>
+          <button class="quote-tab active" data-quote="auto"><?= icono('car-front') ?> Auto</button>
+          <button class="quote-tab" data-quote="moto"><?= icono('scooter') ?> Moto</button>
+          <button class="quote-tab" data-quote="camion"><?= icono('truck') ?> Camión</button>
+          <button class="quote-tab" data-quote="flotilla"><?= icono('bus-front') ?> Flotilla</button>
         </div>
         <form id="formCotizadorAutos" novalidate>
           <input type="hidden" name="tipo_vehiculo" value="auto">
@@ -732,7 +732,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
           Asistencia 24/7
         </div>
         <div class="moto-badge b2">
-          ⭐ Plan Premium Vehicular
+          <?= icono('star-fill') ?> Plan Premium Vehicular
         </div>
       </div>
     </div>
@@ -785,7 +785,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         </div>
         <!-- AMPLIO TOTAL -->
         <div class="plan-card popular" style="border-color:var(--accent-dark);--popular-bg:var(--accent-dark);">
-          <span class="plan-popular-tag" style="background:var(--accent-dark);color:var(--white);">⭐ Mejor relación</span>
+          <span class="plan-popular-tag" style="background:var(--accent-dark);color:var(--white);"><?= icono('star-fill') ?> Mejor relación</span>
           <div class="plan-name">Amplio Total</div>
           <p class="plan-tagline">Todo lo esencial más protección real ante imprevistos.</p>
           <ul class="plan-features">
@@ -923,7 +923,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
         <!-- Botón PyMEs -->
         <div style="text-align:center;margin-bottom:30px;">
           <a href="tel:+525541232311" style="display:inline-flex;align-items:center;gap:10px;background:var(--gray-50);border:1.5px solid var(--accent);color:var(--primary);padding:14px 28px;border-radius:999px;font-weight:700;font-size:15px;transition:all .2s;" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='var(--gray-50)'">
-            🏢 Atención especializada para PyMEs y empresas
+            <?= icono('building') ?> Atención especializada para PyMEs y empresas
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           </a>
         </div>
@@ -1019,7 +1019,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
             <strong>Jorge Ramírez</strong>
             <span>Cliente desde 2022</span>
           </div>
-          <span class="vehicle-tag">🏍️ Moto</span>
+          <span class="vehicle-tag"><?= icono('scooter') ?> Moto</span>
         </div>
       </div>
       <div class="testi-vehi-card">
@@ -1032,7 +1032,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
             <strong>Sofía Méndez</strong>
             <span>Cliente desde 2021</span>
           </div>
-          <span class="vehicle-tag">🚗 Auto</span>
+          <span class="vehicle-tag"><?= icono('car-front') ?> Auto</span>
         </div>
       </div>
       <div class="testi-vehi-card">
@@ -1045,7 +1045,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
             <strong>Daniel López</strong>
             <span>Cliente desde 2019</span>
           </div>
-          <span class="vehicle-tag">🚐 Flotilla</span>
+          <span class="vehicle-tag"><?= icono('bus-front') ?> Flotilla</span>
         </div>
       </div>
       <div class="testi-vehi-card">
@@ -1058,7 +1058,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
             <strong>Patricia Guzmán</strong>
             <span>Cliente desde 2024</span>
           </div>
-          <span class="vehicle-tag">🚗 Auto Didi</span>
+          <span class="vehicle-tag"><?= icono('car-front') ?> Auto Didi</span>
         </div>
       </div>
     </div>
@@ -1190,6 +1190,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347M12 2C6.48 2 2 6.48 2 12c0 1.77.46 3.45 1.27 4.9L2 22l5.25-1.38C8.66 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2z"/></svg>
 </a>
 
+<script src="/js/iconos.js" defer></script>
 <script src="../js/landing.js" defer></script>
 <script src="../js/autos.js" defer></script>
 </body>

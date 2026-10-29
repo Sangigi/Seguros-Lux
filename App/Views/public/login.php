@@ -26,7 +26,7 @@ $csrfToken = SessionManager::getCsrfToken();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="<?= asset_url('css/LR.css') ?>">
-    <title>Iniciar sesión | EIRA CRM</title>
+    <title>Iniciar sesión | Seguros Lux</title>
     <link rel="icon" type="image/png" sizes="32x32" href="<?= asset_url('images/logo.png') ?>">
 </head>
 <body>
@@ -44,7 +44,7 @@ $csrfToken = SessionManager::getCsrfToken();
         <div class="left-logo">
             <div class="left-logo-mark">
                 <div class="logo-square"></div>
-                <div class="logo-wordmark">EIRA</div>
+                <div class="logo-wordmark">Seguros Lux</div>
             </div>
         </div>
 

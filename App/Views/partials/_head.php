@@ -10,7 +10,7 @@
  * por lo que llamarlo varias veces produce nonces distintos que
  * el navegador rechaza al comparar con el del header CSP.
  */
-$pageTitle ??= 'CRM EIRA';
+$pageTitle ??= 'CRM';
 
 // ── Nonce único para toda la petición ─────────────────────────────────────────
 // Se define solo si aún no existe (por si _head.php se incluye más de una vez).
@@ -20,11 +20,12 @@ if (!isset($cspNonce)) {
 ?>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?php echo htmlspecialchars($pageTitle); ?> | CRM EIRA</title>
+<title><?php echo htmlspecialchars($pageTitle); ?> | Seguros Lux</title>
 <link rel="stylesheet" href="/css/styles.css">
 <link rel="stylesheet" href="/css/crm-theme.css">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
 <link rel="icon" type="image/png" sizes="32x32" href="/images/logo.png">
+<script src="/js/iconos.js" nonce="<?= $cspNonce ?>"></script>
 <style nonce="<?= $cspNonce ?>">
 /* ── Aliases de variables para compatibilidad con vistas del CRM ── */
 :root {

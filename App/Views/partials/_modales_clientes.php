@@ -60,9 +60,9 @@ $cspNonce  ??= '';
             <div class="form-group">
                 <label class="form-label">Tipo de Cita</label>
                 <select class="form-select" id="citaTipo">
-                    <option value="llamada">📞 Llamada telefónica</option>
-                    <option value="videollamada">💻 Videollamada</option>
-                    <option value="presencial">🤝 Presencial</option>
+                    <option value="llamada">Llamada telefónica</option>
+                    <option value="videollamada">Videollamada</option>
+                    <option value="presencial">Presencial</option>
                 </select>
             </div>
             <div class="form-group">

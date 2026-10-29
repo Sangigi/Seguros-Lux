@@ -85,7 +85,7 @@ $etiquetasEstado = [
 
 <?php require __DIR__ . '/../partials/_navbar.php'; ?>
 
-<main class="eq-wrap">
+<main class="main-content eq-wrap">
 
     <h1 style="font-size:22px;margin:0 0 20px">
         Equipo<?= $empresa ? ' · ' . $h((string) $empresa['nombre']) : '' ?>

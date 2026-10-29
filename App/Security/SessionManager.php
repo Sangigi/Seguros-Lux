@@ -232,13 +232,15 @@ class SessionManager
      *
      * El propietario no pertenece a ninguna: hasta que elige una, esas
      * pantallas no tienen nada que mostrar y la primera consulta fallaría.
-     * Las de /plataforma/ son las suyas y funcionan sin empresa.
+     * Las de /plataforma/ son las suyas, y /equipo sabe mostrarse sin
+     * empresa (pide entrar a una antes de invitar).
      */
     public static function debeElegirEmpresa(string $ruta): bool
     {
         return self::isPropietario()
             && !Tenant::hayContexto()
-            && !str_starts_with($ruta, '/plataforma/');
+            && !str_starts_with($ruta, '/plataforma/')
+            && $ruta !== '/equipo';
     }
 
     /**

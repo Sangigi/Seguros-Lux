@@ -1,6 +1,6 @@
 /**
  * emision.js — Módulo de Emisión de Pólizas
- * CRM EIRA — Panel de Coordinación
+ * CRM Seguros Lux — Panel de Coordinación
  *
  * Depende de: toast(), openModal(), closeModal() (definidas en admin/index.php)
  */
@@ -57,7 +57,7 @@
                 _folioActual = folio;
                 document.getElementById('eckFolio').textContent = folio;
                 document.getElementById('eckBody').innerHTML    =
-                    '<div style="text-align:center;padding:40px;color:var(--text-muted);">⏳ Cargando…</div>';
+                    '<div style="text-align:center;padding:40px;color:var(--text-muted);">' + iconoSvg('hourglass-split') + ' Cargando…</div>';
                 document.getElementById('eckBtnDescargar').style.display = '';
                 openModal('modalEmiChecklist');
                 cargarChecklist(id, ramo);
@@ -171,7 +171,7 @@
         const f = this.files[0];
         if (!f) return;
         const fn = document.getElementById('spFileName');
-        fn.textContent = '📎 ' + f.name + ' (' + (f.size / 1024).toFixed(0) + ' KB)';
+        fn.textContent = f.name + ' (' + (f.size / 1024).toFixed(0) + ' KB)';
         fn.style.display = '';
         document.getElementById('spDropZone').style.borderColor = 'var(--accent-color)';
     });
@@ -264,21 +264,21 @@
             if (!tieneDoc) {
                 if (esDeCoordinador) {
                     // Pendiente de coordinador — no es error del asesor
-                    estIcon  = '🕐';
+                    estIcon  = iconoSvg('clock');
                     estColor = '#2563eb';
                     estBg    = '#eff6ff';
                 } else if (requerido) {
-                    estIcon  = '❌'; estColor = '#dc2626'; estBg = '#fee2e2';
+                    estIcon  = iconoSvg('x-circle-fill'); estColor = '#dc2626'; estBg = '#fee2e2';
                 } else {
                     estIcon  = '—'; estColor = 'var(--text-muted)'; estBg = 'var(--bg-secondary)';
                 }
             } else if (ckEstado === 'ok') {
-                estIcon  = '✅'; estColor = '#16a34a'; estBg = '#f0fdf4';
+                estIcon  = iconoSvg('check-circle-fill'); estColor = '#16a34a'; estBg = '#f0fdf4';
                 completados++;
             } else if (ckEstado === 'rechazado') {
-                estIcon  = '⚠️'; estColor = '#d97706'; estBg = '#fffbeb';
+                estIcon  = iconoSvg('exclamation-triangle-fill'); estColor = '#d97706'; estBg = '#fffbeb';
             } else {
-                estIcon  = '⏳'; estColor = 'var(--text-muted)'; estBg = 'var(--bg-secondary)';
+                estIcon  = iconoSvg('hourglass-split'); estColor = 'var(--text-muted)'; estBg = 'var(--bg-secondary)';
             }
 
             let urlLocal = null;
@@ -302,7 +302,7 @@
             html += `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;
                         border-radius:8px;background:${estBg};margin-bottom:4px;">
-                <div style="font-size:20px;width:28px;text-align:center;">${estIcon}</div>
+                <div style="font-size:20px;width:28px;text-align:center;color:${estColor};">${estIcon}</div>
                 <div style="flex:1;">
                     <div style="font-size:13px;font-weight:600;color:${estColor};">
                         ${label}
@@ -315,7 +315,7 @@
                     ${ck?.nota ? `<div style="font-size:11px;color:#d97706;margin-top:2px;">Nota: ${ck.nota}</div>` : ''}
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
-                    ${urlLocal ? `<a href="${urlLocal}" target="_blank" class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 8px;">👁 Ver</a>` : ''}
+                    ${urlLocal ? `<a href="${urlLocal}" target="_blank" class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 8px;">${iconoSvg('eye')} Ver</a>` : ''}
                     ${urlLocal ? `<a href="${urlLocal}" download="${doc.nombre_original || doc.nombre_orig || ''}" class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 8px;">⬇</a>` : ''}
                     ${tieneDoc && !esDeCoordinador ? `
                     <button class="btn btn-sm btn-ghost"
@@ -380,7 +380,7 @@
 
         const btn = document.getElementById('spBtnSubir');
         btn.disabled    = true;
-        btn.textContent = '⏳ Subiendo…';
+        btn.innerHTML   = iconoSvg('hourglass-split') + ' Subiendo…';
 
         const fd = new FormData();
         fd.append('accion',         'emi_subir_poliza');
@@ -396,7 +396,7 @@
             .then(r => r.json())
             .then(d => {
                 btn.disabled    = false;
-                btn.textContent = '✅ Confirmar emisión';
+                btn.innerHTML   = iconoSvg('check-circle-fill') + ' Confirmar emisión';
                 if (d.ok) {
                     toast('¡Póliza emitida correctamente! El asesor fue notificado.', 'success');
                     closeModal('modalEmiSubirPoliza');
@@ -407,7 +407,7 @@
             })
             .catch(() => {
                 btn.disabled    = false;
-                btn.textContent = '✅ Confirmar emisión';
+                btn.innerHTML   = iconoSvg('check-circle-fill') + ' Confirmar emisión';
                 toast('Error de conexión', 'error');
             });
     }

@@ -413,17 +413,17 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     <div class="reasons-grid">
       
       <div style="background:var(--gray-50);padding:32px 26px;border-left:4px solid var(--vida-primary);">
-        <div style="font-size:36px;margin-bottom:14px;">🏠</div>
+        <div style="font-size:36px;margin-bottom:14px;"><?= icono('house') ?></div>
         <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Protege el patrimonio</h4>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;">Si algo te llegara a pasar, tu familia podría mantener su estilo de vida, cubrir la hipoteca y los gastos del hogar sin depender de nadie.</p>
       </div>
       <div style="background:var(--gray-50);padding:32px 26px;border-left:4px solid var(--vida-primary);">
-        <div style="font-size:36px;margin-bottom:14px;">🎓</div>
+        <div style="font-size:36px;margin-bottom:14px;"><?= icono('mortarboard') ?></div>
         <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Garantiza la educación</h4>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;">El futuro de tus hijos no depende de lo que pase contigo. Una póliza bien elegida garantiza que sus estudios sigan adelante pase lo que pase.</p>
       </div>
       <div style="background:var(--gray-50);padding:32px 26px;border-left:4px solid var(--vida-primary);">
-        <div style="font-size:36px;margin-bottom:14px;">💰</div>
+        <div style="font-size:36px;margin-bottom:14px;"><?= icono('cash-coin') ?></div>
         <h4 style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--primary);margin-bottom:8px;">Construye ahorro</h4>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;">Muchos planes de vida incluyen un componente de ahorro o inversión a mediano y largo plazo. Proteges a tu familia y generas capital al mismo tiempo.</p>
       </div>
@@ -483,7 +483,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     <div class="plans-grid">
       <!-- Retiro -->
       <div style="background:var(--white);border:2px solid var(--gray-200);border-radius:var(--radius-xl);padding:32px 28px;transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 20px 50px rgba(0,0,0,0.1)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
-        <div style="font-size:40px;margin-bottom:14px;">🏖️</div>
+        <div style="font-size:40px;margin-bottom:14px;"><?= icono('umbrella') ?></div>
         <h3 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--primary);margin-bottom:8px;">Plan de Retiro</h3>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;margin-bottom:18px;">Asegura tu tranquilidad financiera para cuando dejes de trabajar. Combina protección de vida con un fondo de retiro que crece con el tiempo.</p>
         <ul style="list-style:none;margin-bottom:22px;">
@@ -503,7 +503,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
       <!-- Ahorro -->
       <div style="background:var(--white);border:2px solid var(--vida-primary);border-radius:var(--radius-xl);padding:32px 28px;position:relative;transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 20px 50px rgba(225,29,72,0.15)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
         <span style="position:absolute;top:-12px;left:28px;background:var(--vida-primary);color:var(--white);font-size:11px;font-weight:800;padding:4px 14px;border-radius:999px;letter-spacing:1px;text-transform:uppercase;">★ Más elegido</span>
-        <div style="font-size:40px;margin-bottom:14px;">💎</div>
+        <div style="font-size:40px;margin-bottom:14px;"><?= icono('gem') ?></div>
         <h3 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--primary);margin-bottom:8px;">Plan de Ahorro</h3>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;margin-bottom:18px;">El equilibrio perfecto entre proteger a tu familia hoy y construir un patrimonio para el futuro. Ideal para mediano y largo plazo.</p>
         <ul style="list-style:none;margin-bottom:22px;">
@@ -522,7 +522,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 
       <!-- Educativo -->
       <div style="background:var(--white);border:2px solid var(--gray-200);border-radius:var(--radius-xl);padding:32px 28px;transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 20px 50px rgba(0,0,0,0.1)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
-        <div style="font-size:40px;margin-bottom:14px;">🎓</div>
+        <div style="font-size:40px;margin-bottom:14px;"><?= icono('mortarboard') ?></div>
         <h3 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--primary);margin-bottom:8px;">Plan Educativo</h3>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;margin-bottom:18px;">Garantiza que la educación de tus hijos no se detenga pase lo que pase. El plan crece junto con ellos.</p>
         <ul style="list-style:none;margin-bottom:22px;">
@@ -541,7 +541,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 
       <!-- Mediano y largo plazo -->
       <div style="background:var(--white);border:2px solid var(--gray-200);border-radius:var(--radius-xl);padding:32px 28px;transition:transform .3s,box-shadow .3s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 20px 50px rgba(0,0,0,0.1)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
-        <div style="font-size:40px;margin-bottom:14px;">📈</div>
+        <div style="font-size:40px;margin-bottom:14px;"><?= icono('graph-up-arrow') ?></div>
         <h3 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--primary);margin-bottom:8px;">Mediano y Largo Plazo</h3>
         <p style="font-size:14px;color:var(--gray-600);line-height:1.6;margin-bottom:18px;">Para quienes buscan protección combinada con una estrategia de inversión que genere resultados en horizontes de 10, 15 o 20 años.</p>
         <ul style="list-style:none;margin-bottom:22px;">
@@ -577,7 +577,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 
     <div class="form-wrap">
       <div style="background:linear-gradient(135deg,var(--vida-primary),var(--vida-dark));color:var(--white);border-radius:var(--radius-md);padding:18px 22px;margin-bottom:24px;font-size:14px;line-height:1.55;">
-        <strong style="display:block;font-size:15px;margin-bottom:4px;">💡 ¿Cómo funciona la elección del plan?</strong>
+        <strong style="display:block;font-size:15px;margin-bottom:4px;"><?= icono('lightbulb') ?> ¿Cómo funciona la elección del plan?</strong>
         La aseguradora analiza tu perfil —edad, salud, objetivos y situación financiera— para recomendarte el tipo de seguro que mejor se adapta a ti. Tu asesor Lux te acompaña en todo el proceso y pelea por las mejores condiciones. <strong>Sin costo adicional.</strong>
       </div>
       <form id="formVida">
@@ -720,6 +720,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347M12 2C6.48 2 2 6.48 2 12c0 1.77.46 3.45 1.27 4.9L2 22l5.25-1.38C8.66 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2z"/></svg>
 </a>
 
+<script src="/js/iconos.js" defer></script>
 <script src="../js/landing.js" defer></script>
 <script src="../js/vida.js" defer></script>
 </body>

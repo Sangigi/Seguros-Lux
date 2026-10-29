@@ -209,7 +209,7 @@ switch ($accion) {
             $db->prepare(
                 "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id, empresa_id)
                  VALUES (?,?,?,?,?,?)"
-            )->execute([$agenteId, 'emision', '📋 Caso tomado', 'El coordinador tomó el caso para procesarlo.', $cotId, $empresaId]);
+            )->execute([$agenteId, 'emision', 'Caso tomado', 'El coordinador tomó el caso para procesarlo.', $cotId, $empresaId]);
         } catch (\Throwable $e) {}
 
         echo json_encode(['ok'=>true]);
@@ -235,7 +235,7 @@ switch ($accion) {
             _emi_notificar(
                 db: $db,
                 asesorId: (int)$cot['agente_id'],
-                titulo: '⚠️ Documentación rechazada — ' . ($cot['folio'] ?? '#'.$cotId),
+                titulo: 'Documentación rechazada — ' . ($cot['folio'] ?? '#'.$cotId),
                 cuerpo: 'El coordinador rechazó los documentos de la cotización ' . ($cot['folio'] ?? '#'.$cotId) . '. Motivo: ' . $motivo,
                 urgente: true,
                 color: 'red',
@@ -249,7 +249,7 @@ switch ($accion) {
                      VALUES (?,?,?,?,?,?)"
                 )->execute([
                     $cot['cliente_id'] ?? 0, $agenteId, 'nota',
-                    '⚠️ Documentos rechazados',
+                    'Documentos rechazados',
                     'Motivo: ' . $motivo,
                     $empresaId,
                 ]);
@@ -367,7 +367,7 @@ switch ($accion) {
         _emi_notificar(
             db: $db,
             asesorId: (int)$cot['agente_id'],
-            titulo: '📄 Póliza emitida — ' . ($cot['folio'] ?? '#'.$cotId),
+            titulo: 'Póliza emitida — ' . ($cot['folio'] ?? '#'.$cotId),
             cuerpo: 'La póliza ' . $numero . ' de ' . $cot['compania'] . ' fue emitida para '
                    . $cot['cliente_nombre'] . '. Vigencia: ' . $fechaInicio . ' al ' . $fechaFin . '.',
             urgente: false,
@@ -382,7 +382,7 @@ switch ($accion) {
                  VALUES (?,?,?,?,?,?)"
             )->execute([
                 $cot['cliente_id'], $agenteId, 'venta',
-                '📄 Póliza emitida — ' . $numero,
+                'Póliza emitida — ' . $numero,
                 'Compañía: ' . $cot['compania'] . ' | Vigencia: ' . $fechaInicio . ' — ' . $fechaFin,
                 $empresaId,
             ]);
@@ -405,7 +405,7 @@ switch ($accion) {
         _emi_notificar(
             db: $db,
             asesorId: $asesorId,
-            titulo: '🔄 Renovación pendiente — ' . ($cot['folio'] ?? '#'.$cotId),
+            titulo: 'Renovación pendiente — ' . ($cot['folio'] ?? '#'.$cotId),
             cuerpo: 'El coordinador te notifica que la póliza ' . ($cot['folio'] ?? '#'.$cotId)
                    . ' de ' . ($cot['compania'] ?? '') . ' requiere gestión de renovación.',
             urgente: true,
@@ -587,7 +587,7 @@ switch ($accion) {
                  VALUES (?,?,?,?,?,?,?)"
             )->execute([
                 $agenteId, 'cobro',
-                '💳 Comprobante de pago registrado',
+                'Comprobante de pago registrado',
                 "Folio: {$datosCot['folio']} — Cliente: {$datosCot['cliente_nombre']} — Método: " . _emi_metodoLabel($metodo),
                 $cotId,
                 $datosCot['cliente_id'] ?? null,
@@ -602,7 +602,7 @@ switch ($accion) {
                  VALUES (?,?,?,?,?,?)"
             )->execute([
                 $datosCot['cliente_id'] ?? 0, $agenteId, 'venta',
-                '💰 Pago confirmado por coordinador — ' . ($datosCot['folio'] ?? '#'.$cotId),
+                'Pago confirmado por coordinador — ' . ($datosCot['folio'] ?? '#'.$cotId),
                 'Método: ' . _emi_metodoLabel($metodo) . ($ref ? " · Ref: {$ref}" : '') . ($monto ? " · $" . number_format((float)$monto, 2) : ''),
                 $empresaId,
             ]);
@@ -620,7 +620,7 @@ switch ($accion) {
             _emi_notificar(
                 db: $db,
                 asesorId: $asesorId,
-                titulo: '✅ Póliza pagada — ' . ($datosCot['folio'] ?? '#'.$cotId),
+                titulo: 'Póliza pagada — ' . ($datosCot['folio'] ?? '#'.$cotId),
                 cuerpo: "El coordinador confirmó el pago de la póliza de {$datosCot['cliente_nombre']} "
                        . "({$datosCot['compania']} · Folio: {$datosCot['folio']}). "
                        . "Estado actualizado a PAGADO. Método: " . _emi_metodoLabel($metodo)
@@ -633,7 +633,7 @@ switch ($accion) {
             _emi_notificar(
                 db: $db,
                 asesorId: $asesorId,
-                titulo: '🔔 Contacta a ' . ($datosCot['cliente_nombre'] ?? 'tu cliente'),
+                titulo: 'Contacta a ' . ($datosCot['cliente_nombre'] ?? 'tu cliente'),
                 cuerpo: "La póliza de {$datosCot['cliente_nombre']} está activa y pagada. Recuerda dar seguimiento para renovación y agradecer la confianza.",
                 urgente: false,
                 color: 'blue',
@@ -700,7 +700,7 @@ switch ($accion) {
             $db->prepare(
                 "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, empresa_id)
                  VALUES (?,?,?,?,?)"
-            )->execute([$agenteId, 'nota', '⚙️ Ventana de edición actualizada', "Nueva ventana: {$horas} hora(s). Por superadmin.", $empresaId]);
+            )->execute([$agenteId, 'nota', 'Ventana de edición actualizada', "Nueva ventana: {$horas} hora(s). Por superadmin.", $empresaId]);
             echo json_encode(['ok'=>true]);
         } catch (\Throwable $e) {
             echo json_encode(['ok'=>false,'msg'=>$e->getMessage()]);

@@ -272,6 +272,7 @@ final class SessionManagerTest extends TestCase
             'admin sin empresa'           => ['/admin',               null, true],
             'citas sin empresa'           => ['/citas',               null, true],
             'panel de empresas'           => ['/plataforma/empresas', null, false],
+            'equipo sin empresa'          => ['/equipo',              null, false],
             'admin dentro de una empresa' => ['/admin',               1,    false],
         ];
     }

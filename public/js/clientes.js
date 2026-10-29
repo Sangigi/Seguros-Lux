@@ -68,10 +68,10 @@ const CAMPOS_RAMO = {
 };
 
 const RAMO_LABEL = {
-    autos:          '🚗 Autos',
-    vida:           '❤️ Vida',
-    gastos_medicos: '🏥 Gastos Médicos Mayores',
-    empresas:       '🏢 Empresas',
+    autos:          ['car-front',  'Autos'],
+    vida:           ['heart-fill', 'Vida'],
+    gastos_medicos: ['hospital',   'Gastos Médicos Mayores'],
+    empresas:       ['building',   'Empresas'],
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -175,7 +175,8 @@ function _renderCamposRamo() {
         return;
     }
 
-    const ramoLabel = RAMO_LABEL[ramo] || ramo;
+    const ramoInfo  = RAMO_LABEL[ramo];
+    const ramoLabel = ramoInfo ? iconoSvg(ramoInfo[0]) + ' ' + ramoInfo[1] : ramo;
     let html = `<div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;
                             letter-spacing:.5px;margin-bottom:10px;padding-top:4px;">
                     Datos de ${ramoLabel}

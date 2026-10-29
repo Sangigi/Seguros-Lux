@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   EIRA CRM · login.js
+   Seguros Lux CRM · login.js
    Mejoras de seguridad:
      - Token CSRF incluido en cada petición AJAX via header
      - Validación de destino de redirección (solo rutas relativas conocidas)

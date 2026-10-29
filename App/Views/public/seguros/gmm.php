@@ -236,9 +236,10 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     background: rgba(243, 195, 50, 0.10);
   }
   .caso-card::after {
-    content: '📖';
+    content: '';
     position: absolute; bottom: -20px; right: 30px;
-    font-size: 140px;
+    width: 140px; height: 140px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23ffffff'%3E%3Cpath d='M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783'/%3E%3C/svg%3E") no-repeat center / contain;
     opacity: 0.06;
   }
   .caso-eyebrow {
@@ -528,7 +529,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     <div class="perfiles-grid">
       <!-- Perfil 1: Familia en México -->
       <article class="perfil-card">
-        <div class="perfil-emoji">🏠</div>
+        <div class="perfil-emoji"><?= icono('house') ?></div>
         <h3>Para mí y mi familia</h3>
         <p class="desc">Quieres protección hospitalaria sólida en el país, con red de hospitales privados y atención médica 24/7.</p>
         <div class="perfil-recomienda">
@@ -546,7 +547,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 
       <!-- Perfil 2: Internacional -->
       <article class="perfil-card">
-        <div class="perfil-emoji">✈️</div>
+        <div class="perfil-emoji"><?= icono('airplane') ?></div>
         <h3>Seguros para viajeros</h3>
         <p class="desc">Necesitas atención médica de primer nivel sin importar dónde estés. Ejecutivos, expatriados y viajeros frecuentes.</p>
         <div class="perfil-recomienda">
@@ -564,7 +565,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 
       <!-- Perfil 3: Padecimiento complejo -->
       <article class="perfil-card">
-        <div class="perfil-emoji">⚕️</div>
+        <div class="perfil-emoji"><?= icono('heart-pulse') ?></div>
         <h3>Tengo un padecimiento complejo</h3>
         <p class="desc">Buscas atención de máximo nivel para condiciones que requieren especialistas, segunda opinión y centros élite.</p>
         <div class="perfil-recomienda">
@@ -632,24 +633,24 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
 <section class="caso-section">
   <div class="container">
     <div class="caso-card">
-      <div class="caso-eyebrow">📱 Membresía Médica Móvil</div>
+      <div class="caso-eyebrow"><?= icono('phone') ?> Membresía Médica Móvil</div>
       <h3>3 ejemplos de cómo usar tu <em>membresía móvil</em></h3>
       <p class="intro">Tu membresía incluye tres tipos de atención disponibles 24/7, sin afectar tu póliza y sin costo adicional.</p>
       <div class="caso-events">
         <div class="caso-event">
-          <div class="caso-event-emoji">💻</div>
+          <div class="caso-event-emoji"><?= icono('laptop') ?></div>
           <h5>Atención médica por videollamada</h5>
           <p>Consulta con un médico certificado desde tu teléfono o computadora. Ideal para síntomas leves, seguimientos y recetas digitales sin salir de casa.</p>
           <span class="caso-savings">Disponible 24/7</span>
         </div>
         <div class="caso-event">
-          <div class="caso-event-emoji">🏠</div>
+          <div class="caso-event-emoji"><?= icono('house') ?></div>
           <h5>Atención médica a domicilio</h5>
           <p>Un médico va hasta donde estás. Para casos que requieren revisión presencial pero no ameritan urgencias. Sin filas, sin salas de espera.</p>
           <span class="caso-savings">A tu puerta</span>
         </div>
         <div class="caso-event">
-          <div class="caso-event-emoji">🚑</div>
+          <div class="caso-event-emoji"><?= icono('hospital') ?></div>
           <h5>Servicio de ambulancia</h5>
           <p>En una emergencia real, el servicio de traslado médico está disponible para llevarte al hospital de la red más cercano con atención especializada.</p>
           <span class="caso-savings">Emergencias reales</span>
@@ -670,7 +671,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     <div class="asistencias-main">
       <div class="asistencia-big featured">
         <span class="asistencia-tag">★ Más usada</span>
-        <div class="emoji">🦷</div>
+        <div class="emoji"><?= icono('shield-plus') ?></div>
         <h4>Asistencia Dental</h4>
         <ul>
           <li>2 limpiezas dentales al año sin costo</li>
@@ -681,7 +682,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
       </div>
       <div class="asistencia-big">
         <span class="asistencia-tag">Para viajeros</span>
-        <div class="emoji">✈️</div>
+        <div class="emoji"><?= icono('airplane') ?></div>
         <h4>Asistencia en Viajes</h4>
         <ul>
           <li>Traslado médico durante emergencia en viaje</li>
@@ -693,14 +694,14 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
     </div>
     <div class="asistencias-extras">
       <div class="asistencia-mini">
-        <div class="emoji">👁️</div>
+        <div class="emoji"><?= icono('eye') ?></div>
         <div>
           <h5>Asistencia Visión</h5>
           <p>Lentes anuales sin costo y descuentos en ópticas participantes (la red varía según aseguradora y región).</p>
         </div>
       </div>
       <div class="asistencia-mini">
-        <div class="emoji">🌹</div>
+        <div class="emoji"><?= icono('flower1') ?></div>
         <div>
           <h5>Asistencia Funeraria</h5>
           <p>Servicio funerario completo con asesoría jurídica y tanatología.</p>
@@ -803,12 +804,12 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
             <div style="display:flex;gap:8px;margin-top:4px;">
               <label class="urgencia-label">
                 <input type="radio" name="urgencia" value="urgente">
-                <span class="urgencia-btn">🔴 Urgente</span>
+                <span class="urgencia-btn"><span style="color:#ef4444"><?= icono('circle-fill') ?></span> Urgente</span>
               </label>
 
               <label class="urgencia-label">
                 <input type="radio" name="urgencia" value="despues" checked>
-                <span class="urgencia-btn">🟢 Sin prisa</span>
+                <span class="urgencia-btn"><span style="color:#22c55e"><?= icono('circle-fill') ?></span> Sin prisa</span>
               </label>
             </div>
           </div>
@@ -925,6 +926,7 @@ header("Content-Security-Policy: script-src 'self' 'unsafe-hashes' 'nonce-SFJGwY
   <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347M12 2C6.48 2 2 6.48 2 12c0 1.77.46 3.45 1.27 4.9L2 22l5.25-1.38C8.66 21.5 10.27 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2z"/></svg>
 </a>
 
+<script src="/js/iconos.js" defer></script>
 <script src="../js/landing.js" defer></script>
 <script src="../js/gmm.js" defer></script>
 

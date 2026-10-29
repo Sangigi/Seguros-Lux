@@ -357,8 +357,8 @@ button.sidebar-link {
             </svg>
         </div>
         <div>
-            <div class="sidebar-logo-text">EIRA</div>
-            <div class="sidebar-logo-sub">CRM Seguros</div>
+            <div class="sidebar-logo-text">Seguros Lux</div>
+            <div class="sidebar-logo-sub">CRM</div>
         </div>
     </a>
 
@@ -407,7 +407,7 @@ button.sidebar-link {
             <div class="crm-notif-actions">
                 <button type="button" id="sidebarNotifMarkAll">✓ Marcar leídas</button>
                 <button type="button" id="sidebarNotifReload">↺ Actualizar</button>
-                <button type="button" id="sidebarNotifClearAll" style="color:#fca5a5;border-color:rgba(239,68,68,.3);">🗑 Limpiar todo</button>
+                <button type="button" id="sidebarNotifClearAll" style="color:#fca5a5;border-color:rgba(239,68,68,.3);"><?= icono('trash') ?> Limpiar todo</button>
             </div>
             <div id="sidebarNotifList" style="font-size:12px;color:rgba(255,255,255,.5);padding:10px;text-align:center;">Cargando…</div>
         </div>

@@ -320,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                  VALUES (?,?,?,?,1,'blue',?,0,NOW(),?)"
             )->execute([
                 $coordId, 'emision',
-                '📋 Nueva cotización para emisión — ' . ($cot['folio'] ?? '#'.$cotId),
+                'Nueva cotización para emisión — ' . ($cot['folio'] ?? '#'.$cotId),
                 'El asesor envió la cotización de ' . ($cot['cliente_nombre'] ?? '') . ' para gestión de cobro.',
                 '/admin?tab=emision',
                 $empresaId,
@@ -455,12 +455,12 @@ $estados_cot = [
 ];
 
 $ramos_info = [
-    'autos'          => ['emoji'=>'🚗','label'=>'Autos'],
-    'vida'           => ['emoji'=>'❤️','label'=>'Vida'],
-    'gastos_medicos' => ['emoji'=>'🏥','label'=>'GMM'],
-    'empresas'       => ['emoji'=>'🏢','label'=>'Empresas'],
+    'autos'          => ['icono'=>'car-front','label'=>'Autos'],
+    'vida'           => ['icono'=>'heart-fill','label'=>'Vida'],
+    'gastos_medicos' => ['icono'=>'hospital','label'=>'GMM'],
+    'empresas'       => ['icono'=>'building','label'=>'Empresas'],
 ];
-$ramos_emoji = array_map(fn($r) => $r['emoji'], $ramos_info);
+$ramos_icono = array_map(fn($r) => $r['icono'], $ramos_info);
 
 // Compañías y coberturas según ramo activo (usadas en modal editar)
 $companiasPorRamo = CotizacionModel::companiasPorRamo();
@@ -508,7 +508,7 @@ $pageTitle = 'Cotizaciones';
 
         <?php if (isset($_GET['ok'])): ?>
         <div class="alert alert-success" style="margin-bottom:16px;">
-            <span class="alert-icon">✅</span>
+            <span class="alert-icon"><?= icono('check-circle-fill') ?></span>
             <div class="alert-content"><div class="alert-title">
                 <?php echo $_GET['ok']==='editada' ? 'Cotización actualizada.' : 'Cotización creada correctamente.'; ?>
             </div></div>
@@ -528,7 +528,7 @@ $pageTitle = 'Cotizaciones';
                         Cotizaciones
                         <?php if ($ramoActivo): ?>
                         <span style="font-size:14px;font-weight:400;color:var(--text-muted);margin-left:8px;">
-                            — <?php echo $ramos_info[$ramoActivo]['emoji'] ?? ''; ?> <?php echo $ramos_info[$ramoActivo]['label'] ?? $ramoActivo; ?>
+                            — <?php echo isset($ramos_info[$ramoActivo]) ? icono($ramos_info[$ramoActivo]['icono']) : ''; ?> <?php echo $ramos_info[$ramoActivo]['label'] ?? $ramoActivo; ?>
                         </span>
                         <?php endif; ?>
                     </h1>
@@ -543,12 +543,12 @@ $pageTitle = 'Cotizaciones';
         <!-- ── Pestañas de ramo ── -->
         <div class="ramo-tabs">
             <a href="/cotizaciones" class="ramo-tab <?php echo !$ramoActivo ? 'active' : ''; ?>">
-                📋 Todos
+                <?= icono('clipboard') ?> Todos
                 <span class="tab-count"><?php echo array_sum(array_column($ramoStats, 'cotizaciones')); ?></span>
             </a>
             <?php foreach ($ramos_info as $ramo => $info): ?>
             <a href="/set-ramo?ramo=<?php echo $ramo; ?>&redirect=/cotizaciones" class="ramo-tab <?php echo $ramoActivo === $ramo ? 'active' : ''; ?>">
-                <?php echo $info['emoji']; ?> <?php echo $info['label']; ?>
+                <?php echo icono($info['icono']); ?> <?php echo $info['label']; ?>
                 <span class="tab-count"><?php echo $ramoStats[$ramo]['cotizaciones'] ?? 0; ?></span>
             </a>
             <?php endforeach; ?>
@@ -588,7 +588,7 @@ $pageTitle = 'Cotizaciones';
                         <option value="todos">Todos los ramos</option>
                         <?php foreach($ramos_info as $rk=>$rv): ?>
                         <option value="<?php echo $rk; ?>" <?php echo $ramoActivo===$rk?'selected':''; ?>>
-                            <?php echo $rv['emoji'].' '.$rv['label']; ?>
+                            <?php echo $rv['label']; ?>
                         </option>
                         <?php endforeach; ?>
                     </select>
@@ -620,7 +620,7 @@ $pageTitle = 'Cotizaciones';
             <div class="card-body" style="padding:0;">
                 <?php if (empty($cotizaciones)): ?>
                 <div class="empty-state">
-                    <div class="empty-state-icon">📋</div>
+                    <div class="empty-state-icon"><?= icono('clipboard') ?></div>
                     <div class="empty-state-title">Sin cotizaciones<?php echo $ramoActivo ? ' en este ramo' : ''; ?></div>
                     <a href="/crear-cotizacion" class="btn btn-primary">+ Nueva Cotización</a>
                 </div>
@@ -640,7 +640,7 @@ $pageTitle = 'Cotizaciones';
                                 $iniciales = count($partes)>=2
                                     ? strtoupper(substr($partes[0],0,1).substr($partes[1],0,1))
                                     : strtoupper(substr($cot['cliente_nombre'],0,2));
-                                $ramoEmoji = $ramos_emoji[$cot['ramo']] ?? '📋';
+                                $ramoIcono = $ramos_icono[$cot['ramo']] ?? 'clipboard';
                             ?>
                             <tr data-id="<?php echo $cot['id']; ?>"
                                 data-estado="<?php echo $cot['estado']; ?>"
@@ -652,7 +652,7 @@ $pageTitle = 'Cotizaciones';
                                 <td>
                                     <?php if (!empty($cot['folio'])): ?>
                                     <div style="display:flex;align-items:center;gap:6px;">
-                                        <span><?php echo $ramoEmoji; ?></span>
+                                        <span><?php echo icono($ramoIcono); ?></span>
                                         <span class="folio-tag"><?php echo htmlspecialchars($cot['folio']); ?></span>
                                     </div>
                                     <?php else: ?>
@@ -703,20 +703,20 @@ $pageTitle = 'Cotizaciones';
                                 </td>
                                 <td>
                                     <div class="action-buttons">
-                                        <button class="btn btn-sm btn-outline" data-action="ver" data-id="<?php echo $cot['id']; ?>" title="Ver">👁</button>
-                                        <button class="btn btn-sm btn-outline" data-action="estado" data-id="<?php echo $cot['id']; ?>" title="Cambiar estado">✏️</button>
-                                        <button class="btn btn-sm btn-outline" data-action="editar" data-id="<?php echo $cot['id']; ?>" title="Editar">📝</button>
+                                        <button class="btn btn-sm btn-outline" data-action="ver" data-id="<?php echo $cot['id']; ?>" title="Ver" aria-label="Ver"><?= icono('eye') ?></button>
+                                        <button class="btn btn-sm btn-outline" data-action="estado" data-id="<?php echo $cot['id']; ?>" title="Cambiar estado" aria-label="Cambiar estado"><?= icono('pencil') ?></button>
+                                        <button class="btn btn-sm btn-outline" data-action="editar" data-id="<?php echo $cot['id']; ?>" title="Editar" aria-label="Editar"><?= icono('pencil-square') ?></button>
                                         <?php if ($cot['estado']==='pendiente'): ?>
-                                        <button class="btn btn-sm btn-primary" data-action="enviar" data-id="<?php echo $cot['id']; ?>" title="Enviar al cliente">📤</button>
+                                        <button class="btn btn-sm btn-primary" data-action="enviar" data-id="<?php echo $cot['id']; ?>" title="Enviar al cliente" aria-label="Enviar al cliente"><?= icono('send') ?></button>
                                         <?php endif; ?>
                                         <?php
                                         $emisEst = $cot['emision_estado'] ?? '';
                                         if ($emisEst === '' || $emisEst === 'pendiente'): ?>
-                                        <button class="btn btn-sm btn-outline" data-action="enviarCoordinador" data-id="<?php echo $cot['id']; ?>" title="Enviar al coordinador para cobro" style="font-size:11px;">📋 Coord.</button>
+                                        <button class="btn btn-sm btn-outline" data-action="enviarCoordinador" data-id="<?php echo $cot['id']; ?>" title="Enviar al coordinador para cobro" style="font-size:11px;"><?= icono('clipboard') ?> Coord.</button>
                                         <?php elseif ($emisEst === 'en_proceso'): ?>
-                                        <span class="badge badge-info" title="En proceso de cobro" style="font-size:10px;">⏳ Cobro</span>
+                                        <span class="badge badge-info" title="En proceso de cobro" style="font-size:10px;"><?= icono('hourglass-split') ?> Cobro</span>
                                         <?php elseif ($emisEst === 'emitida'): ?>
-                                        <span class="badge badge-success" title="Póliza emitida" style="font-size:10px;">✅ Emitida</span>
+                                        <span class="badge badge-success" title="Póliza emitida" style="font-size:10px;"><?= icono('check-circle-fill') ?> Emitida</span>
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -743,7 +743,7 @@ $pageTitle = 'Cotizaciones';
         <div class="modal-body" id="modalCotizacionContent"></div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalVerCotizacion">Cerrar</button>
-            <button class="btn btn-ghost" id="btnPrint">🖨️ Imprimir</button>
+            <button class="btn btn-ghost" id="btnPrint"><?= icono('printer') ?> Imprimir</button>
         </div>
     </div>
 </div>
@@ -785,7 +785,7 @@ $pageTitle = 'Cotizaciones';
 <div class="modal-overlay" id="modalPago">
     <div class="modal">
         <div class="modal-header">
-            <h3 class="modal-title">💰 Registrar Pago</h3>
+            <h3 class="modal-title"><?= icono('cash-coin') ?> Registrar Pago</h3>
             <button class="modal-close" data-close="modalPago">&times;</button>
         </div>
         <div class="modal-body">
@@ -793,10 +793,10 @@ $pageTitle = 'Cotizaciones';
             <div class="form-group">
                 <label class="form-label required">Método de Pago</label>
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-                    <?php foreach(['spei'=>['🏦','SPEI','Transferencia'],'contado'=>['💵','Contado','Efectivo'],'meses_sin_intereses'=>['💳','MSI','Meses sin intereses']] as $k=>[$ico,$tit,$sub]): ?>
+                    <?php foreach(['spei'=>['bank','SPEI','Transferencia'],'contado'=>['cash','Contado','Efectivo'],'meses_sin_intereses'=>['credit-card','MSI','Meses sin intereses']] as $k=>[$ico,$tit,$sub]): ?>
                     <div id="mp_<?php echo $k; ?>" data-action="selMP"
                          style="border:2px solid var(--border-color);border-radius:8px;padding:12px;cursor:pointer;text-align:center;transition:all .2s;">
-                        <div style="font-size:20px;"><?php echo $ico; ?></div>
+                        <div style="font-size:20px;"><?php echo icono($ico); ?></div>
                         <div style="font-size:12px;font-weight:600;"><?php echo $tit; ?></div>
                         <div style="font-size:10px;color:var(--text-muted);"><?php echo $sub; ?></div>
                     </div>
@@ -818,12 +818,12 @@ $pageTitle = 'Cotizaciones';
                 <label class="form-label">Comprobante <span style="font-size:11px;color:var(--text-muted);">(PDF/imagen — opcional)</span></label>
                 <div id="pagoZone"
                      style="border:2px dashed var(--border-color);border-radius:8px;padding:20px;text-align:center;cursor:pointer;background:var(--bg-secondary);">
-                    <div style="font-size:28px;">📎</div>
+                    <div style="font-size:28px;"><?= icono('paperclip') ?></div>
                     <div style="font-size:13px;font-weight:600;">Haz clic para adjuntar</div>
                     <input type="file" id="pagoFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" id="pagoFile" data-handler="pagoFile">
                 </div>
                 <div id="pagoFileInfo" style="display:none;margin-top:8px;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;font-size:12px;align-items:center;gap:8px;">
-                    <span id="pagoFileName" style="flex:1;"></span>
+                    <?= icono('paperclip') ?><span id="pagoFileName" style="flex:1;"></span>
                     <button type="button" id="btnQuitarPago" style="background:none;border:none;color:var(--danger-color);cursor:pointer;font-size:16px;">×</button>
                 </div>
             </div>
@@ -834,7 +834,7 @@ $pageTitle = 'Cotizaciones';
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalPago">Cancelar</button>
-            <button class="btn btn-primary" id="btnGuardarPago">💾 Registrar Pago</button>
+            <button class="btn btn-primary" id="btnGuardarPago"><?= icono('floppy') ?> Registrar Pago</button>
         </div>
     </div>
 </div>
@@ -845,7 +845,7 @@ $pageTitle = 'Cotizaciones';
 <div class="modal-overlay" id="modalDocumentos">
     <div class="modal modal-lg">
         <div class="modal-header">
-            <h3 class="modal-title">📎 Documentos — <span id="modalDocsFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
+            <h3 class="modal-title"><?= icono('paperclip') ?> Documentos —<span id="modalDocsFolio" style="font-family:'Courier New',monospace;color:var(--accent-color);"></span></h3>
             <button class="modal-close" data-close="modalDocumentos">&times;</button>
         </div>
         <div class="modal-body" id="modalDocsContent" style="min-height:160px;">
@@ -885,10 +885,10 @@ const COBERTURAS_POR_RAMO = <?php echo $coberturasPorRamoJSON; ?>;
 const RAMO_ACTIVO         = <?php echo json_encode($ramoActivo ?: null); ?>;
 
 const RAMOS_INFO = {
-    autos:          { emoji: '🚗', label: 'Autos' },
-    vida:           { emoji: '❤️', label: 'Vida' },
-    gastos_medicos: { emoji: '🏥', label: 'GMM' },
-    empresas:       { emoji: '🏢', label: 'Empresas' },
+    autos:          { icono: 'car-front', label: 'Autos' },
+    vida:           { icono: 'heart-fill', label: 'Vida' },
+    gastos_medicos: { icono: 'hospital', label: 'GMM' },
+    empresas:       { icono: 'building', label: 'Empresas' },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -988,7 +988,7 @@ function verCotizacion(id) {
     if (!cot) return;
     const eBadge = {pendiente:'badge-warning',enviada:'badge-info',aceptada:'badge-success',rechazada:'badge-danger',pagado:'badge-success'};
     const eLabel = {pendiente:'Pendiente',enviada:'Enviada',aceptada:'Aceptada',rechazada:'Rechazada',pagado:'Pagado'};
-    const ramos  = {autos:'🚗',vida:'❤️',gastos_medicos:'🏥',empresas:'🏢'};
+    const ramos  = {autos:iconoSvg('car-front'),vida:iconoSvg('heart-fill'),gastos_medicos:iconoSvg('hospital'),empresas:iconoSvg('building')};
     const fechaFmt = cot.fecha ? new Date(cot.fecha+'T12:00').toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'}) : '—';
 
     // Construir sección de detalles por ramo
@@ -1019,7 +1019,7 @@ function verCotizacion(id) {
             detallesRamoHtml = `
             <div>
                 <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">
-                    ${ramos[cot.ramo]||'📋'} Detalles de ${RAMOS_INFO[cot.ramo]?.label||cot.ramo}
+                    ${ramos[cot.ramo]||iconoSvg('clipboard')} Detalles de${RAMOS_INFO[cot.ramo]?.label||cot.ramo}
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;">${items}</div>
             </div>`;
@@ -1036,13 +1036,13 @@ function verCotizacion(id) {
                     </div>
                     <span class="badge ${eBadge[cot.estado]||'badge-neutral'}" style="font-size:13px;padding:6px 14px;">${eLabel[cot.estado]||cot.estado}</span>
                 </div>
-                <div style="margin-top:12px;font-size:14px;opacity:.85;">${ramos[cot.ramo]||'📋'} ${escapeHtml(cot.compania)} — ${escapeHtml(cot.tipo_cobertura)}</div>
+                <div style="margin-top:12px;font-size:14px;opacity:.85;">${ramos[cot.ramo]||iconoSvg('clipboard')} ${escapeHtml(cot.compania)} — ${escapeHtml(cot.tipo_cobertura)}</div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div style="background:var(--bg-secondary);border-radius:8px;padding:14px;">
                     <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Cliente</div>
                     <div style="font-weight:600;font-size:14px;">${escapeHtml(cot.cliente_nombre)}</div>
-                    ${cot.vehiculo ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${ramos[cot.ramo]||'📋'} ${escapeHtml(cot.vehiculo)}</div>` : ''}
+                    ${cot.vehiculo ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${ramos[cot.ramo]||iconoSvg('clipboard')} ${escapeHtml(cot.vehiculo)}</div>` : ''}
                 </div>
                 <div style="background:var(--bg-secondary);border-radius:8px;padding:14px;">
                     <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Prima</div>
@@ -1071,9 +1071,9 @@ function verCotizacion(id) {
                 <div style="font-size:13px;line-height:1.6;color:var(--text-primary);">${escapeHtml(cot.comentarios)}</div>
             </div>` : ''}
             <div style="padding-top:12px;border-top:1px solid var(--border-color);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
-                <button class="btn btn-sm btn-outline" data-action="docs" data-id="${cot.id}">📎 Ver documentos</button>
-                <button class="btn btn-sm btn-outline" data-action="estado" data-id="${cot.id}">✏️ Cambiar estado</button>
-                ${cot.estado==='pendiente'?`<button class="btn btn-sm btn-primary" data-action="enviar" data-id="${cot.id}">📤 Enviar</button>`:''}
+                <button class="btn btn-sm btn-outline" data-action="docs" data-id="${cot.id}">${iconoSvg('paperclip')} Ver documentos</button>
+                <button class="btn btn-sm btn-outline" data-action="estado" data-id="${cot.id}">${iconoSvg('pencil')} Cambiar estado</button>
+                ${cot.estado==='pendiente'?`<button class="btn btn-sm btn-primary" data-action="enviar" data-id="${cot.id}">${iconoSvg('send')} Enviar</button>`:''}
             </div>
         </div>`;
     openModal('modalVerCotizacion');
@@ -1087,7 +1087,7 @@ function cambiarEstadoFlujo(id) {
     if (!cot) return;
 
     const labels = {pendiente:'Pendiente',enviada:'Enviada',aceptada:'Aceptada',rechazada:'Rechazada',pagado:'Pagado'};
-    const iconos = {pendiente:'⏳',enviada:'📤',aceptada:'✅',rechazada:'❌',pagado:'💰'};
+    const iconos = {pendiente:iconoSvg('hourglass-split'),enviada:iconoSvg('send'),aceptada:iconoSvg('check-circle-fill'),rechazada:iconoSvg('x-circle-fill'),pagado:iconoSvg('cash-coin')};
     const colores= {pendiente:'var(--warning-color)',enviada:'var(--info-color)',aceptada:'var(--success-color)',rechazada:'var(--danger-color)',pagado:'var(--success-color)'};
 
     const flujos = {
@@ -1234,7 +1234,7 @@ function enviarCoordinador(id) {
     fd.append('accion', 'enviar_a_coordinador');
     fd.append('cotizacion_id', id);
     fetch('/cotizaciones', {method:'POST', body:fd}).then(r=>r.json()).then(d => {
-        if (d.ok) { showToast('✅ Cotización enviada al coordinador', 'success'); setTimeout(() => location.reload(), 1200); }
+        if (d.ok) { showToast(iconoSvg('check-circle-fill') + ' Cotización enviada al coordinador', 'success'); setTimeout(() => location.reload(), 1200); }
         else showToast(d.msg || 'Error', 'error');
     }).catch(() => showToast('Error de conexión', 'error'));
 }
@@ -1251,27 +1251,27 @@ function editarCotizacion(id) {
 // ─────────────────────────────────────────────────────────────────────────────
 function _fileCard(nombre_orig, nombre_arch, url_local, en_idrive, es_imagen, extraInfo, archivoId) {
     const badge = en_idrive
-        ? `<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 7px;border-radius:99px;font-weight:600;">☁️ iDrive</span>`
+        ? `<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 7px;border-radius:99px;font-weight:600;">${iconoSvg('cloud')} iDrive</span>`
         : `<span style="font-size:10px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 7px;border-radius:99px;">Local</span>`;
     const thumb = (es_imagen && url_local)
         ? `<div style="height:90px;border-radius:6px;overflow:hidden;margin-bottom:8px;cursor:pointer;" data-action="openFile" data-url="${url_local}"><img src="${url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`
-        : `<div style="height:90px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;">${url_local?'📄':'📎'}</div>`;
+        : `<div style="height:90px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;">${url_local?iconoSvg('file-earmark-text'):iconoSvg('paperclip')}</div>`;
     const btn = url_local
-        ? `<a href="${url_local}" target="_blank" class="btn btn-sm btn-outline" style="flex:1;text-align:center;font-size:11px;">👁 Ver</a>`
-        : `<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;padding:5px 0;">${en_idrive?'☁️ Solo en iDrive':'Sin archivo'}</span>`;
+        ? `<a href="${url_local}" target="_blank" class="btn btn-sm btn-outline" style="flex:1;text-align:center;font-size:11px;">${iconoSvg('eye')} Ver</a>`
+        : `<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;padding:5px 0;">${en_idrive?iconoSvg('cloud')+' Solo en iDrive':'Sin archivo'}</span>`;
     const delBtn = archivoId
-        ? `<button class="btn btn-sm" style="padding:3px 7px;font-size:10px;color:#ef4444;background:none;border:1px solid #ef4444;border-radius:4px;" data-action="eliminarArchivo" data-archivo-id="${archivoId}" title="Eliminar">🗑</button>`
+        ? `<button class="btn btn-sm" style="padding:3px 7px;font-size:10px;color:#ef4444;background:none;border:1px solid #ef4444;border-radius:4px;" data-action="eliminarArchivo" data-archivo-id="${archivoId}" title="Eliminar" aria-label="Eliminar">${iconoSvg('trash')}</button>`
         : '';
     return `<div style="background:var(--bg-secondary);border-radius:9px;padding:12px;display:flex;flex-direction:column;" ${archivoId?`data-archivo-id="${archivoId}"`:''}>${thumb}<div style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;font-weight:600;" title="${escapeHtml(nombre_orig||'')}">${escapeHtml((nombre_orig||'').substring(0,28))}</div>${extraInfo?`<div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;">${escapeHtml(extraInfo)}</div>`:''}<div style="display:flex;gap:6px;align-items:center;">${badge}${btn}${delBtn}</div></div>`;
 }
 
-function _sectionTitle(emoji, title, count) {
-    return `<div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px;border-bottom:2px solid var(--accent-color);padding-bottom:5px;"><span style="font-size:16px;">${emoji}</span><span style="font-size:13px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;">${title}</span><span style="font-size:11px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 8px;border-radius:99px;">${count}</span></div>`;
+function _sectionTitle(icono, title, count) {
+    return `<div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px;border-bottom:2px solid var(--accent-color);padding-bottom:5px;"><span style="font-size:16px;">${iconoSvg(icono)}</span><span style="font-size:13px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;">${title}</span><span style="font-size:11px;background:var(--bg-secondary);color:var(--text-muted);padding:2px 8px;border-radius:99px;">${count}</span></div>`;
 }
 
 function abrirModalDocumentos(cotId) {
     document.getElementById('modalDocsFolio').textContent = '...';
-    document.getElementById('modalDocsContent').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">⏳ Cargando documentos...</div>';
+    document.getElementById('modalDocsContent').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">' + iconoSvg('hourglass-split') + ' Cargando documentos...</div>';
     openModal('modalDocumentos');
 
     const fd = new FormData();
@@ -1290,7 +1290,7 @@ function abrirModalDocumentos(cotId) {
             let html = '';
 
             if (d.docs && d.docs.length > 0) {
-                html += _sectionTitle('📎', 'Documentos', d.docs.length);
+                html += _sectionTitle('paperclip', 'Documentos',d.docs.length);
                 html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:12px;">';
                 d.docs.forEach(doc => {
                     html += _fileCard(doc.nombre_orig, doc.nombre_arch, doc.url_local, doc.en_idrive, doc.es_imagen, doc.tipo_label, doc.id);
@@ -1298,7 +1298,7 @@ function abrirModalDocumentos(cotId) {
                 html += '</div>';
             }
 
-            html += _sectionTitle('💰', 'Comprobantes de Pago', d.pagos?.length || 0);
+            html += _sectionTitle('cash-coin', 'Comprobantes de Pago',d.pagos?.length || 0);
             if (d.pagos && d.pagos.length > 0) {
                 html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:12px;">';
                 d.pagos.forEach(p => {
@@ -1310,7 +1310,7 @@ function abrirModalDocumentos(cotId) {
                 html += '<p style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Sin comprobantes registrados.</p>';
             }
 
-            html += _sectionTitle('📋', 'Pólizas', d.polizas?.length || 0);
+            html += _sectionTitle('clipboard', 'Pólizas',d.polizas?.length || 0);
             if (d.polizas && d.polizas.length > 0) {
                 html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:12px;">';
                 d.polizas.forEach(p => {
@@ -1323,7 +1323,7 @@ function abrirModalDocumentos(cotId) {
             }
 
             if (!html) {
-                html = '<div style="text-align:center;padding:48px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">📭</div><div style="font-size:15px;font-weight:600;">Sin archivos</div></div>';
+                html = '<div style="text-align:center;padding:48px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">' + iconoSvg('inbox') + '</div><div style="font-size:15px;font-weight:600;">Sin archivos</div></div>';
             }
             document.getElementById('modalDocsContent').innerHTML = html;
         })
@@ -1364,7 +1364,7 @@ function selMP(m) {
 }
 function onPagoFile(inp) {
     if (!inp.files[0]) return;
-    document.getElementById('pagoFileName').textContent = '📎 ' + inp.files[0].name;
+    document.getElementById('pagoFileName').textContent = inp.files[0].name;
     document.getElementById('pagoFileInfo').style.display = 'flex';
     document.getElementById('pagoZone').style.display = 'none';
 }
@@ -1387,7 +1387,7 @@ function guardarPago() {
     fetch('/cotizaciones', {method:'POST', body:fd}).then(r=>r.json()).then(d => {
         if (d.ok) {
             actualizarBadgeEnTabla(parseInt(id), 'pagado');
-            showToast('💰 Pago registrado', 'success');
+            showToast(iconoSvg('cash-coin') + ' Pago registrado', 'success');
             closeModal('modalPago');
             setTimeout(() => location.reload(), 1200);
         } else {

@@ -128,12 +128,12 @@ const CRM = (() => {
     // ── Loading state ───────────────────────────────────────────────────────
     function setLoading(containerId, msg = 'Cargando...') {
         const el = document.getElementById(containerId);
-        if (el) el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⏳</div><p>${msg}</p></div>`;
+        if (el) el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">${iconoSvg('hourglass-split')}</div><p>${msg}</p></div>`;
     }
 
     function setError(containerId, msg = 'Error al cargar datos') {
         const el = document.getElementById(containerId);
-        if (el) el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>${msg}</p></div>`;
+        if (el) el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">${iconoSvg('exclamation-triangle-fill')}</div><p>${msg}</p></div>`;
     }
 
     // ── Formatters ──────────────────────────────────────────────────────────

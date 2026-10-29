@@ -25,10 +25,10 @@ $historialModel= new HistorialModel();
 
 // ── Info de ramos ─────────────────────────────────────────────────────────────
 $ramos_info = [
-    'autos'          => ['emoji'=>'🚗','label'=>'Vehicular'],
-    'vida'           => ['emoji'=>'❤️','label'=>'Vida'],
-    'gastos_medicos' => ['emoji'=>'🏥','label'=>'GMM'],
-    'empresas'       => ['emoji'=>'🏢','label'=>'Empresas'],
+    'autos'          => ['icono'=>'car-front','label'=>'Vehicular'],
+    'vida'           => ['icono'=>'heart-fill','label'=>'Vida'],
+    'gastos_medicos' => ['icono'=>'hospital','label'=>'GMM'],
+    'empresas'       => ['icono'=>'building','label'=>'Empresas'],
 ];
 
 // ── AJAX ──────────────────────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ $clientes = $stmt->fetchAll();
 
 foreach ($clientes as &$c) {
     $c['asegurado']   = ($c['asegurado'] === 'si');
-    $c['ramo_label']  = $ramos_info[$c['ramo'] ?? 'autos']['emoji'] ?? '📋';
+    $c['ramo_label']  = $ramos_info[$c['ramo'] ?? 'autos']['icono'] ?? 'clipboard';
     $c['asesor_nombre'] = trim($c['asesor_nombre'] ?? '—');
 }
 unset($c);
@@ -299,7 +299,7 @@ $pageTitle = 'Clientes';
 
         <?php if (isset($_GET['ok'])): ?>
         <div class="alert alert-success" style="margin-bottom:16px;">
-            <span class="alert-icon">✅</span>
+            <span class="alert-icon"><?= icono('check-circle-fill') ?></span>
             <div class="alert-content"><div class="alert-title">Cliente registrado correctamente.</div></div>
         </div>
         <?php endif; ?>
@@ -317,7 +317,7 @@ $pageTitle = 'Clientes';
                         <?php echo $esCoordinador ? 'Todos los Clientes' : 'Gestión de Clientes'; ?>
                         <?php if ($ramo): ?>
                         <span style="font-size:14px;font-weight:400;color:var(--text-muted);margin-left:8px;">
-                            — <?php echo ($ramos_info[$ramo]['emoji']??'').' '.($ramos_info[$ramo]['label']??$ramo); ?>
+                            — <?php echo (isset($ramos_info[$ramo]) ? icono($ramos_info[$ramo]['icono']) : '').' '.($ramos_info[$ramo]['label']??$ramo); ?>
                         </span>
                         <?php endif; ?>
                     </h1>
@@ -329,7 +329,7 @@ $pageTitle = 'Clientes';
                 </div>
                 <div class="page-actions">
                     <?php if ($esCoordinador): ?>
-                    <a href="/admin?tab=asesores" class="btn btn-outline">👥 Ver Asesores</a>
+                    <a href="/admin?tab=asesores" class="btn btn-outline"><?= icono('people') ?> Ver Asesores</a>
                     <?php endif; ?>
                     <button class="btn btn-primary" data-open-modal="modalNuevoCliente">+ Nuevo Cliente</button>
                 </div>
@@ -339,12 +339,12 @@ $pageTitle = 'Clientes';
         <!-- ── Pestañas de ramo ── -->
         <div class="ramo-tabs">
             <a href="/set-ramo?ramo=todos&redirect=/clientes" class="ramo-tab <?php echo !$ramo ? 'active' : ''; ?>">
-                👥 Todos
+                <?= icono('people') ?> Todos
                 <span class="tab-count"><?php echo array_sum($ramoConteos); ?></span>
             </a>
             <?php foreach ($ramos_info as $rk => $rv): ?>
             <a href="/set-ramo?ramo=<?php echo $rk; ?>&redirect=/clientes" class="ramo-tab <?php echo $ramo === $rk ? 'active' : ''; ?>">
-                <?php echo $rv['emoji'].' '.$rv['label']; ?>
+                <?php echo icono($rv['icono']).' '.$rv['label']; ?>
                 <span class="tab-count"><?php echo $ramoConteos[$rk] ?? 0; ?></span>
             </a>
             <?php endforeach; ?>
@@ -412,7 +412,7 @@ $pageTitle = 'Clientes';
             <div class="card-body" style="padding:0;">
                 <?php if (empty($clientes)): ?>
                 <div class="empty-state">
-                    <div class="empty-state-icon">👥</div>
+                    <div class="empty-state-icon"><?= icono('people') ?></div>
                     <div class="empty-state-title">Sin clientes<?php echo $ramo ? ' en este ramo' : ''; ?></div>
                     <button class="btn btn-primary" data-open-modal="modalNuevoCliente">+ Nuevo Cliente</button>
                 </div>
@@ -438,7 +438,7 @@ $pageTitle = 'Clientes';
                                 $iniciales      = strtoupper(substr($cliente['nombre'],0,1).substr($cliente['apellido_paterno'],0,1));
                                 $fechaISO       = substr($cliente['fecha_registro'], 0, 10);
                                 $ramoCliente    = $cliente['ramo'] ?? 'autos';
-                                $ramoEmoji      = $ramos_info[$ramoCliente]['emoji'] ?? '📋';
+                                $ramoIcono      = $ramos_info[$ramoCliente]['icono'] ?? 'clipboard';
                                 $ramoLbl        = $ramos_info[$ramoCliente]['label'] ?? $ramoCliente;
 
                                 if ($ramoCliente === 'empresas') {
@@ -472,12 +472,12 @@ $pageTitle = 'Clientes';
                                 <td style="font-size:12px;color:var(--text-secondary);"><?php echo date('d/m/Y', strtotime($cliente['fecha_registro'])); ?></td>
                                 <td>
                                     <div class="action-buttons">
-                                        <a href="/cliente/<?php echo $cliente['id']; ?>" class="btn btn-sm btn-outline" title="Ver detalle">👁</a>
-                                        <button class="btn btn-sm btn-outline" data-action="nota" data-id="<?php echo $cliente['id']; ?>" title="Nota">📝</button>
-                                        <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="btn btn-sm btn-primary" title="Cotización">📋</a>
-                                        <button class="btn btn-sm btn-success" data-action="cita" data-id="<?php echo $cliente['id']; ?>" title="Cita">📅</button>
+                                        <a href="/cliente/<?php echo $cliente['id']; ?>" class="btn btn-sm btn-outline" title="Ver detalle"><?= icono('eye') ?></a>
+                                        <button class="btn btn-sm btn-outline" data-action="nota" data-id="<?php echo $cliente['id']; ?>" title="Nota"><?= icono('pencil-square') ?></button>
+                                        <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="btn btn-sm btn-primary" title="Cotización"><?= icono('clipboard') ?></a>
+                                        <button class="btn btn-sm btn-success" data-action="cita" data-id="<?php echo $cliente['id']; ?>" title="Cita"><?= icono('calendar-event') ?></button>
                                         <?php if ($esCoordinador): ?>
-                                        <button class="btn btn-sm btn-danger" data-action="eliminar" data-id="<?php echo $cliente['id']; ?>" title="Eliminar">🗑</button>
+                                        <button class="btn btn-sm btn-danger" data-action="eliminar" data-id="<?php echo $cliente['id']; ?>" title="Eliminar"><?= icono('trash') ?></button>
                                         <?php endif; ?>
                                     </div>
                                 </td>

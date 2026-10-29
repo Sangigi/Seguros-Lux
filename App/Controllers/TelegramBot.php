@@ -301,7 +301,7 @@ Tenant::comoEmpresa($tgEmpresaId, static function () use (
     // ═════════════════════════════════════════════════════════════════════════════
     if ($text === '/ayuda') {
         tgSend($chatId,
-            "🤖 <b>Soy el asistente de EIRA Seguros.</b> Estoy aquí para facilitarte la vida 😊\n\n"
+            "🤖 <b>Soy el asistente de Seguros Lux.</b> Estoy aquí para facilitarte la vida 😊\n\n"
             . "📋 <b>Mis citas</b> — Ver todas tus citas activas (hasta " . MAX_CITAS_ACTIVAS . ")\n"
             . "🔄 <b>Reprogramar</b> — Cambiar la fecha u hora de una cita\n"
             . "❌ <b>Cancelar</b> — Cancelar una cita activa\n\n"
@@ -328,7 +328,7 @@ Tenant::comoEmpresa($tgEmpresaId, static function () use (
                 tgSend($chatId, "👋 ¡Hola de nuevo, <b>{$from}</b>! Qué gusto 😊\n\n{$tGiro}", $BOT_TOKEN);
             } else {
                 tgSend($chatId,
-                    "👋 ¡Hola, <b>{$from}</b>! Bienvenido al asistente de <b>EIRA Seguros</b> 🎉\n\n"
+                    "👋 ¡Hola, <b>{$from}</b>! Bienvenido al asistente de <b>Seguros Lux</b> 🎉\n\n"
                     . "Para agendar una cita visita:\n🌐 <b>seguroslux.mx/formulario</b>\n\n"
                     . "¡Será un placer atenderte! 😊",
                     $BOT_TOKEN

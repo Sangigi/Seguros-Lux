@@ -1,5 +1,5 @@
 /**
- * navbar.js — Sidebar CRM EIRA
+ * navbar.js — Sidebar CRM Seguros Lux
  */
 
 function toggleSidebar(force) {

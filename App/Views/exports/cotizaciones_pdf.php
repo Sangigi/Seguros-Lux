@@ -178,7 +178,7 @@ tbody tr:last-child td { border-bottom: none; }
 
 <!-- Toolbar pantalla -->
 <div class="no-print">
-    <button class="btn-print" id="btnPrintPdf">🖨️ Imprimir / Guardar PDF</button>
+    <button class="btn-print" id="btnPrintPdf">Imprimir / Guardar PDF</button>
     <button class="btn-close" id="btnClosePdf">✕ Cerrar</button>
     <span>Imprimir → Destino: «Guardar como PDF»</span>
 </div>
@@ -195,7 +195,7 @@ tbody tr:last-child td { border-bottom: none; }
             </svg>
         </div>
         <div>
-            <div class="header-title">LuxSeguros · EIRA</div>
+            <div class="header-title">Seguros Lux</div>
             <div class="header-sub">Sistema de Gestión de Seguros</div>
         </div>
     </div>
@@ -313,7 +313,7 @@ $conversion     = $totalRegistros > 0 ? round($pagadas / $totalRegistros * 100) 
 
 <!-- Footer -->
 <div class="footer">
-    <span>EIRA · <span class="brand">LuxSeguros</span> — Documento generado el <?php echo $fechaGen; ?></span>
+    <span><span class="brand">Seguros Lux</span> — Documento generado el <?php echo $fechaGen; ?></span>
     <span>Confidencial — Uso interno</span>
 </div>
 

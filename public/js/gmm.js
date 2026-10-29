@@ -67,11 +67,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.ok) {
                 let extraMsg = data.advertencia
-                    ? `<p style="color:#b45309;background:#fef3c7;border-radius:8px;padding:10px 14px;margin:12px auto 0;max-width:420px;font-size:14px;">⚠️ ${data.advertencia}</p>`
+                    ? `<p style="color:#b45309;background:#fef3c7;border-radius:8px;padding:10px 14px;margin:12px auto 0;max-width:420px;font-size:14px;">${iconoSvg('exclamation-triangle-fill')} ${data.advertencia}</p>`
                     : '';
                 form.innerHTML = `
                     <div style="text-align:center;padding:32px 0;">
-                        <div style="font-size:52px;margin-bottom:12px;">✅</div>
+                        <div style="font-size:52px;margin-bottom:12px;color:#16a34a;">${iconoSvg('check-circle-fill')}</div>
                         <h3 style="color:var(--gmm-primary,#0284c7);margin-bottom:8px;">¡Solicitud recibida!</h3>
                         <p style="color:#555;max-width:420px;margin:0 auto;">
                             Un asesor de Seguros Lux te contactará por WhatsApp en las próximas horas
@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </p>${extraMsg}
                     </div>`;
             } else if (data.citas_activas) {
-                showMsg('error', '⚠️ ' + data.msg);
+                showMsg('error', data.msg);
                 if (btn) { btn.disabled = false; btn.textContent = 'Cotizar ahora'; }
             } else {
                 showMsg('error', data.msg || 'Ocurrió un error. Intenta de nuevo.');

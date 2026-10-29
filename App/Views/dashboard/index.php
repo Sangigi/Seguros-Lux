@@ -253,12 +253,12 @@ $pageTitle = 'Dashboard';
                 <?php if (empty($actividad_reciente)): ?>
                 <div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:13px;">Sin actividad registrada aún.</div>
                 <?php else:
-                $iconos = ['registro'=>'👤','cotizacion'=>'📋','venta'=>'✅','cita'=>'📅','llamada'=>'📞','nota'=>'📝','cambio_estado'=>'🔄'];
+                $iconos = ['registro'=>'person','cotizacion'=>'clipboard','venta'=>'check-circle-fill','cita'=>'calendar-event','llamada'=>'telephone','nota'=>'pencil-square','cambio_estado'=>'arrow-repeat'];
                 ?>
                 <div class="timeline">
                     <?php foreach ($actividad_reciente as $act): ?>
                     <div class="timeline-item">
-                        <div class="timeline-marker"><?php echo $iconos[$act['tipo']] ?? '•'; ?></div>
+                        <div class="timeline-marker"><?php echo isset($iconos[$act['tipo']]) ? icono($iconos[$act['tipo']]) : '•'; ?></div>
                         <div class="timeline-content">
                             <div class="timeline-title"><?php echo htmlspecialchars($act['actividad_desc']); ?></div>
                             <div class="timeline-meta">
@@ -287,7 +287,7 @@ $pageTitle = 'Dashboard';
                     <?php foreach ($atc_numeros as $atc): ?>
                     <a href="tel:<?php echo preg_replace('/\D/','',$atc['numero']); ?>"
                        style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-secondary);border-radius:var(--border-radius-sm);border:1px solid var(--border-color);text-decoration:none;color:var(--text-primary);flex:1;min-width:180px;">
-                        <span style="font-size:24px;">📞</span>
+                        <span style="font-size:24px;"><?= icono('telephone') ?></span>
                         <div>
                             <div style="font-weight:700;font-size:14px;"><?php echo htmlspecialchars($atc['numero']); ?></div>
                             <div style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars($atc['nombre']); ?></div>

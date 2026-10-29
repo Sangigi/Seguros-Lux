@@ -231,10 +231,10 @@ $clienteIdPre = isset($_GET['cliente_id']) ? (int)$_GET['cliente_id'] : null;
 $clienteSel   = $clienteIdPre ? $clienteModel->getSeleccionado($clienteIdPre, $agenteId) : null;
 
 $ramoLabel = match($ramoActivo) {
-    'vida'           => ['emoji'=>'❤️','nombre'=>'Vida'],
-    'gastos_medicos' => ['emoji'=>'🏥','nombre'=>'Gastos Médicos'],
-    'empresas'       => ['emoji'=>'🏢','nombre'=>'Empresas'],
-    default          => ['emoji'=>'🚗','nombre'=>'Vehicular'],
+    'vida'           => ['icono'=>'heart-fill','nombre'=>'Vida'],
+    'gastos_medicos' => ['icono'=>'hospital','nombre'=>'Gastos Médicos'],
+    'empresas'       => ['icono'=>'building','nombre'=>'Empresas'],
+    default          => ['icono'=>'car-front','nombre'=>'Vehicular'],
 };
 
 $coberturasPorRamo = [
@@ -259,7 +259,7 @@ $pageTitle = $modoEdicion
         .cot-wrapper{max-width:820px;margin:0 auto;}
         .section-label{font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.7px;border-bottom:2px solid var(--accent-color);padding-bottom:5px;margin:28px 0 16px;display:inline-block;}
         .folio-card{background:linear-gradient(135deg,#0f2940,#1a3a5c,#0ea5e9);border-radius:var(--border-radius-lg);padding:22px 28px;color:#fff;margin-bottom:20px;display:flex;align-items:center;gap:20px;}
-        .folio-icon{width:48px;height:48px;background:rgba(255,255,255,.15);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+        .folio-icon{width:48px;height:48px;background:rgba(255,255,255,.15);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px;}
         .folio-content{flex:1;}
         .folio-label{font-size:11px;opacity:.65;text-transform:uppercase;letter-spacing:.5px;}
         .folio-value{font-size:22px;font-weight:800;letter-spacing:2px;font-family:'Courier New',monospace;margin:4px 0 2px;min-height:30px;}
@@ -328,7 +328,7 @@ $pageTitle = $modoEdicion
                     <!-- ═══ FOLIO ═══ -->
                     <?php if ($modoEdicion): ?>
                     <div class="folio-card" style="background:linear-gradient(135deg,#1a3a1a,#2d5a2d,#22c55e);">
-                        <div class="folio-icon">✏️</div>
+                        <div class="folio-icon"><?= icono('pencil') ?></div>
                         <div class="folio-content">
                             <div class="folio-label">Modo Edición — Folio existente (no cambia)</div>
                             <div class="folio-value"><?php echo htmlspecialchars($cotizacionEdit['folio'] ?? '#'.$cotizacionId); ?></div>
@@ -353,7 +353,7 @@ $pageTitle = $modoEdicion
                                 Usa este folio al cotizar en el portal de la aseguradora.
                             </div>
                         </div>
-                        <button class="folio-copy" id="btnCopyFolio" style="display:none;">📋 Copiar</button>
+                        <button class="folio-copy" id="btnCopyFolio" style="display:none;"><?= icono('clipboard') ?> Copiar</button>
                     </div>
                     <?php endif; ?>
 
@@ -395,7 +395,7 @@ $pageTitle = $modoEdicion
                     <!-- ═══ SECCIÓN 2: RAMO ═══ -->
                     <span class="section-label">2 · Ramo del Seguro</span>
                     <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--info-light);border:1px solid var(--accent-color);border-radius:var(--border-radius);margin-bottom:16px;">
-                        <span style="font-size:26px;"><?php echo $ramoLabel['emoji']; ?></span>
+                        <span style="font-size:26px;"><?php echo icono($ramoLabel['icono']); ?></span>
                         <div style="flex:1;">
                             <div style="font-weight:700;color:var(--accent-color);font-size:14px;"><?php echo $ramoLabel['nombre']; ?></div>
                             <div style="font-size:11px;color:var(--text-secondary);">Ramo activo en tu sesión. <a href="/dashboard" style="color:var(--accent-color);">Cambiar ramo</a></div>
@@ -470,9 +470,9 @@ $pageTitle = $modoEdicion
                     <!-- ═══ SECCIÓN 4: MÉTODO DE PAGO ═══ -->
                     <span class="section-label">4 · Método de Pago <span style="font-size:10px;font-weight:400;text-transform:none;color:var(--text-muted);">estimado — opcional</span></span>
                     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
-                        <?php foreach(['spei'=>['🏦','SPEI','Transferencia'],'contado'=>['💵','Contado','Efectivo'],'meses_sin_intereses'=>['💳','MSI','Meses sin intereses']] as $k=>[$ico,$tit,$sub]): ?>
+                        <?php foreach(['spei'=>['bank','SPEI','Transferencia'],'contado'=>['cash','Contado','Efectivo'],'meses_sin_intereses'=>['credit-card','MSI','Meses sin intereses']] as $k=>[$ico,$tit,$sub]): ?>
                         <div class="metodo-card" id="metodo_<?php echo $k; ?>" data-action="selectMetodo" data-key="<?php echo $k; ?>">
-                            <div style="font-size:20px;margin-bottom:4px;"><?php echo $ico; ?></div>
+                            <div style="font-size:20px;margin-bottom:4px;"><?php echo icono($ico); ?></div>
                             <div style="font-size:12px;font-weight:600;"><?php echo $tit; ?></div>
                             <div style="font-size:10px;color:var(--text-muted);"><?php echo $sub; ?></div>
                         </div>
@@ -485,7 +485,7 @@ $pageTitle = $modoEdicion
 
                     <div style="margin-bottom:20px;">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                            <span style="font-size:13px;font-weight:700;">📋 Documento de cotización</span>
+                            <span style="font-size:13px;font-weight:700;"><?= icono('clipboard') ?> Documento de cotización</span>
                             <span class="tag-info">Principal</span>
                         </div>
                         <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">
@@ -494,7 +494,7 @@ $pageTitle = $modoEdicion
                         <div style="display:flex;flex-direction:column;gap:6px;max-width:420px;">
                             <div class="doc-drop-zone" id="zone_doc_cotizacion" data-action="openFile" data-target="file_doc_cotizacion">
                                 <input type="file" id="file_doc_cotizacion" name="doc_cotizacion" accept=".pdf,.jpg,.jpeg,.png" data-handler="docSelected" data-tipo="doc_cotizacion" style="display:none;">
-                                <span style="font-size:18px;">📄</span>
+                                <span style="font-size:18px;"><?= icono('file-earmark-text') ?></span>
                                 <span>Clic para subir (PDF o imagen · máx 10MB)</span>
                             </div>
                             <div class="doc-preview" id="prev_doc_cotizacion" style="display:none;"></div>
@@ -504,7 +504,7 @@ $pageTitle = $modoEdicion
                     <?php if ($ramoActivo === 'autos'): ?>
                     <div style="margin-bottom:20px;">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                            <span style="font-size:13px;font-weight:700;">📷 Fotos del vehículo</span>
+                            <span style="font-size:13px;font-weight:700;"><?= icono('camera') ?> Fotos del vehículo</span>
                             <span style="font-size:10px;color:var(--text-muted);">hasta 5 · JPG/PNG</span>
                         </div>
                         <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
@@ -513,7 +513,7 @@ $pageTitle = $modoEdicion
                                 <div class="doc-drop-zone" id="zone_<?php echo $tipo; ?>" data-action="openFile" data-target="file_foto_<?php echo $i; ?>"
                                      style="aspect-ratio:1;flex-direction:column;padding:10px;justify-content:center;">
                                     <input type="file" id="file_foto_<?php echo $i; ?>" name="<?php echo $tipo; ?>" accept=".jpg,.jpeg,.png" data-handler="docSelected" data-tipo="<?php echo $tipo; ?>" style="display:none;">
-                                    <span style="font-size:20px;">📷</span>
+                                    <span style="font-size:20px;"><?= icono('camera') ?></span>
                                     <span style="font-size:10px;margin-top:3px;">Foto <?php echo $i; ?></span>
                                 </div>
                                 <div class="doc-preview" id="prev_<?php echo $tipo; ?>" style="display:none;margin-top:4px;"></div>
@@ -525,33 +525,33 @@ $pageTitle = $modoEdicion
 
                     <div>
                         <div class="emit-docs-toggle" id="toggleEmitBtn">
-                            <span>📁</span>
+                            <span><?= icono('folder') ?></span>
                             <span style="flex:1;">Documentos para emisión</span>
                             <span style="font-size:11px;color:var(--text-muted);">INE, comprobante, tarjeta de circulación, etc.</span>
                             <span id="emitArrow" style="font-size:12px;transition:transform .2s;">▼</span>
                         </div>
                         <div id="emitDocsPanel" style="display:none;">
                             <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;padding:8px 12px;background:var(--bg-secondary);border-radius:var(--border-radius-sm);border-left:3px solid var(--warning-color);">
-                                ⚠️ Estos documentos son necesarios para <strong>emitir la póliza</strong>, no para cotizar. Súbelos solo si el cliente ya los compartió.
+                                <?= icono('exclamation-triangle-fill') ?> Estos documentos son necesarios para <strong>emitir la póliza</strong>, no para cotizar. Súbelos solo si el cliente ya los compartió.
                             </p>
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                                 <?php
                                 $docEmision = [
-                                    'ine'                 => ['🪪','INE / Identificación oficial'],
-                                    'comprobante_dom'     => ['🏠','Comprobante de domicilio'],
-                                    'tarjeta_circulacion' => ['🚘','Tarjeta de circulación'],
-                                    'factura_auto'        => ['🧾','Factura del auto'],
-                                    'constancia_fiscal'   => ['📑','Constancia de situación fiscal'],
+                                    'ine'                 => ['person-vcard','INE / Identificación oficial'],
+                                    'comprobante_dom'     => ['house','Comprobante de domicilio'],
+                                    'tarjeta_circulacion' => ['car-front','Tarjeta de circulación'],
+                                    'factura_auto'        => ['receipt','Factura del auto'],
+                                    'constancia_fiscal'   => ['files','Constancia de situación fiscal'],
                                 ];
                                 foreach ($docEmision as $tipo => [$icon, $label]): ?>
                                 <div style="display:flex;flex-direction:column;gap:5px;">
                                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text-secondary);">
-                                        <span><?php echo $icon; ?></span>
+                                        <span><?php echo icono($icon); ?></span>
                                         <span><?php echo $label; ?></span>
                                     </label>
                                     <div class="doc-drop-zone" id="zone_<?php echo $tipo; ?>" data-action="openFile" data-target="file_<?php echo $tipo; ?>">
                                         <input type="file" id="file_<?php echo $tipo; ?>" name="<?php echo $tipo; ?>" accept=".pdf,.jpg,.jpeg,.png" data-handler="docSelected" data-tipo="<?php echo $tipo; ?>" style="display:none;">
-                                        <span style="font-size:16px;">📄</span>
+                                        <span style="font-size:16px;"><?= icono('file-earmark-text') ?></span>
                                         <span>Clic para subir</span>
                                     </div>
                                     <div class="doc-preview" id="prev_<?php echo $tipo; ?>" style="display:none;"></div>
@@ -571,7 +571,7 @@ $pageTitle = $modoEdicion
                         <a href="/cotizaciones" class="btn btn-outline">Cancelar</a>
                         <?php endif; ?>
                         <button class="btn btn-primary" id="btnGuardar">
-                            <?php echo $modoEdicion ? '💾 Guardar Cambios' : '✅ Crear Cotización'; ?>
+                            <?php echo $modoEdicion ? icono('floppy') . ' Guardar Cambios' : icono('check-circle-fill') . ' Crear Cotización'; ?>
                         </button>
                     </div>
 
@@ -693,7 +693,7 @@ function onDocSelected(input, tipo) {
     const prev = document.getElementById('prev_' + tipo);
     if (prev) {
         prev.style.display = 'flex';
-        prev.innerHTML = `📎 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${file.name}</span> <button class="doc-preview-remove" data-action="quitarDoc" data-tipo="${tipo}">✕</button>`;
+        prev.innerHTML = `${iconoSvg('paperclip')} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${file.name}</span> <button class="doc-preview-remove" data-action="quitarDoc" data-tipo="${tipo}">✕</button>`;
     }
     actualizarContador();
 }
@@ -754,18 +754,18 @@ function guardarCotizacion() {
             .then(r => r.json())
             .then(d => {
                 if (d.ok) {
-                    showToast('💾 Cotización actualizada · Folio: ' + d.folio, 'success');
+                    showToast(iconoSvg('floppy') + ' Cotización actualizada · Folio: ' + d.folio, 'success');
                     setTimeout(() => { window.location.href = '/cliente/' + d.cliente_id + '?ok=cotizacion'; }, 1200);
                 } else {
                     showToast(d.msg || 'Error al actualizar la cotización', 'error');
                     btn.disabled = false;
-                    btn.textContent = '💾 Guardar Cambios';
+                    btn.innerHTML = iconoSvg('floppy') + ' Guardar Cambios';
                 }
             })
             .catch(() => {
                 showToast('Error de conexión', 'error');
                 btn.disabled = false;
-                btn.textContent = '💾 Guardar Cambios';
+                btn.innerHTML = iconoSvg('floppy') + ' Guardar Cambios';
             });
     } else {
         fd.append('accion',         'crear');
@@ -784,7 +784,7 @@ function guardarCotizacion() {
             .then(r => r.json())
             .then(d => {
                 if (d.ok) {
-                    showToast('✅ Cotización creada · Folio: ' + d.folio, 'success');
+                    showToast(iconoSvg('check-circle-fill') + ' Cotización creada · Folio: ' + d.folio, 'success');
                     setTimeout(() => {
                         window.location.href = clientePreId
                             ? '/cliente/' + clientePreId + '?ok=cotizacion'
@@ -793,13 +793,13 @@ function guardarCotizacion() {
                 } else {
                     showToast(d.msg || 'Error al crear la cotización', 'error');
                     btn.disabled = false;
-                    btn.textContent = '✅ Crear Cotización';
+                    btn.innerHTML = iconoSvg('check-circle-fill') + ' Crear Cotización';
                 }
             })
             .catch(() => {
                 showToast('Error de conexión', 'error');
                 btn.disabled = false;
-                btn.textContent = '✅ Crear Cotización';
+                btn.innerHTML = iconoSvg('check-circle-fill') + ' Crear Cotización';
             });
     }
 }

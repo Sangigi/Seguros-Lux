@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $nuevaId = $citaModel->crear($pCliente, $agenteId, $pTipo, $pFecha, $pHora, $pComentarios, $pRamo);
         if ($pMeetLink && $nuevaId) {
             \Database\Connection::getConnection()
-                ->prepare('UPDATE citas SET comentarios = CONCAT(COALESCE(comentarios,""), "\n🎥 Meet: ", ?) WHERE id = ? AND empresa_id = ?')
+                ->prepare('UPDATE citas SET comentarios = CONCAT(COALESCE(comentarios,""), "\nMeet: ", ?) WHERE id = ? AND empresa_id = ?')
                 ->execute([$pMeetLink, $nuevaId, $empresaId]);
         }
         $historialModel->registrar($pCliente, $agenteId, 'cita', 'Cita programada — '.ucfirst($pTipo), "$pFecha a las $pHora. $pComentarios");
@@ -77,10 +77,10 @@ $mesesCortos = [1=>'Ene',2=>'Feb',3=>'Mar',4=>'Abr',5=>'May',6=>'Jun',7=>'Jul',8
 $ramosValidos   = ['autos','vida','gastos_medicos','empresas'];
 $ramoFiltro     = in_array($_GET['ramo'] ?? '', $ramosValidos, true) ? $_GET['ramo'] : null;
 $ramoLabels = [
-    'autos'          => ['icon'=>'🚗', 'label'=>'Autos',       'color'=>'#0ea5e9'],
-    'vida'           => ['icon'=>'❤️', 'label'=>'Vida',        'color'=>'#c9a227'],
-    'gastos_medicos' => ['icon'=>'🏥', 'label'=>'GMM',         'color'=>'#10b981'],
-    'empresas'       => ['icon'=>'🏢', 'label'=>'Empresas',    'color'=>'#8b5cf6'],
+    'autos'          => ['icon'=>'car-front',  'label'=>'Autos',       'color'=>'#0ea5e9'],
+    'vida'           => ['icon'=>'heart-fill', 'label'=>'Vida',        'color'=>'#c9a227'],
+    'gastos_medicos' => ['icon'=>'hospital',   'label'=>'GMM',         'color'=>'#10b981'],
+    'empresas'       => ['icon'=>'building',   'label'=>'Empresas',    'color'=>'#8b5cf6'],
 ];
 
 $citas        = $citaModel->getByMesYRamo($agenteId, $fechaIni, $fechaFin, $ramoFiltro);
@@ -180,12 +180,12 @@ if (isset($_GET['_ajax'])) {
             ?>
             <a href="?<?php echo $qBase; ?>"
                class="btn btn-sm <?php echo $ramoFiltro === null ? 'btn-primary' : 'btn-outline'; ?>"
-               style="border-radius:99px;">📊 Todos</a>
+               style="border-radius:99px;"><?= icono('bar-chart') ?> Todos</a>
             <?php foreach ($ramoLabels as $slug => $info): ?>
             <a href="?<?php echo $qBase; ?>&ramo=<?php echo $slug; ?>"
                class="btn btn-sm <?php echo $ramoFiltro === $slug ? 'btn-primary' : 'btn-outline'; ?>"
                style="border-radius:99px;<?php echo $ramoFiltro === $slug ? 'background:'.$info['color'].';border-color:'.$info['color'].';' : ''; ?>">
-                <?php echo $info['icon'].' '.$info['label']; ?>
+                <?php echo icono($info['icon']).' '.$info['label']; ?>
             </a>
             <?php endforeach; ?>
         </div>
@@ -273,11 +273,11 @@ if (isset($_GET['_ajax'])) {
                 <div class="card-body" style="padding:0 20px;">
                     <?php if (empty($proximas)): ?>
                     <div class="empty-state" style="padding:28px 0;">
-                        <div class="empty-state-icon" style="font-size:20px;">📅</div>
+                        <div class="empty-state-icon" style="font-size:20px;"><?= icono('calendar-event') ?></div>
                         <p class="empty-state-description" style="font-size:13px;">Sin citas próximas</p>
                     </div>
                     <?php else:
-                    $tipoIcon=['llamada'=>'📞','videollamada'=>'💻','presencial'=>'🤝'];
+                    $tipoIcon=['llamada'=>'telephone','videollamada'=>'camera-video','presencial'=>'person-check'];
                     foreach ($proximas as $p):
                         $fd=new DateTime($p['fecha']);$dN=(int)$fd->format('j');$mN=(int)$fd->format('n');
                     ?>
@@ -292,10 +292,10 @@ if (isset($_GET['_ajax'])) {
                             </div>
                             <div style="font-size:12px;color:var(--text-secondary);">
                                 <strong style="color:var(--accent-color);"><?php echo substr($p['hora'],0,5); ?></strong>
-                                &nbsp;<?php echo $tipoIcon[$p['tipo']]??''; ?> <?php echo ucfirst($p['tipo']); ?>
+                                &nbsp;<?php echo isset($tipoIcon[$p['tipo']]) ? icono($tipoIcon[$p['tipo']]) : ''; ?> <?php echo ucfirst($p['tipo']); ?>
                             </div>
                             <?php if (!empty($p['cliente_telefono'])): ?>
-                            <div style="font-size:11px;color:var(--text-muted);">📞 <?php echo htmlspecialchars($p['cliente_telefono']); ?></div>
+                            <div style="font-size:11px;color:var(--text-muted);"><?= icono('telephone') ?> <?php echo htmlspecialchars($p['cliente_telefono']); ?></div>
                             <?php endif; ?>
                         </div>
                         <button class="btn btn-ghost btn-icon btn-sm" data-action="verCita" data-id="<?php echo $p['id']; ?>">
@@ -348,9 +348,9 @@ if (isset($_GET['_ajax'])) {
                 <div class="form-group">
                     <label class="form-label required">Tipo</label>
                     <select class="form-select" id="ncTipo">
-                        <option value="llamada">📞 Llamada</option>
-                        <option value="videollamada">💻 Videollamada</option>
-                        <option value="presencial">🤝 Presencial</option>
+                        <option value="llamada">Llamada</option>
+                        <option value="videollamada">Videollamada</option>
+                        <option value="presencial">Presencial</option>
                     </select>
                 </div>
             </div>
@@ -361,7 +361,7 @@ if (isset($_GET['_ajax'])) {
             <div class="form-group" id="meetGroup" style="display:none;">
                 <label class="form-label" style="display:flex;align-items:center;gap:8px;">
                     Link de Google Meet
-                    <a href="https://meet.google.com/new" target="_blank" class="btn btn-sm btn-ghost" style="margin-left:auto;font-size:11px;">🔗 Crear Meet</a>
+                    <a href="https://meet.google.com/new" target="_blank" class="btn btn-sm btn-ghost" style="margin-left:auto;font-size:11px;"><?= icono('link-45deg') ?> Crear Meet</a>
                 </label>
                 <input type="text" class="form-input" id="ncMeetLink" placeholder="Pega aquí el link de Google Meet">
             </div>
@@ -382,7 +382,7 @@ if (isset($_GET['_ajax'])) {
             <!-- Campos extra si el ramo es Autos -->
             <?php if (($ramoFiltro ?? $ramo) === 'autos'): ?>
             <div id="grupoAutos" style="border-top:1px solid var(--border-color);padding-top:14px;margin-top:4px;">
-                <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">🚗 Datos del vehículo</div>
+                <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;"><?= icono('car-front') ?> Datos del vehículo</div>
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Tipo de auto</label>
@@ -447,7 +447,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){const a=document.qu
 function verCita(id){
     const c=citasData.find(x=>parseInt(x.id)===id);if(!c)return;
     const badgeClass={programada:'badge-info',completada:'badge-success',cancelada:'badge-danger'};
-    const tipoLabel={llamada:'📞 Llamada',videollamada:'💻 Videollamada',presencial:'🤝 Presencial'};
+    const tipoLabel={llamada:iconoSvg('telephone')+' Llamada',videollamada:iconoSvg('camera-video')+' Videollamada',presencial:iconoSvg('person-check')+' Presencial'};
     const fecha=new Date(c.fecha+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
     const iniciales=esc(c.cliente_nombre).split(' ').slice(0,2).map(p=>p[0]).join('').toUpperCase();
     document.getElementById('modalVerCitaBody').innerHTML=`
@@ -463,7 +463,7 @@ function verCita(id){
                 ${c.cliente_telefono?`<div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Teléfono</div><div>${esc(c.cliente_telefono)}</div></div>`:''}
             </div>
             ${c.comentarios?`<div style="background:#f8fafc;border-left:3px solid var(--accent-color);border-radius:var(--border-radius-sm);padding:14px;"><div style="font-size:11px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;margin-bottom:5px;">Agenda</div><div>${esc(c.comentarios)}</div></div>`:''}
-            ${c.meet_link?`<a href="${esc(c.meet_link)}" target="_blank" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#1a73e8,#0d47a1);color:#fff;border-radius:var(--border-radius-sm);text-decoration:none;font-weight:600;">💻 <span>Unirse a Google Meet</span></a>`:''}
+            ${c.meet_link?`<a href="${esc(c.meet_link)}" target="_blank" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#1a73e8,#0d47a1);color:#fff;border-radius:var(--border-radius-sm);text-decoration:none;font-weight:600;">${iconoSvg('camera-video')} <span>Unirse a Google Meet</span></a>`:''}
         </div>`;
     const footer=document.getElementById('modalVerCitaFooter');
     footer.innerHTML=c.estado==='programada'
@@ -482,12 +482,12 @@ function abrirDia(dia){
     document.getElementById('modalDiaTitulo').textContent=`${dia} de ${MESES_NOMBRES[mes-1]} ${anio}`;
     const badgeClass={programada:'badge-info',completada:'badge-success',cancelada:'badge-danger'};
     document.getElementById('modalDiaBody').innerHTML=citas.length===0
-        ?`<div class="empty-state" style="padding:28px 0;"><div class="empty-state-icon" style="font-size:20px;">📅</div><p class="empty-state-description">Sin citas este día.</p></div>`
+        ?`<div class="empty-state" style="padding:28px 0;"><div class="empty-state-icon" style="font-size:20px;">${iconoSvg('calendar-event')}</div><p class="empty-state-description">Sin citas este día.</p></div>`
         :citas.map(c=>`<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border-color);">
             <div style="min-width:46px;font-weight:700;color:var(--accent-color);font-size:15px;">${esc(c.hora).substring(0,5)}</div>
             <div style="flex:1;"><div style="font-weight:600;font-size:13px;">${esc(c.cliente_nombre)}</div><div style="font-size:12px;color:var(--text-secondary);">${ucfirst(c.tipo)}</div></div>
             <span class="badge ${badgeClass[c.estado]||'badge-neutral'}">${ucfirst(c.estado)}</span>
-            <button class="btn btn-ghost btn-icon btn-sm" data-action="dia-ver" data-id="${parseInt(c.id)}">👁</button>
+            <button class="btn btn-ghost btn-icon btn-sm" data-action="dia-ver" data-id="${parseInt(c.id)}" title="Ver cita" aria-label="Ver cita">${iconoSvg('eye')}</button>
         </div>`).join('');
     openModal('modalDia');
 }
@@ -677,10 +677,10 @@ function renderProximas(proximas) {
     var container = document.querySelector('.upcoming-item')?.closest('.card-body');
     if (!container) return;
     if (!proximas || !proximas.length) {
-        container.innerHTML = '<div class="empty-state" style="padding:28px 0;"><div class="empty-state-icon" style="font-size:20px;">📅</div><p class="empty-state-description" style="font-size:13px;">Sin citas próximas</p></div>';
+        container.innerHTML = '<div class="empty-state" style="padding:28px 0;"><div class="empty-state-icon" style="font-size:20px;">' + iconoSvg('calendar-event') + '</div><p class="empty-state-description" style="font-size:13px;">Sin citas próximas</p></div>';
         return;
     }
-    var TIPO_ICON = { llamada:'📞', videollamada:'💻', presencial:'🤝' };
+    var TIPO_ICON = { llamada:iconoSvg('telephone'), videollamada:iconoSvg('camera-video'), presencial:iconoSvg('person-check') };
     var html = '';
     proximas.forEach(function(p) {
         var parts = p.fecha.split('-');
@@ -689,7 +689,7 @@ function renderProximas(proximas) {
             '<div class="upcoming-date"><div class="upcoming-date-day">' + dN + '</div><div class="upcoming-date-mes">' + _MESES_CORTOS[mN] + '</div></div>' +
             '<div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(p.cliente_nombre) + '</div>' +
             '<div style="font-size:12px;color:var(--text-secondary);"><strong style="color:var(--accent-color);">' + p.hora.substring(0,5) + '</strong>&nbsp;' + (TIPO_ICON[p.tipo]||'') + ' ' + p.tipo + '</div>' +
-            (p.cliente_telefono ? '<div style="font-size:11px;color:var(--text-muted);">📞 ' + esc(p.cliente_telefono) + '</div>' : '') +
+            (p.cliente_telefono ? '<div style="font-size:11px;color:var(--text-muted);">' + iconoSvg('telephone') + ' ' + esc(p.cliente_telefono) + '</div>' : '') +
             '</div><button class="btn btn-ghost btn-icon btn-sm" data-action="verCita" data-id="' + p.id + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>';
     });
     container.innerHTML = html;
