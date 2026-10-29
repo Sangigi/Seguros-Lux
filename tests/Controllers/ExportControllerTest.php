@@ -26,6 +26,8 @@ class ExportControllerTest extends TestCase
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
+        // SessionManager resuelve la empresa desde aquí en cada petición.
+        $_SESSION['empresa_id']      = 1;
         $_SESSION['agente_id']       = 1;
         $_SESSION['agente']          = 'test@seguroslux.mx';
         $_SESSION['agente_nombre']   = 'Test';

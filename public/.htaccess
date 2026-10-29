@@ -13,6 +13,31 @@ RewriteRule ^telegram/webhook/?$ telegram/telegram_webhook.php [L]
 # WhatsApp: https://seguroslux.mx/whatsapp/webhook
 RewriteRule ^whatsapp/webhook/?$ whatsapp/whatsapp_webhook.php [L]
 
+# ── Bloquear acceso directo a archivos PHP ────────────────────────────────────
+#
+# ORDEN IMPORTANTE: esto va ANTES de servir archivos reales.
+#
+# Antes estaba al final, después de una regla «si el archivo existe, sírvelo»
+# que lleva [L]. [L] detiene el procesamiento, así que cualquier .php existente
+# se servía y esta regla no llegaba a evaluarse nunca: estaba escrita, pero no
+# protegía nada. Por eso quedaban alcanzables utilidades sueltas del directorio
+# público.
+#
+# Las excepciones son las únicas entradas legítimas que no pasan por el
+# front-controller: los webhooks (los llama un tercero con su propia URL) y
+# dos utilidades que, además, se protegen por su cuenta en PHP.
+<IfModule mod_rewrite.c>
+    RewriteCond %{REQUEST_URI} !^/blog/
+    RewriteCond %{REQUEST_URI} !^/index\.php$
+    RewriteCond %{REQUEST_URI} !^/SessionPing\.php$
+    RewriteCond %{REQUEST_URI} !^/telegram/telegram_webhook\.php$
+    RewriteCond %{REQUEST_URI} !^/whatsapp/whatsapp_webhook\.php$
+    RewriteCond %{REQUEST_URI} !^/meta/meta_webhook\.php$
+    RewriteCond %{REQUEST_URI} !^/diagnostico\.php$
+    RewriteCond %{REQUEST_URI} !^/register_webhook\.php$
+    RewriteRule \.php$ - [F,L]
+</IfModule>
+
 # ── Servir archivos y directorios reales ──────────────────────────────────────
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
@@ -47,19 +72,6 @@ RewriteRule ^ index.php [QSA,L]
 <FilesMatch "\.(sql|bak|log|sh|env|ini|phar|git)$">
     Require all denied
 </FilesMatch>
-
-# Bloquear acceso directo a cualquier archivo PHP fuera del front-controller
-# EXCEPTO los webhooks de Telegram, WhatsApp, Meta y el diagnóstico
-<IfModule mod_rewrite.c>
-    RewriteCond %{REQUEST_URI} !^/blog/
-    RewriteCond %{REQUEST_URI} !^/index\.php$
-    RewriteCond %{REQUEST_URI} !^/telegram/telegram_webhook\.php$
-    RewriteCond %{REQUEST_URI} !^/whatsapp/whatsapp_webhook\.php$
-    RewriteCond %{REQUEST_URI} !^/meta/meta_webhook\.php$
-    RewriteCond %{REQUEST_URI} !^/diagnostico\.php$
-    RewriteCond %{REQUEST_FILENAME} -f
-    RewriteRule \.php$ - [F,L]
-</IfModule>
 
 # ── Cabeceras de seguridad adicionales vía Apache ─────────────────────────────
 # (como respaldo a las que emite PHP; si usas nginx, muévelas al server block)

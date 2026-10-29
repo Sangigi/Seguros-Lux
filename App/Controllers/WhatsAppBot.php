@@ -10,8 +10,17 @@ declare(strict_types=1);
 use App\Models\CitaModel;
 use App\Models\ClientModel;
 
-$WA_TOKEN    = getenv('WHATSAPP_TOKEN')    ?: ($_ENV['WHATSAPP_TOKEN']    ?? '');
-$WA_PHONE_ID = getenv('WHATSAPP_PHONE_ID') ?: ($_ENV['WHATSAPP_PHONE_ID'] ?? '');
+$WA_TOKEN = getenv('WHATSAPP_TOKEN') ?: ($_ENV['WHATSAPP_TOKEN'] ?? '');
+
+// El número por el que entró el mensaje manda sobre el del .env. En
+// multiempresa cada empresa tiene el suyo, y contestar por el de otra sacaría
+// la conversación de la empresa a la que pertenece.
+// Pendiente: el token sigue siendo global (una sola app de Meta). Si cada
+// empresa llega a tener su propia WABA, el token tendrá que guardarse por
+// canal y cifrado, no en el .env.
+$WA_PHONE_ID = ($waPhoneIdEntrante ?? '') !== ''
+    ? (string) $waPhoneIdEntrante
+    : (getenv('WHATSAPP_PHONE_ID') ?: ($_ENV['WHATSAPP_PHONE_ID'] ?? ''));
 
 if (!defined('WA_PROJECT_ROOT')) {
     define('WA_PROJECT_ROOT', dirname(__DIR__, 2));
@@ -20,6 +29,21 @@ if (!defined('WA_PROJECT_ROOT')) {
 // ── FIX CRÍTICO: usar define() en lugar de variable global ───────────────────
 if (!defined('WA_LOG_PATH')) {
     define('WA_LOG_PATH', WA_PROJECT_ROOT . '/public/whatsapp/wa.log');
+}
+
+if (!function_exists('waEmpresaId')) {
+    /**
+     * Empresa en la que está corriendo el bot.
+     *
+     * El webhook ya resolvió la empresa a partir del `phone_number_id` y nos
+     * metió dentro de ella con Tenant::comoEmpresa(). Esto solo la lee. Si
+     * faltara, lanza: el bot escribe en la base (crea clientes, mueve citas),
+     * y hacerlo sin saber de quién es el dato es justo lo que no puede pasar.
+     */
+    function waEmpresaId(): int
+    {
+        return \App\Security\Tenant::requireId();
+    }
 }
 
 if (!function_exists('wa_bot_debug_log')) {
@@ -134,8 +158,9 @@ function waGetCita(string $phone, $db): ?array
              LEFT JOIN agentes a ON a.id=ci.agente_id
              WHERE cl.whatsapp_chat_id=? AND ci.estado='programada'
                AND TIMESTAMP(ci.fecha, ci.hora) >= NOW()
+               AND ci.empresa_id=?
              ORDER BY ci.fecha ASC, ci.hora ASC LIMIT 1");
-        $st->execute([$phone]); $r=$st->fetch(); if($r) return $r;
+        $st->execute([$phone, waEmpresaId()]); $r=$st->fetch(); if($r) return $r;
     } catch(\Throwable $e){}
     // 2. Fallback: últimos 10 dígitos del teléfono
     $last10=substr(preg_replace('/\D/','',$phone),-10);
@@ -147,9 +172,10 @@ function waGetCita(string $phone, $db): ?array
              WHERE (cl.telefono LIKE ? OR cl.telefono LIKE ? OR cl.telefono LIKE ?)
                AND ci.estado='programada'
                AND TIMESTAMP(ci.fecha, ci.hora) >= NOW()
+               AND ci.empresa_id=?
              ORDER BY ci.fecha ASC, ci.hora ASC LIMIT 1");
-        $st->execute(["%{$last10}","+52{$last10}","52{$last10}"]); $r=$st->fetch();
-        if($r){ $db->prepare("UPDATE clientes SET whatsapp_chat_id=? WHERE id=?")->execute([$phone,$r['cliente_id']]); return $r; }
+        $st->execute(["%{$last10}","+52{$last10}","52{$last10}", waEmpresaId()]); $r=$st->fetch();
+        if($r){ $db->prepare("UPDATE clientes SET whatsapp_chat_id=? WHERE id=? AND empresa_id=?")->execute([$phone,$r['cliente_id'],waEmpresaId()]); return $r; }
     } catch(\Throwable $e){}
     return null;
 }
@@ -160,9 +186,9 @@ function waLinkPhone(string $phone,string $nombre,$db): void
     $n1=$partes[0]??''; $n2=$partes[1]??'';
     if(!$n1) return;
     try {
-        $st=$db->prepare("SELECT id FROM clientes WHERE nombre LIKE ? AND apellido_paterno LIKE ? ORDER BY fecha_registro DESC LIMIT 1");
-        $st->execute(["%{$n1}%","%{$n2}%"]); $row=$st->fetch();
-        if($row) $db->prepare("UPDATE clientes SET whatsapp_chat_id=? WHERE id=?")->execute([$phone,$row['id']]);
+        $st=$db->prepare("SELECT id FROM clientes WHERE nombre LIKE ? AND apellido_paterno LIKE ? AND empresa_id=? ORDER BY fecha_registro DESC LIMIT 1");
+        $st->execute(["%{$n1}%","%{$n2}%", waEmpresaId()]); $row=$st->fetch();
+        if($row) $db->prepare("UPDATE clientes SET whatsapp_chat_id=? WHERE id=? AND empresa_id=?")->execute([$phone,$row['id'],waEmpresaId()]);
     } catch(\Throwable $e){}
 }
 
@@ -344,8 +370,8 @@ if($text==='/cancelar'){
     // Si hay una cita en sesión, verificar que sigue siendo válida (no puede estar completada o cancelada ya)
     $citaIdEnSesion = (int)($state['cita_id'] ?? 0);
     if($citaIdEnSesion){
-        $stCheck=$_waDb->prepare("SELECT id, estado FROM citas WHERE id=? LIMIT 1");
-        $stCheck->execute([$citaIdEnSesion]);
+        $stCheck=$_waDb->prepare("SELECT id, estado FROM citas WHERE id=? AND empresa_id=? LIMIT 1");
+        $stCheck->execute([$citaIdEnSesion, waEmpresaId()]);
         $citaCheck=$stCheck->fetch();
         // Si la cita ya fue cancelada o completada, limpiar sesión y buscar de nuevo
         if(!$citaCheck || in_array($citaCheck['estado'],['cancelada','completada'],true)){
@@ -360,8 +386,8 @@ if($text==='/cancelar'){
         $stCita=$_waDb->prepare(
             "SELECT ci.*, CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
              FROM citas ci LEFT JOIN agentes a ON a.id=ci.agente_id
-             WHERE ci.id=? LIMIT 1");
-        $stCita->execute([$citaIdEnSesion]);
+             WHERE ci.id=? AND ci.empresa_id=? LIMIT 1");
+        $stCita->execute([$citaIdEnSesion, waEmpresaId()]);
         $cita=$stCita->fetch() ?: null;
     }
     if(!$cita){waSend($phone,"📭 No tienes citas activas.",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']);return;}
@@ -374,8 +400,8 @@ if($text==='/reprog'){
     // Si hay una cita en sesión, verificar que sigue siendo válida
     $citaIdEnSesion = (int)($state['cita_id'] ?? 0);
     if($citaIdEnSesion){
-        $stCheck=$_waDb->prepare("SELECT id, estado FROM citas WHERE id=? LIMIT 1");
-        $stCheck->execute([$citaIdEnSesion]);
+        $stCheck=$_waDb->prepare("SELECT id, estado FROM citas WHERE id=? AND empresa_id=? LIMIT 1");
+        $stCheck->execute([$citaIdEnSesion, waEmpresaId()]);
         $citaCheck=$stCheck->fetch();
         if(!$citaCheck || in_array($citaCheck['estado'],['cancelada','completada'],true)){
             $citaIdEnSesion=0;
@@ -388,8 +414,8 @@ if($text==='/reprog'){
         $stCita=$_waDb->prepare(
             "SELECT ci.*, CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
              FROM citas ci LEFT JOIN agentes a ON a.id=ci.agente_id
-             WHERE ci.id=? LIMIT 1");
-        $stCita->execute([$citaIdEnSesion]);
+             WHERE ci.id=? AND ci.empresa_id=? LIMIT 1");
+        $stCita->execute([$citaIdEnSesion, waEmpresaId()]);
         $cita=$stCita->fetch() ?: null;
     }
     if(!$cita){waSend($phone,"📭 No tienes citas activas.",$WA_PHONE_ID,$WA_TOKEN,['🏠 Menú principal']);return;}
@@ -513,8 +539,8 @@ if (str_starts_with($text, 'CITA:')) {
 
     if ($cita) {
         // Vincular número WhatsApp al cliente para futuras búsquedas
-        $_waDb->prepare("UPDATE clientes SET whatsapp_chat_id = ? WHERE id = ?")
-              ->execute([$phone, $cita['cliente_id_real'] ?? $cita['cliente_id']]);
+        $_waDb->prepare("UPDATE clientes SET whatsapp_chat_id = ? WHERE id = ? AND empresa_id = ?")
+              ->execute([$phone, $cita['cliente_id_real'] ?? $cita['cliente_id'], waEmpresaId()]);
         waSend($phone,
             "✅ *¡Cita confirmada!*\n\n" . waResumen($cita) . "\n\n¿Qué deseas hacer?",
             $WA_PHONE_ID, $WA_TOKEN,

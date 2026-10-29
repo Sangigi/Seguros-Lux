@@ -48,11 +48,19 @@ final class MailService
      * el request HTTP. El cron lo enviará en la próxima ejecución
      * (máx. 1 minuto) con reintentos automáticos.
      *
-     * @param  string      $to       Dirección destinatario
-     * @param  string      $toName   Nombre destinatario
-     * @param  string      $subject  Asunto
-     * @param  string      $body     Cuerpo HTML
-     * @param  string|null $replyTo  Reply-To opcional
+     * MULTIEMPRESA: el correo se encola con la empresa activa dentro, para que
+     * el cron —que despacha la cola de toda la plataforma— pueda atribuir cada
+     * envío a su empresa. Si se llama desde un proceso sin empresa en contexto
+     * hay que pasarla explícitamente en $empresaId; si no, el correo queda como
+     * de plataforma (invitaciones, avisos al propietario), que es lo correcto
+     * solo en esos casos.
+     *
+     * @param  string      $to        Dirección destinatario
+     * @param  string      $toName    Nombre destinatario
+     * @param  string      $subject   Asunto
+     * @param  string      $body      Cuerpo HTML
+     * @param  string|null $replyTo   Reply-To opcional
+     * @param  int|null    $empresaId Empresa dueña del correo (por defecto, la activa)
      * @throws \RuntimeException  Si la tabla mail_queue no existe o hay error de BD
      */
     public static function send(
@@ -60,9 +68,10 @@ final class MailService
         string  $toName,
         string  $subject,
         string  $body,
-        ?string $replyTo = null,
+        ?string $replyTo   = null,
+        ?int    $empresaId = null,
     ): void {
-        MailQueue::push($to, $toName, $subject, $body, $replyTo);
+        MailQueue::push($to, $toName, $subject, $body, $replyTo, empresaId: $empresaId);
         error_log("[MailService] Encolado para {$to}: {$subject}");
     }
 

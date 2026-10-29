@@ -9,6 +9,7 @@ SessionManager::requireAuth('/login');
 $agenteId       = SessionManager::getAgentId();
 $agente         = SessionManager::getAgentData();
 $ramoActivo     = SessionManager::getRamo();
+$empresaId      = \App\Security\Tenant::requireId();
 $clienteModel   = new ClientModel();
 $cotizacionModel= new CotizacionModel();
 $historialModel = new HistorialModel();
@@ -162,12 +163,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $cotizacionModel->transaction(function ($db) use (
                 $cotizacionModel, $historialModel,
                 $pCotId, $pCompania, $pCobertura, $pPrecio,
-                $pComentarios, $pFecha, $pMetodo, $agenteId, $cotExist
+                $pComentarios, $pFecha, $pMetodo, $agenteId, $empresaId, $cotExist
             ) {
                 $db->prepare(
                     "UPDATE cotizaciones SET compania=?,tipo_cobertura=?,precio=?,comentarios=?,fecha=?
-                     WHERE id=? AND agente_id=?"
-                )->execute([$pCompania,$pCobertura,$pPrecio,$pComentarios,$pFecha,$pCotId,$agenteId]);
+                     WHERE id=? AND agente_id=? AND empresa_id=?"
+                )->execute([$pCompania,$pCobertura,$pPrecio,$pComentarios,$pFecha,$pCotId,$agenteId,$empresaId]);
 
                 if ($pMetodo && in_array($pMetodo,['spei','contado','meses_sin_intereses'],true)) {
                     $cotizacionModel->updateMetodoPago($pCotId,$agenteId,$pMetodo);

@@ -35,57 +35,60 @@ class NotificacionModel extends BaseModel
     {
         $st = $this->db()->prepare(
             'SELECT * FROM notificaciones
-             WHERE agente_id = ? AND leida = 0
-             ORDER BY creada_en DESC LIMIT ?'
+             WHERE agente_id = :agente_id AND leida = 0' . $this->sqlEmpresa() . '
+             ORDER BY creada_en DESC LIMIT :limit'
         );
-        $st->execute([$agenteId, $limit]);
+        $st->execute($this->bindEmpresa(['agente_id' => $agenteId, 'limit' => $limit]));
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     public function contarNoLeidas(int $agenteId): int
     {
         $st = $this->db()->prepare(
-            'SELECT COUNT(*) FROM notificaciones WHERE agente_id = ? AND leida = 0'
+            'SELECT COUNT(*) FROM notificaciones WHERE agente_id = :agente_id AND leida = 0'
+            . $this->sqlEmpresa()
         );
-        $st->execute([$agenteId]);
+        $st->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         return (int) $st->fetchColumn();
     }
 
     public function marcarLeida(int $id, int $agenteId): void
     {
         $this->db()->prepare(
-            'UPDATE notificaciones SET leida = 1 WHERE id = ? AND agente_id = ?'
-        )->execute([$id, $agenteId]);
+            'UPDATE notificaciones SET leida = 1 WHERE id = :id AND agente_id = :agente_id'
+            . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['id' => $id, 'agente_id' => $agenteId]));
     }
 
     public function marcarTodasLeidas(int $agenteId): void
     {
         $this->db()->prepare(
-            'UPDATE notificaciones SET leida = 1 WHERE agente_id = ?'
-        )->execute([$agenteId]);
+            'UPDATE notificaciones SET leida = 1 WHERE agente_id = :agente_id' . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['agente_id' => $agenteId]));
     }
 
     public function eliminar(int $id, int $agenteId): void
     {
         $this->db()->prepare(
-            'DELETE FROM notificaciones WHERE id = ? AND agente_id = ?'
-        )->execute([$id, $agenteId]);
+            'DELETE FROM notificaciones WHERE id = :id AND agente_id = :agente_id'
+            . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['id' => $id, 'agente_id' => $agenteId]));
     }
 
     public function eliminarTodas(int $agenteId): void
     {
         $this->db()->prepare(
-            'DELETE FROM notificaciones WHERE agente_id = ?'
-        )->execute([$agenteId]);
+            'DELETE FROM notificaciones WHERE agente_id = :agente_id' . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['agente_id' => $agenteId]));
     }
 
     public function getRecientes(int $agenteId, int $limit = 50): array
     {
         $st = $this->db()->prepare(
-            'SELECT * FROM notificaciones WHERE agente_id = ?
-             ORDER BY creada_en DESC LIMIT ?'
+            'SELECT * FROM notificaciones WHERE agente_id = :agente_id' . $this->sqlEmpresa() . '
+             ORDER BY creada_en DESC LIMIT :limit'
         );
-        $st->execute([$agenteId, $limit]);
+        $st->execute($this->bindEmpresa(['agente_id' => $agenteId, 'limit' => $limit]));
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 }

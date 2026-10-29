@@ -3,6 +3,12 @@
  * TelegramRecordatorio.php
  * Envía recordatorios de Telegram a CLIENTES 1 hora antes de su cita.
  *
+ * ESTRATEGIA DE EMPRESA: ITERA empresa por empresa (Tenant::comoEmpresa()).
+ *   Manda mensajes a clientes y marca la cita como recordada, así que trabaja
+ *   dentro de cada empresa: las citas que lee y el UPDATE que hace quedan
+ *   acotados a ella, y un fallo en una empresa (API caída, datos sucios) no
+ *   deja sin recordatorio a las demás.
+ *
  * HOSTGATOR CRON (cada 5 minutos):
  *   * /5 * * * * /usr/local/bin/php /home2/grupoide/public_html/src/Cron/TelegramRecordatorio.php
  *
@@ -23,6 +29,7 @@ if (file_exists(PROJECT_ROOT . '/.env.php')) {
 require_once PROJECT_ROOT . '/Core/Autoloader.php';
 
 use App\Models\CitaModel;
+use App\Security\Tenant;
 use Database\Connection;
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -77,47 +84,94 @@ function formatFechaTg(string $fecha): string
 // ── Lógica principal ──────────────────────────────────────────────────────────
 $citaModel = new CitaModel();
 
-// Usa el método ya existente en CitaModel
-$citas = $citaModel->getCitasParaRecordatorio();
+// `empresas` es tabla de plataforma y NO está aislada: esta consulta no lleva
+// filtro de empresa a propósito.
+$empresas = Connection::getConnection()->query(
+    'SELECT id, nombre FROM empresas
+     WHERE activo = 1 AND eliminado_en IS NULL
+     ORDER BY id'
+)->fetchAll(\PDO::FETCH_ASSOC);
 
-if (empty($citas)) {
+$enviados = 0;
+$errores  = 0;
+$omitidos = 0;
+
+foreach ($empresas as $empresa) {
+    $empresaId     = (int) $empresa['id'];
+    $empresaNombre = (string) $empresa['nombre'];
+
+    // Cada empresa en su propio try/catch: si una revienta, el resto sigue.
+    try {
+        Tenant::comoEmpresa($empresaId, function () use (
+            $citaModel, $logFile, $BOT_TOKEN, $empresaId, $empresaNombre,
+            &$enviados, &$errores, &$omitidos
+        ): void {
+
+            // Usa el método ya existente en CitaModel, ya filtrado por empresa.
+            $citas = $citaModel->getCitasParaRecordatorio();
+
+            if (empty($citas)) {
+                return;
+            }
+
+            log_msg_tg(
+                "=== Empresa #{$empresaId} ({$empresaNombre}) — RECORDATORIOS A ENVIAR: "
+                . count($citas) . ' ===',
+                $logFile
+            );
+
+            foreach ($citas as $cita) {
+                // getCitasParaRecordatorio() también devuelve citas cuyo cliente
+                // solo tiene WhatsApp o teléfono. Sin este filtro, el chat_id
+                // nulo revienta sendTelegramMsg() y aborta el cron entero.
+                $chatId = (string) ($cita['telegram_chat_id'] ?? '');
+                if ($chatId === '') {
+                    $omitidos++;
+                    continue;
+                }
+
+                $hora    = substr($cita['hora'], 0, 5);
+                $fecha   = formatFechaTg($cita['fecha']);
+                $cliente = htmlspecialchars($cita['cliente_nombre']);
+                $agente  = htmlspecialchars($cita['agente_nombre']);
+                $tipo    = ucfirst($cita['tipo'] ?? 'llamada');
+
+                // Minutos restantes
+                $ts   = strtotime($cita['fecha'] . ' ' . $cita['hora']);
+                $mins = max(1, (int)round(($ts - time()) / 60));
+
+                $msg  = "⏰ <b>Recordatorio de Cita</b>\n\n";
+                $msg .= "Hola <b>{$cliente}</b>, tu cita es en <b>{$mins} minutos</b>.\n\n";
+                $msg .= "📅 <b>Fecha:</b> {$fecha}\n";
+                $msg .= "🕐 <b>Hora:</b> {$hora} hrs\n";
+                $msg .= "📋 <b>Tipo:</b> {$tipo}\n";
+                $msg .= "👤 <b>Asesor:</b> {$agente}\n\n";
+                $msg .= "¡Te esperamos! 🚀";
+
+                if (sendTelegramMsg($chatId, $msg, $BOT_TOKEN)) {
+                    // El UPDATE queda acotado a la empresa activa.
+                    $citaModel->marcarRecordatorioEnviado((int)$cita['id']);
+                    $enviados++;
+                    log_msg_tg("✅ Enviado a {$cliente} (cita #{$cita['id']})", $logFile);
+                } else {
+                    $errores++;
+                    log_msg_tg("❌ Error enviando a chat_id={$chatId} cita #{$cita['id']}", $logFile);
+                }
+            }
+        });
+    } catch (\Throwable $e) {
+        $errores++;
+        log_msg_tg(
+            "❌ ERROR empresa #{$empresaId} ({$empresaNombre}): " . $e->getMessage()
+            . ' @ ' . $e->getFile() . ':' . $e->getLine(),
+            $logFile
+        );
+    }
+}
+
+if ($enviados === 0 && $errores === 0 && $omitidos === 0) {
     log_msg_tg('Sin citas para recordatorio en este ciclo.', $logFile);
     exit(0);
 }
 
-log_msg_tg('=== RECORDATORIOS A ENVIAR: ' . count($citas) . ' ===', $logFile);
-
-$enviados = 0;
-$errores  = 0;
-
-foreach ($citas as $cita) {
-    $chatId  = $cita['telegram_chat_id'];
-    $hora    = substr($cita['hora'], 0, 5);
-    $fecha   = formatFechaTg($cita['fecha']);
-    $cliente = htmlspecialchars($cita['cliente_nombre']);
-    $agente  = htmlspecialchars($cita['agente_nombre']);
-    $tipo    = ucfirst($cita['tipo'] ?? 'llamada');
-
-    // Minutos restantes
-    $ts   = strtotime($cita['fecha'] . ' ' . $cita['hora']);
-    $mins = max(1, (int)round(($ts - time()) / 60));
-
-    $msg  = "⏰ <b>Recordatorio de Cita</b>\n\n";
-    $msg .= "Hola <b>{$cliente}</b>, tu cita es en <b>{$mins} minutos</b>.\n\n";
-    $msg .= "📅 <b>Fecha:</b> {$fecha}\n";
-    $msg .= "🕐 <b>Hora:</b> {$hora} hrs\n";
-    $msg .= "📋 <b>Tipo:</b> {$tipo}\n";
-    $msg .= "👤 <b>Asesor:</b> {$agente}\n\n";
-    $msg .= "¡Te esperamos! 🚀";
-
-    if (sendTelegramMsg($chatId, $msg, $BOT_TOKEN)) {
-        $citaModel->marcarRecordatorioEnviado((int)$cita['id']);
-        $enviados++;
-        log_msg_tg("✅ Enviado a {$cliente} (cita #{$cita['id']})", $logFile);
-    } else {
-        $errores++;
-        log_msg_tg("❌ Error enviando a chat_id={$chatId} cita #{$cita['id']}", $logFile);
-    }
-}
-
-log_msg_tg("=== FIN: {$enviados} enviados, {$errores} errores ===", $logFile);
+log_msg_tg("=== FIN: {$enviados} enviados, {$errores} errores, {$omitidos} sin chat de Telegram ===", $logFile);

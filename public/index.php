@@ -48,7 +48,9 @@ use App\Controllers\{
     ExportController,
     HorasOcupadasController,
     ActivityController,
-    HealthController
+    HealthController,
+    EmpresaController,
+    InvitacionController
 };
 use App\Controllers\FileController;
 use App\Controllers\VidaSolicitudController;
@@ -63,6 +65,12 @@ $router->add('POST', '/login',      LoginController::class);
 $router->add('GET',  '/logout',     LogoutController::class);
 $router->add('POST', '/logout',     LogoutController::class);
 $router->add('GET',  '/formulario', fn() => require view('public/form_client.php'));
+
+// Activación de cuenta por invitación. Es pública porque quien la usa todavía
+// no tiene cuenta: el token del enlace es lo que autoriza, y sin uno válido la
+// página no hace nada.
+$router->add('GET',  '/registro',   fn() => require view('public/registro.php'));
+$router->add('POST', '/registro',   fn() => require view('public/registro.php'));
 
 $router->add('GET', '/blog', function () {
     header('Location: https://blog.seguroslux.mx', true, 301);
@@ -123,11 +131,23 @@ $router->add('GET',  '/reportes',         fn() => require view('reportes/index.p
 $router->add('GET',  '/admin',            fn() => require view('admin/index.php'));
 $router->add('POST', '/admin',            fn() => require view('admin/index.php'));
 
+// ── Equipo de la empresa (alta de usuarios por invitación) ────────────────────
+$router->add('GET',  '/equipo',           fn() => require view('equipo/index.php'));
+
+// ── Plataforma — solo el propietario ──────────────────────────────────────────
+// Las vistas y la API comprueban Roles::EMPRESAS_* por su cuenta; el router
+// solo enruta. La autorización nunca depende de que una ruta esté "escondida".
+$router->add('GET',  '/plataforma/empresas', fn() => require view('plataforma/empresas.php'));
+
 // ── API / AJAX ────────────────────────────────────────────────────────────────
 $router->add('GET',  '/horas-ocupadas',     HorasOcupadasController::class);
 $router->add('GET',  '/api/horas-ocupadas', HorasOcupadasController::class);
 $router->add('GET',  '/api/config',         ConfigController::class);
 $router->add('POST', '/api/config',         ConfigController::class);
+$router->add('GET',  '/api/empresas',       EmpresaController::class);
+$router->add('POST', '/api/empresas',       EmpresaController::class);
+$router->add('GET',  '/api/invitaciones',   InvitacionController::class);
+$router->add('POST', '/api/invitaciones',   InvitacionController::class);
 $router->add('GET',  '/api/ping',           ActivityController::class);
 $router->add('GET',  '/api/health',         HealthController::class);
 $router->add('GET',  '/exportar',           ExportController::class);

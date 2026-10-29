@@ -31,11 +31,13 @@ class CitaModel extends BaseModel
     {
         $stmt = $this->db()->prepare(
             "SELECT 1 FROM citas
-             WHERE agente_id = ? AND fecha = ? AND hora = ?
-               AND estado IN ('programada','pendiente')
+             WHERE agente_id = :agente_id AND fecha = :fecha AND hora = :hora
+               AND estado IN ('programada','pendiente')" . $this->sqlEmpresa() . "
              LIMIT 1"
         );
-        $stmt->execute([$agenteId, $fecha, $hora]);
+        $stmt->execute($this->bindEmpresa([
+            'agente_id' => $agenteId, 'fecha' => $fecha, 'hora' => $hora,
+        ]));
         return !$stmt->fetch();
     }
 
@@ -43,10 +45,10 @@ class CitaModel extends BaseModel
     {
         $stmt = $this->db()->prepare(
             "SELECT hora FROM citas
-             WHERE agente_id = ? AND fecha = ?
-               AND estado IN ('pendiente','programada')"
+             WHERE agente_id = :agente_id AND fecha = :fecha
+               AND estado IN ('pendiente','programada')" . $this->sqlEmpresa()
         );
-        $stmt->execute([$agenteId, $fecha]);
+        $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId, 'fecha' => $fecha]));
         return $stmt->fetchAll(\PDO::FETCH_COLUMN);
     }
 
@@ -69,10 +71,13 @@ class CitaModel extends BaseModel
                     CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',cl.apellido_materno) AS cliente_nombre,
                     cl.correo AS cliente_correo, cl.telefono AS cliente_telefono
              FROM citas ci JOIN clientes cl ON cl.id = ci.cliente_id
-             WHERE cl.agente_id = ? AND ci.fecha BETWEEN ? AND ?
+             WHERE cl.agente_id = :agente_id
+               AND ci.fecha BETWEEN :fecha_ini AND :fecha_fin" . $this->sqlEmpresa('ci') . "
              ORDER BY ci.fecha ASC, ci.hora ASC"
         );
-        $stmt->execute([$agenteId, $fechaIni, $fechaFin]);
+        $stmt->execute($this->bindEmpresa([
+            'agente_id' => $agenteId, 'fecha_ini' => $fechaIni, 'fecha_fin' => $fechaFin,
+        ]));
         return $stmt->fetchAll();
     }
 
@@ -88,10 +93,14 @@ class CitaModel extends BaseModel
                     CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',cl.apellido_materno) AS cliente_nombre,
                     cl.correo AS cliente_correo, cl.telefono AS cliente_telefono
              FROM citas ci JOIN clientes cl ON cl.id = ci.cliente_id
-             WHERE cl.agente_id = ? AND ci.ramo = ? AND ci.fecha BETWEEN ? AND ?
+             WHERE cl.agente_id = :agente_id AND ci.ramo = :ramo
+               AND ci.fecha BETWEEN :fecha_ini AND :fecha_fin" . $this->sqlEmpresa('ci') . "
              ORDER BY ci.fecha ASC, ci.hora ASC"
         );
-        $stmt->execute([$agenteId, $ramo, $fechaIni, $fechaFin]);
+        $stmt->execute($this->bindEmpresa([
+            'agente_id' => $agenteId, 'ramo' => $ramo,
+            'fecha_ini' => $fechaIni, 'fecha_fin' => $fechaFin,
+        ]));
         return $stmt->fetchAll();
     }
 
@@ -102,10 +111,11 @@ class CitaModel extends BaseModel
                     CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',cl.apellido_materno) AS cliente_nombre,
                     cl.telefono AS cliente_telefono
              FROM citas ci JOIN clientes cl ON cl.id = ci.cliente_id
-             WHERE cl.agente_id = ? AND ci.estado = 'programada' AND ci.fecha >= CURDATE()
-             ORDER BY ci.fecha ASC, ci.hora ASC LIMIT ?"
+             WHERE cl.agente_id = :agente_id AND ci.estado = 'programada'
+               AND ci.fecha >= CURDATE()" . $this->sqlEmpresa('ci') . "
+             ORDER BY ci.fecha ASC, ci.hora ASC LIMIT :limit"
         );
-        $stmt->execute([$agenteId, $limit]);
+        $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId, 'limit' => $limit]));
         return $stmt->fetchAll();
     }
 
@@ -120,16 +130,19 @@ class CitaModel extends BaseModel
                     CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',cl.apellido_materno) AS cliente_nombre,
                     cl.telefono AS cliente_telefono
              FROM citas ci JOIN clientes cl ON cl.id = ci.cliente_id
-             WHERE cl.agente_id = ? AND ci.ramo = ? AND ci.estado = 'programada' AND ci.fecha >= CURDATE()
-             ORDER BY ci.fecha ASC, ci.hora ASC LIMIT ?"
+             WHERE cl.agente_id = :agente_id AND ci.ramo = :ramo
+               AND ci.estado = 'programada' AND ci.fecha >= CURDATE()" . $this->sqlEmpresa('ci') . "
+             ORDER BY ci.fecha ASC, ci.hora ASC LIMIT :limit"
         );
-        $stmt->execute([$agenteId, $ramo, $limit]);
+        $stmt->execute($this->bindEmpresa([
+            'agente_id' => $agenteId, 'ramo' => $ramo, 'limit' => $limit,
+        ]));
         return $stmt->fetchAll();
     }
 
     public function getStatsByMes(int $agenteId, string $fechaIni, string $fechaFin, ?string $ramo = null): array
     {
-        $ramoFilter = $ramo ? 'AND ramo = ?' : '';
+        $ramoFilter = $ramo ? 'AND ramo = :ramo' : '';
         $stmt = $this->db()->prepare(
             "SELECT COUNT(*) AS total,
                     SUM(estado='programada') AS programadas,
@@ -137,10 +150,12 @@ class CitaModel extends BaseModel
                     SUM(estado='cancelada')  AS canceladas,
                     SUM(estado='vencida')    AS vencidas
              FROM citas
-             WHERE agente_id = ? AND fecha BETWEEN ? AND ? {$ramoFilter}"
+             WHERE agente_id = :agente_id
+               AND fecha BETWEEN :fecha_ini AND :fecha_fin {$ramoFilter}" . $this->sqlEmpresa()
         );
-        $params = $ramo ? [$agenteId, $fechaIni, $fechaFin, $ramo] : [$agenteId, $fechaIni, $fechaFin];
-        $stmt->execute($params);
+        $params = ['agente_id' => $agenteId, 'fecha_ini' => $fechaIni, 'fecha_fin' => $fechaFin];
+        if ($ramo) { $params['ramo'] = $ramo; }
+        $stmt->execute($this->bindEmpresa($params));
         $d = $stmt->fetch();
         return [
             'total'       => (int)($d['total']       ?? 0),
@@ -153,20 +168,25 @@ class CitaModel extends BaseModel
 
     public function countPendientes(int $agenteId, ?string $ramo = null): int
     {
-        $ramoFilter = $ramo ? 'AND ramo = ?' : '';
+        $ramoFilter = $ramo ? 'AND ramo = :ramo' : '';
         $stmt = $this->db()->prepare(
             "SELECT COUNT(*) FROM citas
-             WHERE agente_id = ? AND estado = 'programada' AND fecha >= CURDATE() {$ramoFilter}"
+             WHERE agente_id = :agente_id AND estado = 'programada'
+               AND fecha >= CURDATE() {$ramoFilter}" . $this->sqlEmpresa()
         );
-        $params = $ramo ? [$agenteId, $ramo] : [$agenteId];
-        $stmt->execute($params);
+        $params = ['agente_id' => $agenteId];
+        if ($ramo) { $params['ramo'] = $ramo; }
+        $stmt->execute($this->bindEmpresa($params));
         return (int) $stmt->fetchColumn();
     }
 
     public function countCompletadas(int $agenteId): int
     {
-        $stmt = $this->db()->prepare("SELECT COUNT(*) FROM citas WHERE agente_id = ? AND estado = 'completada'");
-        $stmt->execute([$agenteId]);
+        $stmt = $this->db()->prepare(
+            "SELECT COUNT(*) FROM citas
+             WHERE agente_id = :agente_id AND estado = 'completada'" . $this->sqlEmpresa()
+        );
+        $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         return (int) $stmt->fetchColumn();
     }
 
@@ -176,10 +196,11 @@ class CitaModel extends BaseModel
             "SELECT ci.id, ci.fecha, ci.hora, ci.tipo, ci.estado, ci.agente_id,
                     CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
              FROM citas ci JOIN agentes a ON a.id = ci.agente_id
-             WHERE ci.cliente_id = ? AND ci.estado = 'programada' AND ci.fecha >= CURDATE()
+             WHERE ci.cliente_id = :cliente_id AND ci.estado = 'programada'
+               AND ci.fecha >= CURDATE()" . $this->sqlEmpresa('ci') . "
              ORDER BY ci.fecha ASC, ci.hora ASC LIMIT 1"
         );
-        $stmt->execute([$clienteId]);
+        $stmt->execute($this->bindEmpresa(['cliente_id' => $clienteId]));
         return $stmt->fetch() ?: null;
     }
 
@@ -189,10 +210,10 @@ class CitaModel extends BaseModel
             "SELECT ci.*, CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
              FROM citas ci
              LEFT JOIN agentes a ON a.id = ci.agente_id
-             WHERE ci.cliente_id = ?
+             WHERE ci.cliente_id = :cliente_id" . $this->sqlEmpresa('ci') . "
              ORDER BY ci.fecha DESC, ci.hora DESC"
         );
-        $stmt->execute([$clienteId]);
+        $stmt->execute($this->bindEmpresa(['cliente_id' => $clienteId]));
         return $stmt->fetchAll() ?: [];
     }
 
@@ -200,9 +221,10 @@ class CitaModel extends BaseModel
     {
         $stmt = $this->db()->prepare(
             'SELECT id, nombre, apellido_paterno, apellido_materno
-             FROM clientes WHERE agente_id = ? ORDER BY nombre ASC'
+             FROM clientes WHERE agente_id = :agente_id' . $this->sqlEmpresa() . '
+             ORDER BY nombre ASC'
         );
-        $stmt->execute([$agenteId]);
+        $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         return $stmt->fetchAll();
     }
 
@@ -224,15 +246,22 @@ class CitaModel extends BaseModel
 
     public function updateEstado(int $citaId, int $agenteId, string $estado): bool
     {
-        $stmt = $this->db()->prepare('UPDATE citas SET estado = ? WHERE id = ? AND agente_id = ?');
-        $stmt->execute([$estado, $citaId, $agenteId]);
+        $stmt = $this->db()->prepare(
+            'UPDATE citas SET estado = :estado WHERE id = :id AND agente_id = :agente_id'
+            . $this->sqlEmpresa()
+        );
+        $stmt->execute($this->bindEmpresa([
+            'estado' => $estado, 'id' => $citaId, 'agente_id' => $agenteId,
+        ]));
         return $stmt->rowCount() > 0;
     }
 
     public function clientePerteneceAAgente(int $clienteId, int $agenteId): bool
     {
-        $stmt = $this->db()->prepare('SELECT id FROM clientes WHERE id = ? AND agente_id = ?');
-        $stmt->execute([$clienteId, $agenteId]);
+        $stmt = $this->db()->prepare(
+            'SELECT id FROM clientes WHERE id = :id AND agente_id = :agente_id' . $this->sqlEmpresa()
+        );
+        $stmt->execute($this->bindEmpresa(['id' => $clienteId, 'agente_id' => $agenteId]));
         return (bool) $stmt->fetch();
     }
 
@@ -241,7 +270,9 @@ class CitaModel extends BaseModel
     public function generarTelegramToken(int $citaId): string
     {
         $token = bin2hex(random_bytes(16));
-        $this->db()->prepare('UPDATE citas SET telegram_token = ? WHERE id = ?')->execute([$token, $citaId]);
+        $this->db()->prepare(
+            'UPDATE citas SET telegram_token = :token WHERE id = :id' . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['token' => $token, 'id' => $citaId]));
         return $token;
     }
 
@@ -255,9 +286,9 @@ class CitaModel extends BaseModel
              FROM citas ci
              JOIN clientes cl ON cl.id = ci.cliente_id
              JOIN agentes  a  ON a.id  = ci.agente_id
-             WHERE ci.telegram_token = ? LIMIT 1"
+             WHERE ci.telegram_token = :token" . $this->sqlEmpresa('ci') . " LIMIT 1"
         );
-        $stmt->execute([$token]);
+        $stmt->execute($this->bindEmpresa(['token' => $token]));
         return $stmt->fetch() ?: null;
     }
 
@@ -284,10 +315,12 @@ class CitaModel extends BaseModel
                    OR cl.telegram_chat_id = :chatId2
                    OR REPLACE(REPLACE(REPLACE(cl.telefono, '+', ''), ' ', ''), '-', '') = :sinPlus
                    OR cl.telefono = :conPlus
-               )
+               )" . $this->sqlEmpresa('ci') . "
              ORDER BY ci.fecha ASC, ci.hora ASC LIMIT 1"
         );
-        $stmt->execute([':chatId' => $chatId, ':chatId2' => $chatId, ':sinPlus' => $sinPlus, ':conPlus' => $conPlus]);
+        $stmt->execute($this->bindEmpresa(
+            [':chatId' => $chatId, ':chatId2' => $chatId, ':sinPlus' => $sinPlus, ':conPlus' => $conPlus]
+        ));
         return $stmt->fetch() ?: null;
     }
 
@@ -314,7 +347,7 @@ class CitaModel extends BaseModel
                    OR cl.telegram_chat_id = :chatId2
                    OR REPLACE(REPLACE(REPLACE(cl.telefono, '+', ''), ' ', ''), '-', '') = :sinPlus
                    OR cl.telefono = :conPlus
-               )
+               )" . $this->sqlEmpresa('ci') . "
              ORDER BY ci.fecha ASC, ci.hora ASC LIMIT :lim"
         );
         $stmt->bindValue(':chatId',  $chatId,  \PDO::PARAM_STR);
@@ -322,6 +355,9 @@ class CitaModel extends BaseModel
         $stmt->bindValue(':sinPlus', $sinPlus, \PDO::PARAM_STR);
         $stmt->bindValue(':conPlus', $conPlus, \PDO::PARAM_STR);
         $stmt->bindValue(':lim',     $limit,   \PDO::PARAM_INT);
+        foreach ($this->bindEmpresa() as $k => $v) {
+            $stmt->bindValue(':' . $k, $v, \PDO::PARAM_INT);
+        }
         $stmt->execute();
         return $stmt->fetchAll() ?: [];
     }
@@ -351,17 +387,19 @@ class CitaModel extends BaseModel
                    OR cl.telegram_chat_id = :chatId2
                    OR REPLACE(REPLACE(REPLACE(cl.telefono, '+', ''), ' ', ''), '-', '') = :sinPlus
                    OR cl.telefono = :conPlus
-               )"
+               )" . $this->sqlEmpresa('ci')
         );
-        $stmt->execute([':id' => $citaId, ':chatId' => $chatId, ':chatId2' => $chatId, ':sinPlus' => $sinPlus, ':conPlus' => $conPlus]);
+        $stmt->execute($this->bindEmpresa(
+            [':id' => $citaId, ':chatId' => $chatId, ':chatId2' => $chatId, ':sinPlus' => $sinPlus, ':conPlus' => $conPlus]
+        ));
         if ($stmt->rowCount() > 0) return true;
 
         // Intento 2: fallback por id solo (el dueño ya fue verificado por waGetCita al inicio del flujo)
         $stmt2 = $this->db()->prepare(
             "UPDATE citas SET estado = 'cancelada'
-             WHERE id = ? AND estado IN ('programada','pendiente','vencida')"
+             WHERE id = :id AND estado IN ('programada','pendiente','vencida')" . $this->sqlEmpresa()
         );
-        $stmt2->execute([$citaId]);
+        $stmt2->execute($this->bindEmpresa(['id' => $citaId]));
         return $stmt2->rowCount() > 0;
     }
 
@@ -388,9 +426,9 @@ class CitaModel extends BaseModel
                    OR cl.telegram_chat_id = :chatId2
                    OR REPLACE(REPLACE(REPLACE(cl.telefono, '+', ''), ' ', ''), '-', '') = :sinPlus
                    OR cl.telefono = :conPlus
-               )"
+               )" . $this->sqlEmpresa('ci')
         );
-        $stmt->execute([
+        $stmt->execute($this->bindEmpresa([
             ':fecha'   => $fecha,
             ':hora'    => $hora,
             ':id'      => $citaId,
@@ -398,21 +436,23 @@ class CitaModel extends BaseModel
             ':chatId2' => $chatId,
             ':sinPlus' => $sinPlus,
             ':conPlus' => $conPlus,
-        ]);
+        ]));
         if ($stmt->rowCount() > 0) return true;
 
         // Intento 2: fallback por id solo (propiedad ya verificada en waGetCita al inicio)
         $stmt2 = $this->db()->prepare(
-            "UPDATE citas SET fecha = ?, hora = ?, estado = 'programada', telegram_enviado = NULL
-             WHERE id = ? AND estado IN ('programada','pendiente','vencida')"
+            "UPDATE citas SET fecha = :fecha, hora = :hora, estado = 'programada', telegram_enviado = NULL
+             WHERE id = :id AND estado IN ('programada','pendiente','vencida')" . $this->sqlEmpresa()
         );
-        $stmt2->execute([$fecha, $hora, $citaId]);
+        $stmt2->execute($this->bindEmpresa(['fecha' => $fecha, 'hora' => $hora, 'id' => $citaId]));
         return $stmt2->rowCount() > 0;
     }
 
     public function marcarRecordatorioEnviado(int $citaId): void
     {
-        $this->db()->prepare('UPDATE citas SET telegram_enviado = NOW() WHERE id = ?')->execute([$citaId]);
+        $this->db()->prepare(
+            'UPDATE citas SET telegram_enviado = NOW() WHERE id = :id' . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['id' => $citaId]));
     }
 
     /**
@@ -428,15 +468,16 @@ class CitaModel extends BaseModel
             "UPDATE citas
              SET estado = 'vencida'
              WHERE estado = 'programada'
-               AND TIMESTAMP(fecha, hora) < NOW()"
+               AND TIMESTAMP(fecha, hora) < NOW()" . $this->sqlEmpresa()
         );
-        $stmt->execute();
+        $stmt->execute($this->bindEmpresa());
         return $stmt->rowCount();
     }
 
     public function getCitasParaRecordatorio(): array
     {
-        return $this->db()->query(
+        // Con prepare() en vez de query() para poder enlazar el filtro de empresa.
+        $stmt = $this->db()->prepare(
             "SELECT ci.id, ci.fecha, ci.hora, ci.tipo,
                     CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre,
                     cl.telegram_chat_id,
@@ -450,30 +491,36 @@ class CitaModel extends BaseModel
                AND (cl.telegram_chat_id IS NOT NULL OR cl.whatsapp_chat_id IS NOT NULL OR cl.telefono IS NOT NULL)
                AND ci.telegram_enviado IS NULL
                AND TIMESTAMPDIFF(MINUTE, NOW(), CONCAT(ci.fecha,' ',ci.hora)) BETWEEN 55 AND 60"
-        )->fetchAll();
+            . $this->sqlEmpresa('ci')
+        );
+        $stmt->execute($this->bindEmpresa());
+        return $stmt->fetchAll();
     }
 
     public function buscarAgenteLibre(string $fecha, string $hora): ?int
     {
+        // Carga de trabajo del asesor, para repartir las citas al más libre.
+        // tenant-ok: cuenta solo las citas de `a.id`, y `agentes a` ya va filtrado
+        //            por empresa en el WHERE (sección 3 del CONTRIBUTING).
+        $ordenCarga = "(SELECT COUNT(*) FROM citas c2
+                        WHERE c2.agente_id = a.id
+                          AND c2.estado IN ('programada','pendiente'))";
+
         $stmt = $this->db()->prepare(
             "SELECT a.id
              FROM agentes a
              WHERE a.rol IN ('asesor','agente')
-               AND COALESCE(a.activo, 1) = 1
+               AND COALESCE(a.activo, 1) = 1" . $this->sqlEmpresa('a') . "
                AND NOT EXISTS (
                    SELECT 1 FROM citas c
                    WHERE c.agente_id = a.id
-                     AND c.fecha = ?
-                     AND c.hora  = ?
+                     AND c.fecha = :fecha
+                     AND c.hora  = :hora
                      AND c.estado IN ('programada','pendiente')
                )
-             ORDER BY (
-                 SELECT COUNT(*) FROM citas c2
-                 WHERE c2.agente_id = a.id
-                   AND c2.estado IN ('programada','pendiente')
-             ) ASC, RAND() LIMIT 1"
+             ORDER BY {$ordenCarga} ASC, RAND() LIMIT 1"
         );
-        $stmt->execute([$fecha, $hora]);
+        $stmt->execute($this->bindEmpresa(['fecha' => $fecha, 'hora' => $hora]));
         return ($row = $stmt->fetch()) ? (int)$row['id'] : null;
     }
 }

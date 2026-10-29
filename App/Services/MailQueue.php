@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Security\Tenant;
 use Database\Connection;
 use PDO;
 
@@ -34,33 +35,49 @@ use PDO;
  *   Si el envío fallaba, devolvía a 'pending' pero tries ya estaba incrementado,
  *   por lo que el email se agotaba antes de tener 3 intentos reales de envío.
  *   Fix: tries se incrementa ÚNICAMENTE en el catch (fallo real de envío).
+ *
+ * MULTIEMPRESA:
+ *   La cola es de plataforma: un solo cron despacha los correos de todas las
+ *   empresas. Por eso flush() corre en modo sin restricción. Pero cada correo
+ *   guarda su `empresa_id` al encolarse, para poder saber después de quién
+ *   era cada envío —y para que un fallo se pueda atribuir a una empresa
+ *   concreta en vez de quedar en "de la plataforma".
  */
 final class MailQueue
 {
     /**
      * Encola un email para envío asíncrono.
      *
-     * @param string      $to      Dirección de destino.
-     * @param string      $toName  Nombre del destinatario (puede ser vacío).
-     * @param string      $subject Asunto del correo.
-     * @param string      $body    Cuerpo HTML.
-     * @param string|null $replyTo Dirección de Reply-To (opcional).
-     * @param int         $tries   Máximo de intentos de envío (defecto: 3).
+     * @param string      $to        Dirección de destino.
+     * @param string      $toName    Nombre del destinatario (puede ser vacío).
+     * @param string      $subject   Asunto del correo.
+     * @param string      $body      Cuerpo HTML.
+     * @param string|null $replyTo   Dirección de Reply-To (opcional).
+     * @param int         $tries     Máximo de intentos de envío (defecto: 3).
+     * @param int|null    $empresaId Empresa dueña del correo. Si no se pasa se
+     *                               toma la empresa activa; queda NULL solo en
+     *                               correos de plataforma (invitaciones, avisos
+     *                               al propietario), que no son de nadie.
      */
     public static function push(
         string  $to,
         string  $toName,
         string  $subject,
         string  $body,
-        ?string $replyTo = null,
-        int     $tries   = 3,
+        ?string $replyTo   = null,
+        int     $tries     = 3,
+        ?int    $empresaId = null,
     ): void {
+        // La empresa se sella al encolar, no al enviar: en el cron ya no hay
+        // forma de saber de quién era el correo.
+        $empresaId ??= Tenant::id();
+
         $db = Connection::getConnection();
         $db->prepare(
             'INSERT INTO mail_queue
-             (to_address, to_name, subject, body, reply_to, max_tries, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, NOW())'
-        )->execute([$to, $toName, $subject, $body, $replyTo, $tries]);
+             (to_address, to_name, subject, body, reply_to, max_tries, empresa_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())'
+        )->execute([$to, $toName, $subject, $body, $replyTo, $tries, $empresaId]);
     }
 
     /**
@@ -81,6 +98,17 @@ final class MailQueue
      */
     public static function flush(int $batchSize = 20): void
     {
+        // La cola es de plataforma: un único cron despacha los correos de
+        // todas las empresas, así que el recorrido se pide explícitamente sin
+        // restricción. Solo lee y actualiza filas que ya existen y que ya
+        // traen su empresa_id dentro; no crea nada, de modo que no hay forma
+        // de sellar un registro nuevo en la empresa equivocada.
+        Tenant::sinRestriccion(static fn() => self::despachar($batchSize));
+    }
+
+    /** Recorrido real de la cola. Siempre se llama desde flush(). */
+    private static function despachar(int $batchSize): void
+    {
         $db = Connection::getConnection();
 
         // Obtener emails pendientes respetando el backoff de reintentos.
@@ -89,6 +117,7 @@ final class MailQueue
         //   tries=1 → falló una vez  → esperar 5 min desde last_tried_at
         //   tries=2 → falló dos veces → esperar 30 min desde last_tried_at
         $rows = $db->prepare(
+            // tenant-ok: la cola es de plataforma, el cron despacha los pendientes de todas las empresas
             "SELECT id, to_address, to_name, subject, body, reply_to, tries, max_tries
              FROM mail_queue
              WHERE status = 'pending'
@@ -110,6 +139,7 @@ final class MailQueue
             // Marcar como 'sending' para evitar doble procesamiento en crons concurrentes.
             // IMPORTANTE: NO incrementamos tries aquí — solo lo hacemos si el envío falla.
             $affected = $db->prepare(
+                // tenant-ok: toma el correo por id dentro del recorrido de plataforma; la fila ya es suya
                 "UPDATE mail_queue
                  SET status = 'sending', last_tried_at = NOW()
                  WHERE id = ? AND status = 'pending'"
@@ -136,6 +166,7 @@ final class MailQueue
 
                 // ── ÉXITO: marcar como enviado ───────────────────────────────
                 $db->prepare(
+                    // tenant-ok: cierra por id el correo que este mismo recorrido de plataforma tomó
                     "UPDATE mail_queue
                      SET status = 'sent', sent_at = NOW()
                      WHERE id = ?"
@@ -150,6 +181,7 @@ final class MailQueue
                 $newStatus = $newTries >= (int) $row['max_tries'] ? 'failed' : 'pending';
 
                 $db->prepare(
+                    // tenant-ok: registra el fallo por id del correo que este recorrido de plataforma tomó
                     "UPDATE mail_queue
                      SET status        = ?,
                          tries         = ?,

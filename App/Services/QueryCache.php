@@ -133,13 +133,23 @@ final class QueryCache
     // ── Internals ─────────────────────────────────────────────────────────────
 
     /**
-     * Construye la clave real incluyendo la generación de la tabla.
-     * Ejemplo: "slux:clientes:3:agente:25:pag:1"
+     * Construye la clave real incluyendo la generación de la tabla y la
+     * empresa activa.
+     *
+     * La empresa es obligatoria en la clave: APCu es una caché de proceso
+     * compartida entre workers, así que sin este fragmento dos empresas que
+     * ejecutan la misma consulta comparten entrada y la segunda recibe los
+     * datos de la primera. El aislamiento en SQL no sirve de nada si la
+     * respuesta se sirve desde una caché común.
+     *
+     * Ejemplo: "slux:clientes:3:e7:agente:25:pag:1"
      */
     private static function buildKey(string $table, string $key): string
     {
-        $gen = self::generation($table);
-        return self::PREFIX . $table . ':' . $gen . ':' . $key;
+        $gen     = self::generation($table);
+        $empresa = \App\Security\Tenant::claveCache();
+
+        return self::PREFIX . $table . ':' . $gen . ':' . $empresa . ':' . $key;
     }
 
     /**

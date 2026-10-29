@@ -3,8 +3,10 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Services\MailQueue;
+use App\Security\EmpresaPublica;
 use App\Security\RateLimiter;
 use App\Security\SecurityLogger;
+use App\Security\Tenant;
 use App\Models\NotificacionModel;
 use App\Models\ClientModel;
 use Database\Connection;
@@ -25,6 +27,20 @@ if (is_file($__crmAutoload)) {
  *  4. Emails completos para todos los ramos sin pérdida de datos.
  *  5. Captura campos extendidos de autos:  versión, CP, domicilio, fecha_nacimiento.
  *  6. Captura campo `hospitales` y `urgencia` del formulario GMM.
+ *
+ * MULTIEMPRESA:
+ *   Es un endpoint público: el lead entra sin sesión, así que no hay empresa
+ *   en contexto y, por el fail-closed de Tenant, las consultas fallarían.
+ *   La empresa se resuelve ANTES de tocar nada, en este orden:
+ *     a) el slug que mande el formulario (campo `empresa_slug`), validado
+ *        contra la tabla `empresas`: tiene que existir y estar activa;
+ *     b) si no viene, la empresa por defecto de la plataforma (la de menor id
+ *        activa), que es la misma a la que la migración 005 asignó todo lo
+ *        anterior, de modo que un formulario antiguo sigue cayendo donde caía.
+ *   Todo el procesamiento ocurre después dentro de esa empresa: el cliente,
+ *   la nota, la notificación al asesor, el log de la solicitud y los correos
+ *   quedan sellados en ella. Nunca se crea un lead "sin empresa": quedaría
+ *   invisible para todos.
  */
 class VidaSolicitudController
 {
@@ -70,6 +86,25 @@ class VidaSolicitudController
 
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
+        // ── Empresa del lead (petición sin sesión) ────────────────────────────
+        // El slug del formulario manda si es válido; si no, la empresa por
+        // defecto de la plataforma. Si ya hubiera empresa en contexto (alguien
+        // llamando desde dentro del CRM) manda esa: el dato del POST nunca
+        // decide el tenant.
+        $empresaId = Tenant::id()
+            ?? EmpresaPublica::resolver($input[EmpresaPublica::CAMPO_SLUG] ?? null);
+
+        Tenant::comoEmpresa($empresaId, static fn() => self::procesar($input));
+    }
+
+    /**
+     * Procesa la solicitud. Siempre corre dentro de la empresa resuelta en
+     * handle(), de modo que todo lo que se cree queda sellado en ella.
+     *
+     * @param array<string,mixed> $input
+     */
+    private static function procesar(array $input): void
+    {
         // ── Campos comunes ────────────────────────────────────────────────────
         $nombre      = trim($input['nombre']           ?? '');
         $correo      = trim($input['correo']           ?? '');
@@ -196,9 +231,14 @@ class VidaSolicitudController
         $advertencia = null;
         if ($correo && filter_var($correo, FILTER_VALIDATE_EMAIL)) {
             try {
-                $db = Connection::getConnection();
-                $stmtCl = $db->prepare("SELECT id FROM clientes WHERE correo = ? LIMIT 1");
-                $stmtCl->execute([$correo]);
+                $db        = Connection::getConnection();
+                $empresaId = Tenant::requireId();
+
+                // El tope de citas se cuenta dentro de la empresa: el mismo
+                // correo puede ser cliente de dos empresas distintas y lo que
+                // tenga agendado en una no bloquea a la otra.
+                $stmtCl = $db->prepare("SELECT id FROM clientes WHERE correo = ? AND empresa_id = ? LIMIT 1");
+                $stmtCl->execute([$correo, $empresaId]);
                 $clienteIdExistente = $stmtCl->fetchColumn();
 
                 if ($clienteIdExistente) {
@@ -206,9 +246,10 @@ class VidaSolicitudController
                         "SELECT COUNT(*) FROM citas
                          WHERE cliente_id = ?
                            AND estado IN ('programada','pendiente')
-                           AND fecha >= CURDATE()"
+                           AND fecha >= CURDATE()
+                           AND empresa_id = ?"
                     );
-                    $stmtC->execute([$clienteIdExistente]);
+                    $stmtC->execute([$clienteIdExistente, $empresaId]);
                     $citasActivas = (int)$stmtC->fetchColumn();
 
                     if ($citasActivas >= self::MAX_CITAS) {
@@ -328,8 +369,8 @@ class VidaSolicitudController
                 if ($esNuevo && $agenteAsignado) {
                     try {
                         $dbAsesor = Connection::getConnection();
-                        $telAsesor = $dbAsesor->prepare('SELECT telefono FROM agentes WHERE id = ? LIMIT 1');
-                        $telAsesor->execute([$agenteAsignado]);
+                        $telAsesor = $dbAsesor->prepare('SELECT telefono FROM agentes WHERE id = ? AND empresa_id = ? LIMIT 1');
+                        $telAsesor->execute([$agenteAsignado, Tenant::requireId()]);
                         $telAsesorValor = $telAsesor->fetchColumn();
                         if ($telAsesorValor) {
                             self::waSendText((string) $telAsesorValor, $msg, $waPid, $waToken);
@@ -367,10 +408,15 @@ class VidaSolicitudController
         try {
             $db = Connection::getConnection();
 
-            // No duplicar si ya existe el correo
+            // Empresa resuelta en handle(); toda esta alta ocurre dentro de ella.
+            $empresaId = Tenant::requireId();
+
+            // No duplicar si ya existe el correo EN ESTA EMPRESA. El mismo
+            // correo en otra empresa es otro cliente, y confundirlos devolvería
+            // el id de un registro que esta empresa no puede ni ver.
             if ($correo) {
-                $st = $db->prepare("SELECT id, agente_id, origen FROM clientes WHERE correo = ? LIMIT 1");
-                $st->execute([$correo]);
+                $st = $db->prepare("SELECT id, agente_id, origen FROM clientes WHERE correo = ? AND empresa_id = ? LIMIT 1");
+                $st->execute([$correo, $empresaId]);
                 $existente = $st->fetch(\PDO::FETCH_ASSOC);
                 if ($existente) {
                     // El cliente ya existía (p. ej. alta manual previa de un asesor
@@ -381,8 +427,8 @@ class VidaSolicitudController
                     if ($origenActual === null || $origenActual === '' || $origenActual === 'manual') {
                         $origenNuevo = $vehiculoCampana !== '' ? 'campana' : 'formulario_producto';
                         try {
-                            $db->prepare("UPDATE clientes SET origen = ? WHERE id = ?")
-                               ->execute([$origenNuevo, (int)$existente['id']]);
+                            $db->prepare("UPDATE clientes SET origen = ? WHERE id = ? AND empresa_id = ?")
+                               ->execute([$origenNuevo, (int)$existente['id'], $empresaId]);
                         } catch (\Throwable) {
                             // La columna `origen` puede no existir en instalaciones antiguas.
                         }
@@ -391,16 +437,19 @@ class VidaSolicitudController
                 }
             }
 
-            // Agente con menor número de clientes asignados
-            $stA = $db->query(
+            // Agente con menor número de clientes asignados, dentro de la
+            // empresa: el reparto de carga nunca cruza empresas.
+            $stA = $db->prepare(
                 "SELECT a.id
                  FROM agentes a
-                 LEFT JOIN clientes c ON c.agente_id = a.id
+                 LEFT JOIN clientes c ON c.agente_id = a.id AND c.empresa_id = :empresa_cli
                  WHERE a.rol = 'asesor' AND COALESCE(a.activo,1) = 1
+                   AND a.empresa_id = :empresa
                  GROUP BY a.id
                  ORDER BY COUNT(c.id) ASC
                  LIMIT 1"
             );
+            $stA->execute(['empresa' => $empresaId, 'empresa_cli' => $empresaId]);
             $agRow    = $stA->fetch(\PDO::FETCH_ASSOC);
             $agenteId = $agRow ? (int)$agRow['id'] : 0;
 
@@ -461,6 +510,9 @@ class VidaSolicitudController
                 'agente_id'           => $agenteId,
                 'estado_cliente'      => 'nuevo',
                 'origen'              => $vehiculoCampana !== '' ? 'campana' : 'formulario_producto',
+                // La empresa va dentro del INSERT, no se deja a un DEFAULT de
+                // la tabla: un cliente sin empresa no lo vería nadie.
+                'empresa_id'          => $empresaId,
             ];
 
             if ($ramo === 'autos') {
@@ -479,6 +531,7 @@ class VidaSolicitudController
 
             $cols   = implode(', ', array_keys($datos));
             $places = implode(', ', array_fill(0, count($datos), '?'));
+            // $datos lleva empresa_id dentro: el cliente se sella en la empresa resuelta en handle().
             try {
                 $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
             } catch (\Throwable $e) {
@@ -488,6 +541,7 @@ class VidaSolicitudController
                 error_log('[VidaSolicitudController] INSERT clientes falló con origen incluido: ' . $e->getMessage());
                 unset($datos['origen']);
                 $cols   = implode(', ', array_keys($datos));
+                // El reintento quita 'origen', nunca empresa_id: sin empresa el cliente sería invisible.
                 $places = implode(', ', array_fill(0, count($datos), '?'));
                 $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
             }
@@ -573,12 +627,15 @@ class VidaSolicitudController
                     domicilio       VARCHAR(255)  DEFAULT NULL,
                     cp              VARCHAR(10)   DEFAULT NULL,
                     hospitales      TEXT          DEFAULT NULL,
+                    empresa_id      INT           DEFAULT NULL,
                     estado          ENUM('pendiente','contactado','cerrado') DEFAULT 'pendiente',
                     created_at      TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             ");
 
-            foreach (['submarca' => 'VARCHAR(100)', 'version' => 'VARCHAR(100)', 'domicilio' => 'VARCHAR(255)', 'cp' => 'VARCHAR(10)', 'hospitales' => 'TEXT'] as $colName => $colType) {
+            // `empresa_id` entra también en el ALTER de abajo: la migración 005
+            // solo toca tablas que ya existían, y esta se crea en caliente.
+            foreach (['submarca' => 'VARCHAR(100)', 'version' => 'VARCHAR(100)', 'domicilio' => 'VARCHAR(255)', 'cp' => 'VARCHAR(10)', 'hospitales' => 'TEXT', 'empresa_id' => 'INT'] as $colName => $colType) {
                 try {
                     $chk = $db->prepare(
                         "SELECT 1 FROM information_schema.columns
@@ -596,14 +653,14 @@ class VidaSolicitudController
                 "INSERT INTO vida_solicitudes
                     (nombre, correo, telefono, fecha_preferida, ramo, edad, dependientes,
                      comentarios, marca, modelo, version, anio, tipo_vehiculo,
-                     domicilio, cp, hospitales, submarca)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                     domicilio, cp, hospitales, submarca, empresa_id)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([
                 $nombre, $correo ?: null, $telefono, $fechaPref, $ramo,
                 $edadGmm ?: null, $depGmm ?: 0, $comentarios ?: null,
                 $marca ?: null, $modelo ?: null, $version ?: null,
                 $anio ?: null, $tipoVeh ?: null, $domicilio ?: null, $cp ?: null,
-                $hospitales ?: null, $submarca ?: null,
+                $hospitales ?: null, $submarca ?: null, Tenant::requireId(),
             ]);
         } catch (\Throwable $e) {
             error_log('[VidaSolicitudController] DB error vida_solicitudes: ' . $e->getMessage());
@@ -757,10 +814,28 @@ class VidaSolicitudController
         return (int)$d . ' de ' . ($meses[(int)$m] ?? '') . ' de ' . $y;
     }
 
+    /**
+     * Ajustes que necesita el aviso por WhatsApp.
+     *
+     * Mezcla los dos ámbitos a propósito: las credenciales de la integración
+     * (`wa_token`, `wa_pid`) son de plataforma y viven en empresa_id = 0,
+     * mientras que a quién se avisa (`asesor_whatsapp`) es un ajuste de cada
+     * empresa. El ORDER BY deja las filas de la empresa al final, de modo que
+     * si alguna clave existiera en los dos ámbitos ganara la de la empresa.
+     *
+     * @return array<string,string>
+     */
     private static function getConfig(): array
     {
         try {
-            $rows = Connection::getConnection()->query("SELECT clave, valor FROM configuracion")->fetchAll(\PDO::FETCH_KEY_PAIR);
+            $stmt = Connection::getConnection()->prepare(
+                "SELECT clave, valor FROM configuracion
+                 WHERE empresa_id IN (0, :empresa)
+                 ORDER BY empresa_id ASC"
+            );
+            $stmt->execute(['empresa' => Tenant::requireId()]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+
             return $rows ?: [];
         } catch (\Throwable) { return []; }
     }

@@ -3,15 +3,19 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Security\Roles;
+use App\Security\Tenant;
+
 class AgentModel extends BaseModel
 {
     protected string $table = 'agentes';
     protected int $cacheTtl = 300;
     protected array $defaultColumns = [
-        'id', 'nombre', 'apellido', 'correo', 'telefono', 'rol', 'puesto', 'activo',
+        'id', 'nombre', 'apellido', 'correo', 'telefono', 'rol', 'puesto', 'activo', 'empresa_id',
     ];
 
     protected array $fillable = [
+        'empresa_id' => 'int',
         'nombre'     => 'string',
         'apellido'   => 'string',
         'correo'     => 'string',
@@ -34,10 +38,11 @@ class AgentModel extends BaseModel
      * hereda sus permisos.
      */
     public const PUESTOS = [
-        'asesor'            => ['label' => 'Asesor',            'rol_base' => 'asesor'],
-        'coordinador'       => ['label' => 'Coordinador',       'rol_base' => 'coordinador'],
-        'gerente_ventas'    => ['label' => 'Gerente de Ventas', 'rol_base' => 'coordinador'],
-        'superadmin'        => ['label' => 'Superadmin',        'rol_base' => 'superadmin'],
+        'asesor'            => ['label' => 'Asesor',                    'rol_base' => 'asesor'],
+        'coordinador'       => ['label' => 'Coordinador',               'rol_base' => 'coordinador'],
+        'gerente_ventas'    => ['label' => 'Gerente de Ventas',         'rol_base' => 'coordinador'],
+        'superadmin'        => ['label' => 'Administrador de empresa',  'rol_base' => 'superadmin'],
+        'propietario'       => ['label' => 'Propietario de plataforma', 'rol_base' => 'propietario'],
     ];
 
     public static function labelPuesto(?string $puesto, string $rolFallback): string
@@ -58,46 +63,144 @@ class AgentModel extends BaseModel
 
     // ── Lectura ───────────────────────────────────────────────────────────────
 
-    public function findByEmail(string $correo): ?array
+    /**
+     * Busca un agente por correo.
+     *
+     * El login ocurre antes de que exista contexto de empresa, así que esta
+     * consulta es deliberadamente global. Si se pasa $empresaId se acota.
+     */
+    public function findByEmail(string $correo, ?int $empresaId = null): ?array
+    {
+        $sql = 'SELECT id, empresa_id, nombre, apellido, correo, contrasena, rol, puesto, activo
+                FROM agentes WHERE correo = ?';
+        $params = [$correo];
+
+        if ($empresaId !== null) {
+            $sql .= ' AND empresa_id = ?';
+            $params[] = $empresaId;
+        }
+
+        $stmt = $this->db()->prepare($sql . ' LIMIT 1');
+        $stmt->execute($params);
+
+        return $stmt->fetch() ?: null;
+    }
+
+    /**
+     * Todas las cuentas con ese correo, en cualquier empresa.
+     *
+     * Desde que el correo es único por empresa y no globalmente, una misma
+     * persona puede tener cuenta en varias empresas. El login necesita verlas
+     * todas para saber si hay que preguntar a cuál entra.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function cuentasPorCorreo(string $correo): array
     {
         $stmt = $this->db()->prepare(
-            'SELECT id, nombre, apellido, correo, contrasena, rol, puesto, activo
-             FROM agentes WHERE correo = ? LIMIT 1'
+            'SELECT a.id, a.empresa_id, a.nombre, a.apellido, a.correo, a.contrasena,
+                    a.rol, a.puesto, COALESCE(a.activo,1) AS activo,
+                    e.nombre AS empresa_nombre, COALESCE(e.activo,1) AS empresa_activa
+             FROM agentes a
+             LEFT JOIN empresas e ON e.id = a.empresa_id
+             WHERE a.correo = ?
+             ORDER BY a.id ASC'
         );
         $stmt->execute([$correo]);
-        return $stmt->fetch() ?: null;
+
+        return $stmt->fetchAll();
     }
 
     public function getTodos(): array
     {
-        return $this->db()
-            ->query('SELECT id, nombre, apellido, correo, telefono, rol, puesto,
-                            COALESCE(activo,1) AS activo
-                     FROM agentes
-                     ORDER BY COALESCE(activo,1) DESC, id ASC')
-            ->fetchAll();
+        $stmt = $this->db()->prepare(
+            'SELECT id, empresa_id, nombre, apellido, correo, telefono, rol, puesto,
+                    COALESCE(activo,1) AS activo
+             FROM agentes
+             WHERE 1=1' . $this->sqlEmpresa() . '
+             ORDER BY COALESCE(activo,1) DESC, id ASC'
+        );
+        $stmt->execute($this->bindEmpresa());
+
+        return $stmt->fetchAll();
     }
 
     public function getSoloAsesores(): array
     {
-        return $this->db()
-            ->query("SELECT id, nombre, apellido, correo, telefono, rol, puesto,
-                            COALESCE(activo,1) AS activo
-                     FROM agentes
-                     WHERE rol IN ('asesor','agente') AND COALESCE(activo,1) = 1
-                     ORDER BY nombre ASC")
-            ->fetchAll();
+        $stmt = $this->db()->prepare(
+            "SELECT id, empresa_id, nombre, apellido, correo, telefono, rol, puesto,
+                    COALESCE(activo,1) AS activo
+             FROM agentes
+             WHERE rol IN ('asesor','agente') AND COALESCE(activo,1) = 1"
+             . $this->sqlEmpresa() . '
+             ORDER BY nombre ASC'
+        );
+        $stmt->execute($this->bindEmpresa());
+
+        return $stmt->fetchAll();
+    }
+
+    /** Rol de un agente, acotado a la empresa activa. */
+    public function getRol(int $id): ?string
+    {
+        $stmt = $this->db()->prepare(
+            'SELECT rol FROM agentes WHERE id = :__id' . $this->sqlEmpresa() . ' LIMIT 1'
+        );
+        $stmt->execute($this->bindEmpresa(['__id' => $id]));
+        $rol = $stmt->fetchColumn();
+
+        return $rol === false ? null : (string) $rol;
+    }
+
+    /** True si el agente pertenece a la empresa indicada. */
+    public function perteneceA(int $agenteId, int $empresaId): bool
+    {
+        $stmt = $this->db()->prepare(
+            'SELECT 1 FROM agentes WHERE id = ? AND empresa_id = ? LIMIT 1'
+        );
+        $stmt->execute([$agenteId, $empresaId]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    public function registrarAcceso(int $id): void
+    {
+        try {
+            $this->db()
+                ->prepare('UPDATE agentes SET ultimo_acceso = NOW() WHERE id = ?')
+                ->execute([$id]);
+        } catch (\Throwable $e) {
+            // La columna puede no existir si la migración no corrió todavía;
+            // no es motivo para impedir el acceso.
+        }
     }
 
     // ── Escritura ─────────────────────────────────────────────────────────────
 
-    public function crear(string $nombre, string $apellido, string $correo, string $telefono, string $password, string $rol = 'asesor', ?string $puesto = null): int
+    /**
+     * Da de alta un agente en la empresa activa.
+     *
+     * El correo se comprueba dentro de la empresa, no globalmente: dos
+     * empresas distintas pueden tener a la misma persona como usuario.
+     */
+    public function crear(string $nombre, string $apellido, string $correo, string $telefono, string $password, string $rol = 'asesor', ?string $puesto = null, ?int $empresaId = null): int
     {
-        $chk = $this->db()->prepare('SELECT 1 FROM agentes WHERE correo = ? LIMIT 1');
-        $chk->execute([$correo]);
+        $empresaId ??= Tenant::id();
+
+        if ($empresaId === null) {
+            return 0;
+        }
+
+        $chk = $this->db()->prepare('SELECT 1 FROM agentes WHERE correo = ? AND empresa_id = ? LIMIT 1');
+        $chk->execute([$correo, $empresaId]);
         if ($chk->fetch()) return 0;
 
-        return $this->insert([
+        if (!(new EmpresaModel())->admiteOtroUsuario($empresaId)) {
+            return 0;
+        }
+
+        return Tenant::comoEmpresa($empresaId, fn() => $this->insert([
+            'empresa_id' => $empresaId,
             'nombre'     => $nombre,
             'apellido'   => $apellido,
             'correo'     => $correo,
@@ -106,23 +209,42 @@ class AgentModel extends BaseModel
             'rol'        => $rol,
             'puesto'     => $puesto ?? $rol,
             'activo'     => 1,
-        ]);
+        ]));
     }
 
     public function cambiarRol(int $id, string $rol): void
     {
-        $this->db()->prepare('UPDATE agentes SET rol = ? WHERE id = ?')->execute([$rol, $id]);
+        // El rol `propietario` no se asigna desde la interfaz: es de
+        // plataforma y se otorga a mano al instalar.
+        if (!Roles::existe($rol) || $rol === Roles::PROPIETARIO) {
+            return;
+        }
+
+        $stmt = $this->db()->prepare(
+            'UPDATE agentes SET rol = :rol WHERE id = :__id' . $this->sqlEmpresa()
+        );
+        $stmt->execute($this->bindEmpresa(['rol' => $rol, '__id' => $id]));
+
+        \App\Services\QueryCache::invalidate($this->table);
     }
 
     public function cambiarPuesto(int $id, string $puesto): void
     {
-        if (!isset(self::PUESTOS[$puesto])) return;
+        if (!isset(self::PUESTOS[$puesto]) || $puesto === 'propietario') return;
+
         $rolBase = self::PUESTOS[$puesto]['rol_base'];
         // El rol base se sincroniza automáticamente: así toda la lógica de
         // permisos existente (basada en `rol`) sigue funcionando sin cambios.
-        $this->db()
-            ->prepare('UPDATE agentes SET rol = ?, puesto = ? WHERE id = ?')
-            ->execute([$rolBase, $puesto, $id]);
+        $stmt = $this->db()->prepare(
+            'UPDATE agentes SET rol = :rol, puesto = :puesto WHERE id = :__id' . $this->sqlEmpresa()
+        );
+        $stmt->execute($this->bindEmpresa([
+            'rol'    => $rolBase,
+            'puesto' => $puesto,
+            '__id'   => $id,
+        ]));
+
+        \App\Services\QueryCache::invalidate($this->table);
     }
 
     public function eliminar(int $id): void
@@ -141,6 +263,9 @@ class AgentModel extends BaseModel
      */
     public function actualizarHash(int $id, string $hash): void
     {
+        // tenant-ok: el rehash ocurre durante el login, antes de que exista
+        // contexto de empresa; el id viene de la fila ya autenticada, nunca
+        // de la petición
         $this->db()
             ->prepare('UPDATE agentes SET contrasena = ? WHERE id = ?')
             ->execute([$hash, $id]);
@@ -150,18 +275,32 @@ class AgentModel extends BaseModel
 
     public function getStatsGlobales(): array
     {
-        $db = $this->db();
+        $db   = $this->db();
+        $bind = $this->bindEmpresa();
 
-        [$totalAgentes]  = $db->query('SELECT COUNT(*) FROM agentes')->fetchAll(\PDO::FETCH_COLUMN);
-        [$totalClientes] = $db->query('SELECT COUNT(*) FROM clientes')->fetchAll(\PDO::FETCH_COLUMN);
+        $stmt = $db->prepare('SELECT COUNT(*) FROM agentes' . $this->sqlEmpresa('', 'WHERE'));
+        $stmt->execute($bind);
+        $totalAgentes = (int) $stmt->fetchColumn();
 
-        $d = $db->query("SELECT COUNT(*) AS total,
-                                SUM(CASE WHEN estado='aceptada' THEN precio ELSE 0 END) AS ingreso
-                         FROM cotizaciones")->fetch();
+        $stmt = $db->prepare('SELECT COUNT(*) FROM clientes' . $this->sqlEmpresa('', 'WHERE'));
+        $stmt->execute($bind);
+        $totalClientes = (int) $stmt->fetchColumn();
 
-        $porRamoRaw = $db->query("SELECT ramo, COUNT(*) AS cotizaciones,
-                                         SUM(estado='aceptada') AS ventas
-                                  FROM cotizaciones GROUP BY ramo")->fetchAll();
+        $stmt = $db->prepare(
+            "SELECT COUNT(*) AS total,
+                    SUM(CASE WHEN estado='aceptada' THEN precio ELSE 0 END) AS ingreso
+               FROM cotizaciones" . $this->sqlEmpresa('', 'WHERE')
+        );
+        $stmt->execute($bind);
+        $d = $stmt->fetch();
+
+        $stmt = $db->prepare(
+            "SELECT ramo, COUNT(*) AS cotizaciones,
+                    SUM(estado='aceptada') AS ventas
+               FROM cotizaciones" . $this->sqlEmpresa('', 'WHERE') . ' GROUP BY ramo'
+        );
+        $stmt->execute($bind);
+        $porRamoRaw = $stmt->fetchAll();
 
         $porRamo = ['autos' => ['cotizaciones'=>0,'ventas'=>0],
                     'vida'  => ['cotizaciones'=>0,'ventas'=>0],
@@ -203,7 +342,7 @@ class AgentModel extends BaseModel
                     SELECT agente_id,
                            COUNT(*) AS total_clientes,
                            SUM(YEAR(fecha_registro)=YEAR(NOW()) AND MONTH(fecha_registro)=MONTH(NOW())) AS clientes_mes
-                    FROM clientes GROUP BY agente_id
+                    FROM clientes" . $this->sqlEmpresa('', 'WHERE', 'c') . " GROUP BY agente_id
                 ) cl ON cl.agente_id = a.id
                 LEFT JOIN (
                     SELECT agente_id,
@@ -213,10 +352,14 @@ class AgentModel extends BaseModel
                            SUM(YEAR(co.fecha_creacion)=YEAR(NOW()) AND MONTH(co.fecha_creacion)=MONTH(NOW())) AS cot_mes,
                            SUM(CASE WHEN YEAR(co.fecha_creacion)=YEAR(NOW()) AND MONTH(co.fecha_creacion)=MONTH(NOW()) AND ({$vSql}) THEN 1 ELSE 0 END) AS ventas_mes,
                            SUM(CASE WHEN YEAR(co.fecha_creacion)=YEAR(NOW()) AND MONTH(co.fecha_creacion)=MONTH(NOW()) AND ({$vSql}) THEN co.precio ELSE 0 END) AS ingreso_mes
-                    FROM cotizaciones co GROUP BY agente_id
+                    FROM cotizaciones co" . $this->sqlEmpresa('co', 'WHERE', 'q') . " GROUP BY agente_id
                 ) co ON co.agente_id = a.id
-                WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
+                WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1"
+                . $this->sqlEmpresa('a', 'AND', 'a') . "
                 ORDER BY ingreso_total DESC";
+
+        $stmt = $this->db()->prepare($sql);
+        $stmt->execute($this->bindEmpresa([], ['c', 'q', 'a']));
 
         return array_map(fn($r) => [
             'id'                 => (int)   $r['id'],
@@ -232,7 +375,7 @@ class AgentModel extends BaseModel
             'cotizaciones_mes'   => (int)   $r['cotizaciones_mes'],
             'ventas_mes'         => (int)   $r['ventas_mes'],
             'ingreso_mes'        => (float) $r['ingreso_mes'],
-        ], $this->db()->query($sql)->fetchAll());
+        ], $stmt->fetchAll());
     }
 
     public function getReporteFinanciero(): array
@@ -248,7 +391,8 @@ class AgentModel extends BaseModel
                        COALESCE(co.ingreso_mes,0)    AS ingreso_mes,
                        COALESCE(co.ingreso_ant,0)    AS ingreso_mes_anterior
                 FROM agentes a
-                LEFT JOIN (SELECT agente_id, COUNT(*) AS total_clientes FROM clientes GROUP BY agente_id) cl ON cl.agente_id = a.id
+                LEFT JOIN (SELECT agente_id, COUNT(*) AS total_clientes FROM clientes"
+                    . $this->sqlEmpresa('', 'WHERE', 'c') . " GROUP BY agente_id) cl ON cl.agente_id = a.id
                 LEFT JOIN (
                     SELECT agente_id,
                            COUNT(*) AS total_cot,
@@ -259,9 +403,13 @@ class AgentModel extends BaseModel
                            SUM(estado='aceptada' AND YEAR(fecha_creacion)=YEAR(NOW()) AND MONTH(fecha_creacion)=MONTH(NOW())) AS ventas_mes,
                            SUM(CASE WHEN estado='aceptada' AND YEAR(fecha_creacion)=YEAR(NOW()) AND MONTH(fecha_creacion)=MONTH(NOW()) THEN precio ELSE 0 END) AS ingreso_mes,
                            SUM(CASE WHEN estado='aceptada' AND YEAR(fecha_creacion)=YEAR(DATE_SUB(NOW(),INTERVAL 1 MONTH)) AND MONTH(fecha_creacion)=MONTH(DATE_SUB(NOW(),INTERVAL 1 MONTH)) THEN precio ELSE 0 END) AS ingreso_ant
-                    FROM cotizaciones GROUP BY agente_id
-                ) co ON co.agente_id = a.id
+                    FROM cotizaciones" . $this->sqlEmpresa('', 'WHERE', 'q') . " GROUP BY agente_id
+                ) co ON co.agente_id = a.id"
+                . $this->sqlEmpresa('a', 'WHERE', 'a') . "
                 ORDER BY ingreso_neto DESC";
+
+        $stmt = $this->db()->prepare($sql);
+        $stmt->execute($this->bindEmpresa([], ['c', 'q', 'a']));
 
         return array_map(fn($r) => [
             'id'                   => (int)   $r['id'],
@@ -280,7 +428,7 @@ class AgentModel extends BaseModel
             'tasa_conversion'      => (int)$r['total_cotizaciones'] > 0
                 ? round((int)$r['ventas'] / (int)$r['total_cotizaciones'] * 100, 1)
                 : 0,
-        ], $this->db()->query($sql)->fetchAll());
+        ], $stmt->fetchAll());
     }
 
     public function getEvolucionGlobal(?int $agenteId = null): array
@@ -300,19 +448,27 @@ class AgentModel extends BaseModel
                 ) meses
                 LEFT JOIN (
                     SELECT DATE_FORMAT(fecha_registro,'%Y-%m-01') AS m, COUNT(*) AS total
-                    FROM clientes WHERE 1=1 {$whereCliente} GROUP BY m
+                    FROM clientes WHERE 1=1 {$whereCliente}" . $this->sqlEmpresaPos() . " GROUP BY m
                 ) cl ON cl.m = meses.mes_inicio
                 LEFT JOIN (
                     SELECT DATE_FORMAT(fecha_creacion,'%Y-%m-01') AS m,
                            COUNT(*) AS total,
                            SUM(estado='aceptada') AS ventas,
                            SUM(CASE WHEN estado='aceptada' THEN precio ELSE 0 END) AS ingresos
-                    FROM cotizaciones WHERE 1=1 {$whereCot} GROUP BY m
+                    FROM cotizaciones WHERE 1=1 {$whereCot}" . $this->sqlEmpresaPos() . " GROUP BY m
                 ) co ON co.m = meses.mes_inicio
                 ORDER BY meses.mes_inicio ASC";
 
         $stmt = $this->db()->prepare($sql);
-        $params = $agenteId ? [$agenteId, $agenteId] : [];
+
+        // El orden importa: cada subconsulta aporta sus parámetros en el mismo
+        // orden en que aparece en el SQL.
+        $params = array_merge(
+            $agenteId ? [$agenteId] : [],
+            $this->empresaPos(),
+            $agenteId ? [$agenteId] : [],
+            $this->empresaPos(),
+        );
         $stmt->execute($params);
 
         return array_map(fn($e) => [
@@ -326,14 +482,17 @@ class AgentModel extends BaseModel
 
     public function getTopVehiculos(?int $agenteId = null, int $limit = 5): array
     {
-        $where = $agenteId ? 'WHERE agente_id = ?' : '';
-        $stmt  = $this->db()->prepare(
+        $where  = $agenteId ? 'WHERE agente_id = ?' : '';
+        $where .= $this->sqlEmpresaPos('', $agenteId ? 'AND' : 'WHERE');
+
+        // LIMIT va interpolado tras castear: con ATTR_EMULATE_PREPARES=false,
+        // MySQL rechaza un LIMIT atado como cadena.
+        $stmt = $this->db()->prepare(
             "SELECT tipo_vehiculo AS tipo, COUNT(*) AS total
              FROM clientes {$where}
-             GROUP BY tipo_vehiculo ORDER BY total DESC LIMIT ?"
+             GROUP BY tipo_vehiculo ORDER BY total DESC LIMIT " . (int) $limit
         );
-        $params = $agenteId ? [$agenteId, $limit] : [$limit];
-        $stmt->execute($params);
+        $stmt->execute(array_merge($agenteId ? [$agenteId] : [], $this->empresaPos()));
         $rows = $stmt->fetchAll() ?: [['tipo' => 'Sin datos', 'total' => 1]];
         return array_map(fn($r) => [
             'tipo'  => (!empty($r['tipo']) ? $r['tipo'] : 'Otros'),
@@ -346,13 +505,14 @@ class AgentModel extends BaseModel
         $where = $agenteId
             ? "WHERE agente_id = ? AND estado='aceptada'"
             : "WHERE estado='aceptada'";
+        $where .= $this->sqlEmpresaPos();
+
         $stmt = $this->db()->prepare(
             "SELECT tipo_cobertura AS tipo, COUNT(*) AS total
              FROM cotizaciones {$where}
-             GROUP BY tipo_cobertura ORDER BY total DESC LIMIT ?"
+             GROUP BY tipo_cobertura ORDER BY total DESC LIMIT " . (int) $limit
         );
-        $params = $agenteId ? [$agenteId, $limit] : [$limit];
-        $stmt->execute($params);
+        $stmt->execute(array_merge($agenteId ? [$agenteId] : [], $this->empresaPos()));
         $rows = $stmt->fetchAll() ?: [['tipo' => 'Sin ventas', 'total' => 0]];
         return array_map(fn($r) => [
             'tipo'  => (!empty($r['tipo']) ? $r['tipo'] : 'Otros'),
@@ -481,12 +641,14 @@ class AgentModel extends BaseModel
         $resultado = ['campana' => 0, 'formulario' => 0, 'manual' => 0];
 
         try {
-            $stmt = $this->db()->query(
+            $stmt = $this->db()->prepare(
                 "SELECT origen, COUNT(*) AS total
                  FROM clientes
-                 WHERE YEAR(fecha_registro) = YEAR(CURDATE()) AND MONTH(fecha_registro) = MONTH(CURDATE())
+                 WHERE YEAR(fecha_registro) = YEAR(CURDATE()) AND MONTH(fecha_registro) = MONTH(CURDATE())"
+                 . $this->sqlEmpresa() . "
                  GROUP BY origen"
             );
+            $stmt->execute($this->bindEmpresa());
             foreach ($stmt->fetchAll() as $row) {
                 $bucket = self::clasificarOrigen($row['origen'] ?? null);
                 $resultado[$bucket] += (int) $row['total'];
@@ -496,10 +658,12 @@ class AgentModel extends BaseModel
             // en ese caso no se puede distinguir el origen, se reporta todo
             // como alta manual para no inventar datos.
             try {
-                $stmt = $this->db()->query(
+                $stmt = $this->db()->prepare(
                     "SELECT COUNT(*) AS total FROM clientes
                      WHERE YEAR(fecha_registro) = YEAR(CURDATE()) AND MONTH(fecha_registro) = MONTH(CURDATE())"
+                     . $this->sqlEmpresa()
                 );
+                $stmt->execute($this->bindEmpresa());
                 $resultado['manual'] = (int) ($stmt->fetch()['total'] ?? 0);
             } catch (\Throwable) {}
         }
@@ -514,16 +678,19 @@ class AgentModel extends BaseModel
     public function getDetalleOrigenMes(string $bucket): array
     {
         try {
-            $rows = $this->db()->query(
+            $stmt = $this->db()->prepare(
                 "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
                         c.correo, c.telefono, c.ramo, c.fecha_registro, c.origen,
                         a.nombre AS agente_nombre, a.apellido AS agente_apellido
                  FROM clientes c
                  LEFT JOIN agentes a ON a.id = c.agente_id
-                 WHERE YEAR(c.fecha_registro) = YEAR(CURDATE()) AND MONTH(c.fecha_registro) = MONTH(CURDATE())
+                 WHERE YEAR(c.fecha_registro) = YEAR(CURDATE()) AND MONTH(c.fecha_registro) = MONTH(CURDATE())"
+                 . $this->sqlEmpresa('c') . "
                  ORDER BY c.fecha_registro DESC
                  LIMIT 300"
-            )->fetchAll();
+            );
+            $stmt->execute($this->bindEmpresa());
+            $rows = $stmt->fetchAll();
         } catch (\Throwable) {
             return [];
         }
@@ -554,16 +721,19 @@ class AgentModel extends BaseModel
         };
 
         try {
-            return $this->db()->query(
+            $stmt = $this->db()->prepare(
                 "SELECT c.id, c.nombre, c.apellido_paterno, c.apellido_materno,
                         c.correo, c.telefono, c.ramo, c.fecha_registro, c.origen,
                         a.nombre AS agente_nombre, a.apellido AS agente_apellido
                  FROM clientes c
                  LEFT JOIN agentes a ON a.id = c.agente_id
-                 WHERE {$where}
+                 WHERE {$where}" . $this->sqlEmpresa('c') . "
                  ORDER BY c.fecha_registro DESC
                  LIMIT 300"
-            )->fetchAll();
+            );
+            $stmt->execute($this->bindEmpresa());
+
+            return $stmt->fetchAll();
         } catch (\Throwable) {
             return [];
         }
@@ -578,23 +748,84 @@ class AgentModel extends BaseModel
                     COUNT(co.id) AS total_cotizaciones
              FROM clientes c
              LEFT JOIN cotizaciones co ON co.cliente_id = c.id
-             WHERE c.agente_id = ?
+             WHERE c.agente_id = ?" . $this->sqlEmpresaPos('c') . "
              GROUP BY c.id
              ORDER BY c.fecha_registro DESC"
         );
-        $stmt->execute([$agenteId]);
+        $stmt->execute(array_merge([$agenteId], $this->empresaPos()));
         return $stmt->fetchAll();
+    }
+
+    /**
+     * Reduce una lista de ids de cliente a los que son de la empresa activa.
+     * En modo plataforma la devuelve tal cual, solo saneada.
+     *
+     * @param  array<int|string> $clienteIds
+     * @return list<int>
+     */
+    private function soloClientesDeLaEmpresa(array $clienteIds): array
+    {
+        $ids = array_values(array_unique(
+            array_filter(array_map('intval', $clienteIds), static fn(int $i): bool => $i > 0)
+        ));
+
+        if ($ids === [] || !$this->filtraPorEmpresa()) {
+            return $ids;
+        }
+
+        $ph   = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->db()->prepare(
+            "SELECT id FROM clientes WHERE id IN ({$ph})" . $this->sqlEmpresaPos()
+        );
+        $stmt->execute(array_merge($ids, $this->empresaPos()));
+
+        return array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
+    /** True si el agente es de la empresa activa (o si no hay filtro activo). */
+    private function perteneceALaEmpresaActiva(int $agenteId): bool
+    {
+        if ($agenteId <= 0) {
+            return false;
+        }
+
+        if (!$this->filtraPorEmpresa()) {
+            return true;
+        }
+
+        $stmt = $this->db()->prepare(
+            'SELECT 1 FROM agentes WHERE id = ?' . $this->sqlEmpresaPos() . ' LIMIT 1'
+        );
+        $stmt->execute(array_merge([$agenteId], $this->empresaPos()));
+
+        return (bool) $stmt->fetchColumn();
     }
 
     public function reasignarClientes(array $clienteIds, int $nuevoAsesorId): int
     {
         if (empty($clienteIds)) return 0;
-        $placeholders = implode(',', array_fill(0, count($clienteIds), '?'));
+
         $db = $this->db();
+
+        // Acotar a la empresa activa ANTES de tocar nada. Los ids llegan de un
+        // POST: sin este filtro, un coordinador podría reasignar —y por tanto
+        // ver— clientes de otra empresa con solo cambiar los números. Al
+        // reducir aquí la lista, todas las sentencias de abajo quedan seguras
+        // por construcción, sin repetir el filtro en cada una.
+        $clienteIds = $this->soloClientesDeLaEmpresa($clienteIds);
+
+        if ($clienteIds === []) return 0;
+
+        // El asesor destino también debe ser de la empresa activa: si no, los
+        // clientes saldrían de ella por la puerta de atrás.
+        if (!$this->perteneceALaEmpresaActiva($nuevoAsesorId)) return 0;
+
+        $placeholders = implode(',', array_fill(0, count($clienteIds), '?'));
 
         // 0. Obtener nombres de los clientes ANTES de reasignar (para el mensaje de notificación)
         $clientesInfo = [];
         try {
+            // tenant-ok: $clienteIds ya quedó acotado a la empresa activa arriba
             $stmtInfo = $db->prepare(
                 "SELECT id, nombre, apellido_paterno FROM clientes WHERE id IN ({$placeholders})"
             );
@@ -605,6 +836,7 @@ class AgentModel extends BaseModel
         } catch (\Throwable) {}
 
         // 1. Reasignar el cliente al nuevo asesor
+        // tenant-ok: $clienteIds ya quedó acotado a la empresa activa arriba
         $stmt = $db->prepare(
             "UPDATE clientes SET agente_id = ? WHERE id IN ({$placeholders})"
         );
@@ -613,6 +845,7 @@ class AgentModel extends BaseModel
 
         // 2. Reasignar pólizas vinculadas (para que el nuevo asesor las vea)
         try {
+            // tenant-ok: las pólizas cuelgan de clientes ya acotados a la empresa
             $db->prepare(
                 "UPDATE polizas SET agente_id = ? WHERE cliente_id IN ({$placeholders}) AND eliminado_en IS NULL"
             )->execute([$nuevoAsesorId, ...$clienteIds]);
@@ -621,6 +854,7 @@ class AgentModel extends BaseModel
         // 3. Registrar en historial de cada cliente
         try {
             foreach ($clienteIds as $cid) {
+                // tenant-ok: el historial cuelga de un cliente ya acotado a la empresa
                 $db->prepare(
                     "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha)
                      VALUES (?, ?, 'nota', '↔️ Cliente reasignado', 'Cliente transferido al asesor actual por un coordinador/superadmin.', NOW())"

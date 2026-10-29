@@ -34,6 +34,9 @@ $agente      = SessionManager::getAgentData();
 $isSuperadmin= SessionManager::isSuperadmin();
 $_agenteRol  = $agente['rol'] ?? 'coordinador';
 
+// Empresa activa: el SQL a mano de esta vista se acota explícitamente a ella.
+$empresaId   = \App\Security\Tenant::requireId();
+
 $agentModel  = new AgentModel();
 $cotModel    = new CotizacionModel();
 
@@ -56,19 +59,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
          FROM cotizaciones c
          JOIN clientes cl ON cl.id = c.cliente_id
          JOIN agentes  a  ON a.id  = c.agente_id
-         WHERE c.id = ?"
+         WHERE c.id = ? AND c.empresa_id = ?"
     );
-    $stCot->execute([$cotId]);
+    $stCot->execute([$cotId, $empresaId]);
     $cot = $stCot->fetch(\PDO::FETCH_ASSOC);
     if (!$cot) { header('Location: /admin?tab=emision'); exit; }
 
     $stDocs = $db->prepare(
         "SELECT tipo_documento, nombre_original, nombre_archivo, subido_en
          FROM cotizacion_archivos
-         WHERE cotizacion_id = ? AND eliminado_en IS NULL
+         WHERE cotizacion_id = ? AND empresa_id = ? AND eliminado_en IS NULL
          ORDER BY subido_en ASC"
     );
-    $stDocs->execute([$cotId]);
+    $stDocs->execute([$cotId, $empresaId]);
     $docs = $stDocs->fetchAll(\PDO::FETCH_ASSOC);
     $docsMap = [];
     foreach ($docs as $d) {
@@ -85,10 +88,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
         $stComp2 = $db->prepare(
             "SELECT nombre_original, nombre_archivo, creado_en AS subido_en
              FROM cotizacion_comprobantes_pago
-             WHERE cotizacion_id = ? AND eliminado_en IS NULL
+             WHERE cotizacion_id = ? AND empresa_id = ? AND eliminado_en IS NULL
              ORDER BY creado_en DESC LIMIT 1"
         );
-        $stComp2->execute([$cotId]);
+        $stComp2->execute([$cotId, $empresaId]);
         $comp2 = $stComp2->fetch(\PDO::FETCH_ASSOC);
         if ($comp2) {
             $docsMap['comprobante_pago'] = $comp2;
@@ -98,9 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
     $stCk = $db->prepare(
         "SELECT doc_tipo, estado, nota, actualizado_en AS revisado_en
          FROM emi_checklist
-         WHERE cotizacion_id = ?"
+         WHERE cotizacion_id = ? AND empresa_id = ?"
     );
-    $stCk->execute([$cotId]);
+    $stCk->execute([$cotId, $empresaId]);
     $ck = $stCk->fetchAll(\PDO::FETCH_ASSOC);
     $ckMap = [];
     foreach ($ck as $c) $ckMap[$c['doc_tipo']] = $c;
@@ -357,15 +360,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                 JOIN agentes  a   ON a.id  = p.agente_id
                 LEFT JOIN cotizaciones                cot ON cot.id  = p.cotizacion_id
                 LEFT JOIN cotizacion_comprobantes_pago ccp ON ccp.cotizacion_id = p.cotizacion_id AND ccp.eliminado_en IS NULL
-                LEFT JOIN (SELECT cotizacion_id, MAX(id) AS max_id FROM cotizacion_pagos GROUP BY cotizacion_id) cpmax
+                LEFT JOIN (SELECT cotizacion_id, MAX(id) AS max_id FROM cotizacion_pagos
+                           WHERE empresa_id = ? GROUP BY cotizacion_id) cpmax
                           ON cpmax.cotizacion_id = p.cotizacion_id
                 LEFT JOIN cotizacion_pagos cp ON cp.id = cpmax.max_id';
-                
+
         // ▶ APLICAR EL TOGGLE DE PAPELERA AQUÍ
         $verEliminadas = !empty($_POST['ver_eliminadas']) && $isSuperadmin;
-        $sql .= ' WHERE ' . ($verEliminadas ? 'p.eliminado_en IS NOT NULL' : 'p.eliminado_en IS NULL');
-        
-        $params = [];
+        $sql .= ' WHERE p.empresa_id = ? AND ' . ($verEliminadas ? 'p.eliminado_en IS NOT NULL' : 'p.eliminado_en IS NULL');
+
+        // 1º el parámetro de la subconsulta del FROM, 2º el del WHERE principal.
+        $params = [$empresaId, $empresaId];
         if ($filtroAsesor) { $sql .= ' AND p.agente_id = ?'; $params[] = $filtroAsesor; }
         $sql .= ' ORDER BY p.fecha_fin ASC LIMIT 500';
         try {
@@ -404,7 +409,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         if (!$tid || !$nombre) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
         $puedeEditar = $isSuperadmin || ($_agenteRol === 'coordinador' && $agentModel->getRol($tid) === 'asesor');
         if (!$puedeEditar) { echo json_encode(['ok'=>false,'msg'=>'Sin permiso.']); exit; }
-        $db->prepare('UPDATE agentes SET nombre=?, apellido=? WHERE id=?')->execute([$nombre, $apell, $tid]);
+        $db->prepare('UPDATE agentes SET nombre=?, apellido=? WHERE id=? AND empresa_id=?')->execute([$nombre, $apell, $tid, $empresaId]);
         echo json_encode(['ok'=>true]);
 
     } elseif ($a === 'cambiar_password_agente') {
@@ -413,7 +418,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         if (!$tid || strlen($pw) < 6) { echo json_encode(['ok'=>false,'msg'=>'Contraseña mínimo 6 caracteres.']); exit; }
         $puedeEditar = $isSuperadmin || ($_agenteRol === 'coordinador' && $agentModel->getRol($tid) === 'asesor');
         if (!$puedeEditar) { echo json_encode(['ok'=>false,'msg'=>'Sin permiso.']); exit; }
-        $db->prepare('UPDATE agentes SET contrasena=? WHERE id=?')->execute([password_hash($pw, PASSWORD_BCRYPT), $tid]);
+        $db->prepare('UPDATE agentes SET contrasena=? WHERE id=? AND empresa_id=?')->execute([password_hash($pw, PASSWORD_BCRYPT), $tid, $empresaId]);
         echo json_encode(['ok'=>true]);
 
     } elseif ($a === 'get_historial_coordinador') {
@@ -430,11 +435,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                  FROM historial_coordinador h
                  LEFT JOIN cotizaciones c  ON c.id  = h.cotizacion_id
                  LEFT JOIN clientes    cl ON cl.id = h.cliente_id
-                 WHERE h.coordinador_id = ?
+                 WHERE h.coordinador_id = ? AND h.empresa_id = ?
                  ORDER BY h.fecha DESC
                  LIMIT ?"
             );
-            $st->execute([$tid, $limit]);
+            $st->execute([$tid, $empresaId, $limit]);
             $rows = $st->fetchAll(PDO::FETCH_ASSOC);
             foreach ($rows as &$r) {
                 $r['fecha_fmt'] = $r['fecha_registro']
@@ -500,8 +505,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
         
         // Obtener la información ANTES de forzar para poder notificar
-        $stInfo = $db->prepare("SELECT folio, agente_id, cliente_id FROM cotizaciones WHERE id = ?");
-        $stInfo->execute([$cotId]);
+        $stInfo = $db->prepare("SELECT folio, agente_id, cliente_id FROM cotizaciones WHERE id = ? AND empresa_id = ?");
+        $stInfo->execute([$cotId, $empresaId]);
         $infoCot = $stInfo->fetch(\PDO::FETCH_ASSOC);
 
         $ok = $cotModel->forzarEstado($cotId, $estado, $emisionEstado);
@@ -511,8 +516,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             if ($estado !== 'pagado') {
                 $db->prepare(
                     "UPDATE clientes SET estado_cliente='con_cotizacion'
-                     WHERE id = ? AND estado_cliente = 'cerrado'"
-                )->execute([$infoCot['cliente_id']]);
+                     WHERE id = ? AND empresa_id = ? AND estado_cliente = 'cerrado'"
+                )->execute([$infoCot['cliente_id'], $empresaId]);
             }
             
             // Registrar Historial y Notificar
@@ -520,14 +525,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $msg = "El Superadmin ha forzado el estado de tu cotización a: {$estado} (Emisión: {$emisionEstado}).";
             
             $db->prepare(
-                "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha)
-                 VALUES (?, ?, 'cambio_estado', ?, ?, NOW())"
-            )->execute([$infoCot['cliente_id'], $agenteId, "🔧 Estado forzado: $folioDesc", $msg]);
+                "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha, empresa_id)
+                 VALUES (?, ?, 'cambio_estado', ?, ?, NOW(), ?)"
+            )->execute([$infoCot['cliente_id'], $agenteId, "🔧 Estado forzado: $folioDesc", $msg, $empresaId]);
 
             $db->prepare(
-                "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
-                 VALUES (?, 'sistema', '🔧 Estado de cotización forzado', ?, 1, 'orange', ?, 0, NOW())"
-            )->execute([$infoCot['agente_id'], $msg, "/cliente/{$infoCot['cliente_id']}"]);
+                "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en, empresa_id)
+                 VALUES (?, 'sistema', '🔧 Estado de cotización forzado', ?, 1, 'orange', ?, 0, NOW(), ?)"
+            )->execute([$infoCot['agente_id'], $msg, "/cliente/{$infoCot['cliente_id']}", $empresaId]);
         }
         
         echo json_encode(['ok' => $ok]);
@@ -578,8 +583,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         if (!in_array($frecuencia,['semanal','mensual','trimestral','anual'],true)) $frecuencia='anual';
         
         $db = \Database\Connection::getConnection();
-        $st = $db->prepare("SELECT id, cliente_id, notas FROM polizas WHERE id = ?");
-        $st->execute([$polizaId]);
+        $st = $db->prepare("SELECT id, cliente_id, notas FROM polizas WHERE id = ? AND empresa_id = ?");
+        $st->execute([$polizaId, $empresaId]);
         $pol = $st->fetch(\PDO::FETCH_ASSOC);
         if (!$pol) { echo json_encode(['ok' => false, 'msg' => 'Póliza no encontrada.']); exit; }
 
@@ -613,21 +618,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         }
         
         if ($notasOriginales) { $sets[] = 'notas = ?'; $vals[] = trim($notasOriginales); }
+        // Los dos parámetros del WHERE van al final, tras los de los SET.
         $vals[] = $polizaId;
-        
-        $db->prepare('UPDATE polizas SET '.implode(', ', $sets).' WHERE id = ?')->execute($vals);
-        
+        $vals[] = $empresaId;
+
+        $db->prepare('UPDATE polizas SET '.implode(', ', $sets).' WHERE id = ? AND empresa_id = ?')->execute($vals);
+
         if ($clienteId) {
             $desc = 'Renovada por coordinador.' . ($nuevoNumero ? " Nueva póliza: {$nuevoNumero}." : '') . ($archivoGuardado ? ' | Comprobante adjunto.' : '');
-            $db->prepare("INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha) VALUES (?, ?, 'nota', '✅ Póliza renovada', ?, NOW())")->execute([$clienteId, $agenteId, $desc]);
-            $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación'")->execute([$clienteId]);
+            $db->prepare("INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, fecha, empresa_id) VALUES (?, ?, 'nota', '✅ Póliza renovada', ?, NOW(), ?)")->execute([$clienteId, $agenteId, $desc, $empresaId]);
+            $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND empresa_id = ? AND titulo = '🔄 Solicitud de renovación'")->execute([$clienteId, $empresaId]);
         }
         echo json_encode(['ok'=>true, 'archivo_guardado'=>$archivoGuardado]);
     } elseif ($a === 'renov_marcar_gestionada') {
         $clienteId = (int)($_POST['cliente_id'] ?? 0);
         $fecha     = trim($_POST['fecha'] ?? '');
         if (!$clienteId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
-        $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND titulo = '🔄 Solicitud de renovación' AND DATE(fecha) = DATE(?)")->execute([$clienteId, $fecha ?: date('Y-m-d')]);
+        $db->prepare("UPDATE historial_cliente SET titulo = '✅ Renovación gestionada' WHERE cliente_id = ? AND empresa_id = ? AND titulo = '🔄 Solicitud de renovación' AND DATE(fecha) = DATE(?)")->execute([$clienteId, $empresaId, $fecha ?: date('Y-m-d')]);
         echo json_encode(['ok'=>true]);
 
     } else {
@@ -666,8 +673,9 @@ if (!empty($cotsGlobal) && empty(array_filter(array_column($cotsGlobal, 'fecha_f
     if (!empty($_ids2)) {
         $_ph2   = implode(',', array_fill(0, count($_ids2), '?'));
         $_db2   = \Database\Connection::getConnection();
-        $_st2   = $_db2->prepare("SELECT id, fecha_fin_vigencia FROM cotizaciones WHERE id IN ($_ph2)");
-        $_st2->execute($_ids2);
+        $_st2   = $_db2->prepare("SELECT id, fecha_fin_vigencia FROM cotizaciones WHERE id IN ($_ph2) AND empresa_id = ?");
+        // El parámetro de empresa va al final: su marcador cierra el WHERE.
+        $_st2->execute(array_merge($_ids2, [$empresaId]));
         $_vigMap2 = array_column($_st2->fetchAll(\PDO::FETCH_ASSOC), 'fecha_fin_vigencia', 'id');
         foreach ($cotsGlobal as &$_cg) {
             if (empty($_cg['fecha_fin_vigencia'])) { $_cg['fecha_fin_vigencia'] = $_vigMap2[$_cg['id']] ?? null; }
@@ -682,23 +690,27 @@ $ventasT   = array_sum(array_column($reporte, 'ventas'));
 $totalPipe = array_sum(array_column($pipeline, 'valor_pipeline'));
 
 $db       = Connection::getConnection();
-$citasHoy = $db->query(
+$stCitas  = $db->prepare(
     "SELECT ci.hora, ci.tipo,
             CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente,
             CONCAT(a.nombre,' ',a.apellido)            AS asesor
      FROM citas ci
      JOIN clientes cl ON cl.id = ci.cliente_id
      JOIN agentes  a  ON a.id  = ci.agente_id
-     WHERE ci.fecha = CURDATE() AND ci.estado = 'programada' AND a.rol = 'asesor'
+     WHERE ci.empresa_id = ? AND ci.fecha = CURDATE() AND ci.estado = 'programada' AND a.rol = 'asesor'
      ORDER BY ci.hora ASC"
-)->fetchAll();
+);
+$stCitas->execute([$empresaId]);
+$citasHoy = $stCitas->fetchAll();
 
-$atcData = $db->query(
-    "SELECT clave, valor, descripcion FROM configuracion WHERE clave LIKE 'atc_%' ORDER BY clave"
-)->fetchAll();
+$stAtc = $db->prepare(
+    "SELECT clave, valor, descripcion FROM configuracion WHERE empresa_id = ? AND clave LIKE 'atc_%' ORDER BY clave"
+);
+$stAtc->execute([$empresaId]);
+$atcData = $stAtc->fetchAll();
 $atcMap  = array_column($atcData, null, 'clave');
 
-$renovacionesPendientes = $db->query(
+$stRenov = $db->prepare(
     "SELECT h.cliente_id, h.descripcion, h.fecha,
             CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',COALESCE(cl.apellido_materno,'')) AS cliente_nombre,
             cl.correo AS cliente_correo, cl.telefono AS cliente_tel,
@@ -713,10 +725,12 @@ $renovacionesPendientes = $db->query(
      JOIN agentes  a  ON a.id  = h.agente_id
      LEFT JOIN polizas p ON p.cliente_id = h.cliente_id
                         AND p.estado IN ('por_vencer','vencida')
-     WHERE h.titulo = '🔄 Solicitud de renovación'
+     WHERE h.empresa_id = ? AND h.titulo = '🔄 Solicitud de renovación'
      ORDER BY h.fecha DESC
      LIMIT 100"
-)->fetchAll(\PDO::FETCH_ASSOC);
+);
+$stRenov->execute([$empresaId]);
+$renovacionesPendientes = $stRenov->fetchAll(\PDO::FETCH_ASSOC);
 
 $pageTitle = 'Panel de Coordinación';
 ?>
@@ -1171,9 +1185,9 @@ $totPerd = array_sum(array_column($pipeline,'perdidas'));
         <?php if ($filtroActAgente):
             $asFi = array_values(array_filter($agLista, fn($a) => (int)$a['id']===(int)$filtroActAgente))[0] ?? null;
             if ($asFi):
-                $sacs = $db->prepare("SELECT COUNT(*) FROM clientes WHERE agente_id=?"); $sacs->execute([$filtroActAgente]); $acs=(int)$sacs->fetchColumn();
-                $scos = $db->prepare("SELECT COUNT(*) t,SUM(estado IN('aceptada','pagado')) v FROM cotizaciones WHERE agente_id=?"); $scos->execute([$filtroActAgente]); $aco=$scos->fetch();
-                $scis = $db->prepare("SELECT COUNT(*) FROM citas WHERE agente_id=? AND estado='programada' AND fecha>=CURDATE()"); $scis->execute([$filtroActAgente]); $aci=(int)$scis->fetchColumn();
+                $sacs = $db->prepare("SELECT COUNT(*) FROM clientes WHERE agente_id=? AND empresa_id=?"); $sacs->execute([$filtroActAgente, $empresaId]); $acs=(int)$sacs->fetchColumn();
+                $scos = $db->prepare("SELECT COUNT(*) t,SUM(estado IN('aceptada','pagado')) v FROM cotizaciones WHERE agente_id=? AND empresa_id=?"); $scos->execute([$filtroActAgente, $empresaId]); $aco=$scos->fetch();
+                $scis = $db->prepare("SELECT COUNT(*) FROM citas WHERE agente_id=? AND empresa_id=? AND estado='programada' AND fecha>=CURDATE()"); $scis->execute([$filtroActAgente, $empresaId]); $aci=(int)$scis->fetchColumn();
         ?>
         <div class="card" style="margin-bottom:16px;">
             <div class="card-header"><h3 class="card-title">📋 Perfil del Asesor</h3></div>

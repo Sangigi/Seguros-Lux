@@ -190,6 +190,65 @@ class SessionManager
         }
 
         $_SESSION['LAST_ACTIVITY'] = time();
+
+        // Contexto de empresa para toda la request. Va aquí para que ninguna
+        // ruta autenticada pueda ejecutarse sin él.
+        Tenant::desdeSesion();
+
+        // Un usuario de una empresa suspendida no sigue operando con la
+        // sesión que abrió antes de la suspensión.
+        if (!self::empresaOperativa()) {
+            SecurityLogger::log('empresa_inactiva', [
+                'agente_id'  => self::getAgentId(),
+                'empresa_id' => self::getEmpresaId(),
+            ]);
+            self::destroy();
+            header('Location: ' . $loginPath . '?empresa_inactiva=1');
+            exit;
+        }
+    }
+
+    /**
+     * Comprueba que la empresa de la sesión siga activa.
+     *
+     * Se consulta una vez por sesión y se recuerda por unos minutos: es una
+     * consulta por request en el peor caso, y el coste de no hacerla es que
+     * una empresa dada de baja siga trabajando.
+     */
+    private static function empresaOperativa(): bool
+    {
+        $empresaId = self::getEmpresaId();
+
+        // El propietario no pertenece a una empresa.
+        if ($empresaId === null) {
+            return true;
+        }
+
+        $ahora    = time();
+        $ultima   = (int) ($_SESSION['empresa_chk_ts'] ?? 0);
+        $recuerdo = $_SESSION['empresa_chk_ok'] ?? null;
+
+        if ($recuerdo !== null && ($ahora - $ultima) < 300) {
+            return (bool) $recuerdo;
+        }
+
+        try {
+            $stmt = \Database\Connection::getConnection()->prepare(
+                'SELECT activo FROM empresas WHERE id = ? AND eliminado_en IS NULL LIMIT 1'
+            );
+            $stmt->execute([$empresaId]);
+            $fila = $stmt->fetch();
+            $ok   = $fila !== false && (int) $fila['activo'] === 1;
+        } catch (\Throwable $e) {
+            // Si la tabla aún no existe (migración sin aplicar) no se bloquea
+            // el acceso: el CRM sigue funcionando como antes.
+            return true;
+        }
+
+        $_SESSION['empresa_chk_ts'] = $ahora;
+        $_SESSION['empresa_chk_ok'] = $ok;
+
+        return $ok;
     }
 
     public static function requireAuthApi(): void
@@ -214,6 +273,15 @@ class SessionManager
         }
 
         $_SESSION['LAST_ACTIVITY'] = time();
+
+        Tenant::desdeSesion();
+
+        if (!self::empresaOperativa()) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Empresa inactiva']);
+            exit;
+        }
     }
 
     public static function login(array $agente): void
@@ -221,22 +289,72 @@ class SessionManager
         self::start();
         session_regenerate_id(true);
 
+        $rol = $agente['rol'] ?? Roles::ASESOR;
+
         $_SESSION['agente']          = $agente['correo'];
         $_SESSION['agente_nombre']   = $agente['nombre'];
         $_SESSION['agente_apellido'] = $agente['apellido'];
         $_SESSION['agente_id']       = (int)$agente['id'];
-        $_SESSION['agente_rol']      = $agente['rol'] ?? 'asesor';
-        $_SESSION['agente_puesto']   = $agente['puesto'] ?? ($agente['rol'] ?? 'asesor');
+        $_SESSION['agente_rol']      = $rol;
+        $_SESSION['agente_puesto']   = $agente['puesto'] ?? $rol;
         $_SESSION['LAST_ACTIVITY']   = time();
+
+        // La empresa se fija en el login desde la fila del agente y no vuelve
+        // a tocarse: nada que venga del navegador puede cambiarla.
+        $_SESSION[Tenant::SESSION_KEY] = isset($agente['empresa_id']) ? (int)$agente['empresa_id'] : null;
+        unset($_SESSION['empresa_activa']);
 
         self::storeFingerprint();
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
+        Tenant::desdeSesion();
+
         SecurityLogger::log('login_ok', [
-            'agente_id' => (int)$agente['id'],
-            'correo'    => $agente['correo'],
-            'rol'       => $agente['rol'] ?? 'asesor',
+            'agente_id'  => (int)$agente['id'],
+            'correo'     => $agente['correo'],
+            'rol'        => $rol,
+            'empresa_id' => $_SESSION[Tenant::SESSION_KEY] ?? null,
         ]);
+    }
+
+    /**
+     * Empresa a la que pertenece la sesión actual.
+     * El propietario no tiene empresa propia y devuelve null.
+     */
+    public static function getEmpresaId(): ?int
+    {
+        $id = $_SESSION[Tenant::SESSION_KEY] ?? null;
+
+        return ($id !== null && (int)$id > 0) ? (int)$id : null;
+    }
+
+    /**
+     * Entra a administrar una empresa concreta (solo propietario).
+     * Acota lo que ve; no le añade permisos de operación.
+     */
+    public static function entrarAEmpresa(?int $empresaId): void
+    {
+        self::start();
+
+        if (!self::isPropietario()) {
+            SecurityLogger::log('empresa_switch_denegado', [
+                'agente_id' => self::getAgentId(),
+                'rol'       => self::getRole(),
+            ]);
+            return;
+        }
+
+        if ($empresaId === null || $empresaId <= 0) {
+            unset($_SESSION['empresa_activa']);
+        } else {
+            $_SESSION['empresa_activa'] = $empresaId;
+            SecurityLogger::log('empresa_switch', [
+                'agente_id'  => self::getAgentId(),
+                'empresa_id' => $empresaId,
+            ]);
+        }
+
+        Tenant::desdeSesion();
     }
 
     public static function destroy(): void
@@ -289,51 +407,96 @@ class SessionManager
     public static function getAgentData(): array
     {
         return [
-            'id'       => self::getAgentId(),
-            'correo'   => $_SESSION['agente']          ?? '',
-            'nombre'   => $_SESSION['agente_nombre']   ?? '',
-            'apellido' => $_SESSION['agente_apellido'] ?? '',
-            'rol'      => $_SESSION['agente_rol']      ?? 'asesor',
-            'puesto'   => $_SESSION['agente_puesto']   ?? ($_SESSION['agente_rol'] ?? 'asesor'),
+            'id'         => self::getAgentId(),
+            'correo'     => $_SESSION['agente']          ?? '',
+            'nombre'     => $_SESSION['agente_nombre']   ?? '',
+            'apellido'   => $_SESSION['agente_apellido'] ?? '',
+            'rol'        => $_SESSION['agente_rol']      ?? Roles::ASESOR,
+            'puesto'     => $_SESSION['agente_puesto']   ?? ($_SESSION['agente_rol'] ?? Roles::ASESOR),
+            'empresa_id' => self::getEmpresaId(),
         ];
     }
 
     public static function getRole(): string
     {
-        return $_SESSION['agente_rol'] ?? 'asesor';
+        return $_SESSION['agente_rol'] ?? Roles::ASESOR;
     }
 
     public static function isAdmin(): bool
     {
-        return in_array(self::getRole(), ['coordinador', 'administrador', 'superadmin'], true);
+        return Roles::esAdministrativo(self::getRole());
     }
 
     public static function isSuperadmin(): bool
     {
-        return self::getRole() === 'superadmin';
+        // El propietario también pasa esta comprobación: está por encima del
+        // administrador de empresa en la jerarquía, y hay mucho código que
+        // usa isSuperadmin() como "puede administrar".
+        return Roles::alMenos(self::getRole(), Roles::SUPERADMIN);
+    }
+
+    public static function isPropietario(): bool
+    {
+        return Roles::esPropietario(self::getRole());
+    }
+
+    /** True si el rol de la sesión tiene el permiso indicado. */
+    public static function puede(string $permiso): bool
+    {
+        return Roles::tienePermiso(self::getRole(), $permiso);
     }
 
     public static function requireRole(string $rol, string $loginPath = '/login'): void
     {
         self::requireAuth($loginPath);
 
-        $jerarquia = [
-            'asesor'        => 1,
-            'agente'        => 1,
-            'coordinador'   => 2,
-            'administrador' => 2,
-            'superadmin'    => 3,
-        ];
-        $nivelReq  = $jerarquia[$rol]            ?? 1;
-        $nivelUser = $jerarquia[self::getRole()] ?? 0;
-
-        if ($nivelUser < $nivelReq) {
+        if (!Roles::alMenos(self::getRole(), $rol)) {
             SecurityLogger::log('forbidden_role', [
                 'agente_id'  => self::getAgentId(),
                 'rol_actual' => self::getRole(),
                 'rol_req'    => $rol,
             ]);
             header('Location: ' . $loginPath . '?forbidden=1');
+            exit;
+        }
+    }
+
+    /**
+     * Exige un permiso con nombre en vez de un nivel jerárquico.
+     *
+     * Preferir esto sobre requireRole: "quien puede dar de alta empresas" es
+     * una intención estable, mientras que "quien es al menos superadmin" se
+     * rompe en silencio en cuanto cambia la jerarquía.
+     */
+    public static function requirePermiso(string $permiso, string $loginPath = '/login'): void
+    {
+        self::requireAuth($loginPath);
+
+        if (!self::puede($permiso)) {
+            SecurityLogger::log('forbidden_permiso', [
+                'agente_id'  => self::getAgentId(),
+                'rol_actual' => self::getRole(),
+                'permiso'    => $permiso,
+            ]);
+            header('Location: ' . $loginPath . '?forbidden=1');
+            exit;
+        }
+    }
+
+    /** Igual que requirePermiso pero para endpoints JSON. */
+    public static function requirePermisoApi(string $permiso): void
+    {
+        self::requireAuthApi();
+
+        if (!self::puede($permiso)) {
+            SecurityLogger::log('forbidden_permiso_api', [
+                'agente_id'  => self::getAgentId(),
+                'rol_actual' => self::getRole(),
+                'permiso'    => $permiso,
+            ]);
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Sin permiso']);
             exit;
         }
     }

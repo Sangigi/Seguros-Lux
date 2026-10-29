@@ -2,6 +2,18 @@
 
 declare(strict_types=1);
 
+/**
+ * App/Cron/DiagnosticoIdrive.php
+ * Diagnóstico de la integración con iDrive E2: credenciales, conexión,
+ * carpetas y un archivo pendiente de ejemplo.
+ *
+ * ESTRATEGIA DE EMPRESA: GLOBAL, y de solo lectura.
+ *   No escribe nada ni genera datos: comprueba infraestructura compartida
+ *   (bucket, credenciales, carpeta uploads/). La única consulta lee un
+ *   archivo pendiente cualquiera para verificar que el registro de la base
+ *   se corresponde con un archivo en disco, sin importar de qué empresa sea.
+ */
+
 use Aws\S3\S3Client;
 use Database\Connection;
 
@@ -78,7 +90,10 @@ echo (is_dir(UPLOADS_ROOT . '/cotizaciones') ? 'OK ' : 'NO ') . "uploads/cotizac
 
 echo "\n--- Primer archivo pendiente ---\n";
 $db = Connection::getConnection();
+// Toma un archivo pendiente cualquiera, solo para comprobar que el registro
+// de la base se corresponde con un archivo en disco.
 $row = $db->query(
+    // tenant-ok: diagnóstico de plataforma, de solo lectura; no muestra datos del cliente ni escribe nada.
     "SELECT ca.id, ca.cotizacion_id, ca.nombre_archivo, co.folio
      FROM cotizacion_archivos ca
      JOIN cotizaciones co ON co.id = ca.cotizacion_id

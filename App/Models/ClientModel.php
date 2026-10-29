@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Security\Tenant;
 use App\Services\QueryCache;
 
 class ClientModel extends BaseModel
@@ -99,18 +100,20 @@ class ClientModel extends BaseModel
         $stmt = $this->db()->prepare(
             'SELECT id, nombre, apellido_paterno, apellido_materno,
                     correo, telefono, agente_id, telegram_chat_id, ramo
-             FROM clientes WHERE correo = ? ORDER BY id DESC LIMIT 1'
+             FROM clientes WHERE correo = :correo' . $this->sqlEmpresa() . '
+             ORDER BY id DESC LIMIT 1'
         );
-        $stmt->execute([$correo]);
+        $stmt->execute($this->bindEmpresa(['correo' => $correo]));
         return $stmt->fetch() ?: null;
     }
 
     public function getByAgente(int $agenteId): array
     {
         $stmt = $this->db()->prepare(
-            'SELECT * FROM clientes WHERE agente_id = ? ORDER BY fecha_registro DESC'
+            'SELECT * FROM clientes WHERE agente_id = :agente_id' . $this->sqlEmpresa() . '
+             ORDER BY fecha_registro DESC'
         );
-        $stmt->execute([$agenteId]);
+        $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         return $stmt->fetchAll();
     }
 
@@ -124,22 +127,28 @@ class ClientModel extends BaseModel
             return $this->getByAgente($agenteId);
         }
         $stmt = $this->db()->prepare(
-            'SELECT * FROM clientes WHERE agente_id = ? AND ramo = ? ORDER BY fecha_registro DESC'
+            'SELECT * FROM clientes WHERE agente_id = :agente_id AND ramo = :ramo'
+            . $this->sqlEmpresa() . ' ORDER BY fecha_registro DESC'
         );
-        $stmt->execute([$agenteId, $ramo]);
+        $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId, 'ramo' => $ramo]));
         return $stmt->fetchAll();
     }
 
     public function getCompleto(int $id, int $agenteId, bool $esCoordinador = false): ?array
     {
         if ($esCoordinador) {
-            // El coordinador puede ver cualquier cliente, solo filtramos por ID
-            $stmt = $this->db()->prepare('SELECT * FROM clientes WHERE id = ?');
-            $stmt->execute([$id]);
+            // El coordinador puede ver cualquier cliente de su empresa, solo filtramos por ID
+            $stmt = $this->db()->prepare(
+                'SELECT * FROM clientes WHERE id = :id' . $this->sqlEmpresa()
+            );
+            $stmt->execute($this->bindEmpresa(['id' => $id]));
         } else {
             // El asesor normal solo ve sus propios clientes
-            $stmt = $this->db()->prepare('SELECT * FROM clientes WHERE id = ? AND agente_id = ?');
-            $stmt->execute([$id, $agenteId]);
+            $stmt = $this->db()->prepare(
+                'SELECT * FROM clientes WHERE id = :id AND agente_id = :agente_id'
+                . $this->sqlEmpresa()
+            );
+            $stmt->execute($this->bindEmpresa(['id' => $id, 'agente_id' => $agenteId]));
         }
         return $stmt->fetch() ?: null;
     }
@@ -151,9 +160,9 @@ class ClientModel extends BaseModel
                     marca, modelo, anio_vehiculo, tipo_vehiculo,
                     correo, telefono, ramo,
                     giro_empresa, num_empleados, facturacion_anual
-             FROM clientes WHERE id = ? AND agente_id = ?'
+             FROM clientes WHERE id = :id AND agente_id = :agente_id' . $this->sqlEmpresa()
         );
-        $stmt->execute([$id, $agenteId]);
+        $stmt->execute($this->bindEmpresa(['id' => $id, 'agente_id' => $agenteId]));
         return $stmt->fetch() ?: null;
     }
 
@@ -168,24 +177,28 @@ class ClientModel extends BaseModel
             $stmt = $this->db()->prepare(
                 'SELECT id, nombre, apellido_paterno, apellido_materno,
                         marca, modelo, anio_vehiculo, correo, ramo
-                 FROM clientes WHERE agente_id = ? AND ramo = ? ORDER BY nombre ASC'
+                 FROM clientes WHERE agente_id = :agente_id AND ramo = :ramo'
+                . $this->sqlEmpresa() . ' ORDER BY nombre ASC'
             );
-            $stmt->execute([$agenteId, $ramo]);
+            $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId, 'ramo' => $ramo]));
         } else {
             $stmt = $this->db()->prepare(
                 'SELECT id, nombre, apellido_paterno, apellido_materno,
                         marca, modelo, anio_vehiculo, correo, ramo
-                 FROM clientes WHERE agente_id = ? ORDER BY nombre ASC'
+                 FROM clientes WHERE agente_id = :agente_id' . $this->sqlEmpresa() . '
+                 ORDER BY nombre ASC'
             );
-            $stmt->execute([$agenteId]);
+            $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         }
         return $stmt->fetchAll();
     }
 
     public function perteneceAAgente(int $clienteId, int $agenteId): bool
     {
-        $stmt = $this->db()->prepare('SELECT id FROM clientes WHERE id = ? AND agente_id = ?');
-        $stmt->execute([$clienteId, $agenteId]);
+        $stmt = $this->db()->prepare(
+            'SELECT id FROM clientes WHERE id = :id AND agente_id = :agente_id' . $this->sqlEmpresa()
+        );
+        $stmt->execute($this->bindEmpresa(['id' => $clienteId, 'agente_id' => $agenteId]));
         return (bool) $stmt->fetch();
     }
 
@@ -193,9 +206,14 @@ class ClientModel extends BaseModel
 
     public function countTotal(int $agenteId, ?string $ramo = null): int
     {
-        $ramoFilter = $ramo ? ' AND ramo = ?' : '';
-        $stmt = $this->db()->prepare("SELECT COUNT(*) FROM clientes WHERE agente_id = ?{$ramoFilter}");
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+        $ramoFilter = $ramo ? ' AND ramo = :ramo' : '';
+        $stmt = $this->db()->prepare(
+            "SELECT COUNT(*) FROM clientes WHERE agente_id = :agente_id{$ramoFilter}"
+            . $this->sqlEmpresa()
+        );
+        $params = ['agente_id' => $agenteId];
+        if ($ramo) { $params['ramo'] = $ramo; }
+        $stmt->execute($this->bindEmpresa($params));
         return (int) $stmt->fetchColumn();
     }
 
@@ -206,11 +224,15 @@ class ClientModel extends BaseModel
             key:   "countHoy:{$agenteId}:{$ramo}",
             ttl:   90,
             fn:    function () use ($agenteId, $ramo): int {
-                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $ramoFilter = $ramo ? ' AND ramo = :ramo' : '';
                 $stmt = $this->db()->prepare(
-                    "SELECT COUNT(*) FROM clientes WHERE agente_id = ? AND DATE(fecha_registro) = CURDATE(){$ramoFilter}"
+                    "SELECT COUNT(*) FROM clientes
+                     WHERE agente_id = :agente_id
+                       AND DATE(fecha_registro) = CURDATE(){$ramoFilter}" . $this->sqlEmpresa()
                 );
-                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                $params = ['agente_id' => $agenteId];
+                if ($ramo) { $params['ramo'] = $ramo; }
+                $stmt->execute($this->bindEmpresa($params));
                 return (int) $stmt->fetchColumn();
             }
         );
@@ -223,12 +245,16 @@ class ClientModel extends BaseModel
             key:   "countEstaSemana:{$agenteId}:{$ramo}",
             ttl:   90,
             fn:    function () use ($agenteId, $ramo): int {
-                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $ramoFilter = $ramo ? ' AND ramo = :ramo' : '';
                 $stmt = $this->db()->prepare(
                     "SELECT COUNT(*) FROM clientes
-                     WHERE agente_id = ? AND YEARWEEK(fecha_registro,1) = YEARWEEK(CURDATE(),1){$ramoFilter}"
+                     WHERE agente_id = :agente_id
+                       AND YEARWEEK(fecha_registro,1) = YEARWEEK(CURDATE(),1){$ramoFilter}"
+                    . $this->sqlEmpresa()
                 );
-                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                $params = ['agente_id' => $agenteId];
+                if ($ramo) { $params['ramo'] = $ramo; }
+                $stmt->execute($this->bindEmpresa($params));
                 return (int) $stmt->fetchColumn();
             }
         );
@@ -241,12 +267,16 @@ class ClientModel extends BaseModel
             key:   "countEsteMes:{$agenteId}:{$ramo}",
             ttl:   120,
             fn:    function () use ($agenteId, $ramo): int {
-                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $ramoFilter = $ramo ? ' AND ramo = :ramo' : '';
                 $stmt = $this->db()->prepare(
                     "SELECT COUNT(*) FROM clientes
-                     WHERE agente_id = ? AND YEAR(fecha_registro)=YEAR(NOW()) AND MONTH(fecha_registro)=MONTH(NOW()){$ramoFilter}"
+                     WHERE agente_id = :agente_id
+                       AND YEAR(fecha_registro)=YEAR(NOW())
+                       AND MONTH(fecha_registro)=MONTH(NOW()){$ramoFilter}" . $this->sqlEmpresa()
                 );
-                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                $params = ['agente_id' => $agenteId];
+                if ($ramo) { $params['ramo'] = $ramo; }
+                $stmt->execute($this->bindEmpresa($params));
                 return (int) $stmt->fetchColumn();
             }
         );
@@ -259,9 +289,10 @@ class ClientModel extends BaseModel
     {
         $stmt = $this->db()->prepare(
             "SELECT COALESCE(ramo,'autos') AS ramo, COUNT(*) AS total
-             FROM clientes WHERE agente_id = ? GROUP BY ramo"
+             FROM clientes WHERE agente_id = :agente_id" . $this->sqlEmpresa() . "
+             GROUP BY ramo"
         );
-        $stmt->execute([$agenteId]);
+        $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         $defaults = ['autos'=>0,'vida'=>0,'gastos_medicos'=>0,'empresas'=>0];
         foreach ($stmt->fetchAll() as $row) {
             $defaults[$row['ramo']] = (int)$row['total'];
@@ -278,7 +309,7 @@ class ClientModel extends BaseModel
             key:   "clientesPorDia:{$agenteId}:{$ramo}",
             ttl:   90,
             fn:    function () use ($agenteId, $ramo): array {
-                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $ramoFilter = $ramo ? ' AND ramo = :ramo' : '';
                 $stmt = $this->db()->prepare(
                     "SELECT CASE DAYOFWEEK(fecha_registro)
                                 WHEN 1 THEN 'Dom' WHEN 2 THEN 'Lun' WHEN 3 THEN 'Mar'
@@ -287,11 +318,15 @@ class ClientModel extends BaseModel
                             END AS dia,
                             COUNT(*) AS total
                      FROM clientes
-                     WHERE agente_id = ? AND fecha_registro >= DATE_SUB(CURDATE(), INTERVAL 6 DAY){$ramoFilter}
+                     WHERE agente_id = :agente_id
+                       AND fecha_registro >= DATE_SUB(CURDATE(), INTERVAL 6 DAY){$ramoFilter}"
+                    . $this->sqlEmpresa() . "
                      GROUP BY DATE(fecha_registro), dia
                      ORDER BY DATE(fecha_registro) ASC"
                 );
-                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                $params = ['agente_id' => $agenteId];
+                if ($ramo) { $params['ramo'] = $ramo; }
+                $stmt->execute($this->bindEmpresa($params));
                 $raw = $stmt->fetchAll();
 
                 $diasSemana = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -312,7 +347,10 @@ class ClientModel extends BaseModel
             key:   "topVehiculos:{$agenteId}:{$limit}",
             ttl:   120,
             fn:    function () use ($agenteId, $limit): array {
-                $where = $agenteId !== null ? "WHERE agente_id = ? AND ramo = 'autos'" : "WHERE ramo = 'autos'";
+                $where = $agenteId !== null
+                    ? "WHERE agente_id = :agente_id AND ramo = 'autos'"
+                    : "WHERE ramo = 'autos'";
+                $where .= $this->sqlEmpresa();
                 $sql = "SELECT tipo, SUM(cnt) AS total
                         FROM (
                             SELECT
@@ -334,11 +372,12 @@ class ClientModel extends BaseModel
                             FROM clientes {$where}
                             GROUP BY tipo_vehiculo
                         ) t
-                        GROUP BY tipo ORDER BY total DESC LIMIT ?";
+                        GROUP BY tipo ORDER BY total DESC LIMIT :limit";
 
-                $params = $agenteId !== null ? [$agenteId, $limit] : [$limit];
+                $params = ['limit' => $limit];
+                if ($agenteId !== null) { $params['agente_id'] = $agenteId; }
                 $stmt = $this->db()->prepare($sql);
-                $stmt->execute($params);
+                $stmt->execute($this->bindEmpresa($params));
                 return $stmt->fetchAll() ?: [['tipo' => 'Sin datos', 'total' => 1]];
             }
         );
@@ -351,13 +390,15 @@ class ClientModel extends BaseModel
             key:   "estadoAsegurado:{$agenteId}:{$ramo}",
             ttl:   90,
             fn:    function () use ($agenteId, $ramo): array {
-                $ramoFilter = $ramo ? ' AND ramo = ?' : '';
+                $ramoFilter = $ramo ? ' AND ramo = :ramo' : '';
                 $stmt = $this->db()->prepare(
                     "SELECT SUM(asegurado='si') AS asegurados,
                             SUM(asegurado='no') AS no_asegurados
-                     FROM clientes WHERE agente_id = ?{$ramoFilter}"
+                     FROM clientes WHERE agente_id = :agente_id{$ramoFilter}" . $this->sqlEmpresa()
                 );
-                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                $params = ['agente_id' => $agenteId];
+                if ($ramo) { $params['ramo'] = $ramo; }
+                $stmt->execute($this->bindEmpresa($params));
                 $d = $stmt->fetch();
                 return [
                     'asegurados'    => (int)($d['asegurados']    ?? 0),
@@ -376,17 +417,24 @@ class ClientModel extends BaseModel
                     CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
              FROM notas n
              LEFT JOIN agentes a ON a.id = n.agente_id
-             WHERE n.cliente_id = ? ORDER BY n.fecha_creacion DESC"
+             WHERE n.cliente_id = :cliente_id" . $this->sqlEmpresa('n') . "
+             ORDER BY n.fecha_creacion DESC"
         );
-        $stmt->execute([$clienteId]);
+        $stmt->execute($this->bindEmpresa(['cliente_id' => $clienteId]));
         return $stmt->fetchAll();
     }
 
     public function addNota(int $clienteId, int $agenteId, string $texto): void
     {
         $this->db()->prepare(
-            'INSERT INTO notas (cliente_id, agente_id, texto) VALUES (?,?,?)'
-        )->execute([$clienteId, $agenteId, $texto]);
+            'INSERT INTO notas (cliente_id, agente_id, texto, empresa_id)
+             VALUES (:cliente_id, :agente_id, :texto, :empresa_id)'
+        )->execute([
+            'cliente_id' => $clienteId,
+            'agente_id'  => $agenteId,
+            'texto'      => $texto,
+            'empresa_id' => Tenant::requireId(),
+        ]);
     }
 
     // ── Estados ───────────────────────────────────────────────────────────────
@@ -394,11 +442,18 @@ class ClientModel extends BaseModel
     public function updateEstado(int $id, int $agenteId, string $estado, bool $esCoordinador = false): bool
     {
         if ($esCoordinador) {
-            $stmt = $this->db()->prepare('UPDATE clientes SET estado_cliente = ? WHERE id = ?');
-            $stmt->execute([$estado, $id]);
+            $stmt = $this->db()->prepare(
+                'UPDATE clientes SET estado_cliente = :estado WHERE id = :id' . $this->sqlEmpresa()
+            );
+            $stmt->execute($this->bindEmpresa(['estado' => $estado, 'id' => $id]));
         } else {
-            $stmt = $this->db()->prepare('UPDATE clientes SET estado_cliente = ? WHERE id = ? AND agente_id = ?');
-            $stmt->execute([$estado, $id, $agenteId]);
+            $stmt = $this->db()->prepare(
+                'UPDATE clientes SET estado_cliente = :estado
+                 WHERE id = :id AND agente_id = :agente_id' . $this->sqlEmpresa()
+            );
+            $stmt->execute($this->bindEmpresa([
+                'estado' => $estado, 'id' => $id, 'agente_id' => $agenteId,
+            ]));
         }
         return $stmt->rowCount() > 0;
     }
@@ -406,18 +461,21 @@ class ClientModel extends BaseModel
     public function updateEstadoSiProcede(int $id, int $agenteId, string $estado): void
     {
         $this->db()->prepare(
-            "UPDATE clientes SET estado_cliente = ?
-             WHERE id = ? AND agente_id = ?
-               AND estado_cliente NOT IN ('cerrado','con_cotizacion')"
-        )->execute([$estado, $id, $agenteId]);
+            "UPDATE clientes SET estado_cliente = :estado
+             WHERE id = :id AND agente_id = :agente_id
+               AND estado_cliente NOT IN ('cerrado','con_cotizacion')" . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa([
+            'estado' => $estado, 'id' => $id, 'agente_id' => $agenteId,
+        ]));
     }
 
     // ── Telegram ──────────────────────────────────────────────────────────────
 
     public function saveTelegramChatId(int $clienteId, string $chatId): void
     {
-        $this->db()->prepare('UPDATE clientes SET telegram_chat_id = ? WHERE id = ?')
-                   ->execute([$chatId, $clienteId]);
+        $this->db()->prepare(
+            'UPDATE clientes SET telegram_chat_id = :chat_id WHERE id = :id' . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['chat_id' => $chatId, 'id' => $clienteId]));
     }
 
     // ── Registro público con asignación automática de asesor ─────────────────
@@ -495,9 +553,18 @@ class ClientModel extends BaseModel
                 ? $input['tipoCita'] : 'llamada';
             $comentariosCita = trim($input['comentarios'] ?? '');
             $db->prepare(
-                "INSERT INTO citas (cliente_id, agente_id, tipo, fecha, hora, comentarios, estado, ramo)
-                 VALUES (?, ?, ?, ?, ?, ?, 'programada', ?)"
-            )->execute([$clienteId, $agenteId, $tipoCita, $fechaCita, $horaCita, $comentariosCita ?: null, $ramo]);
+                "INSERT INTO citas (cliente_id, agente_id, tipo, fecha, hora, comentarios, estado, ramo, empresa_id)
+                 VALUES (:cliente_id, :agente_id, :tipo, :fecha, :hora, :comentarios, 'programada', :ramo, :empresa_id)"
+            )->execute([
+                'cliente_id'  => $clienteId,
+                'agente_id'   => $agenteId,
+                'tipo'        => $tipoCita,
+                'fecha'       => $fechaCita,
+                'hora'        => $horaCita,
+                'comentarios' => $comentariosCita ?: null,
+                'ramo'        => $ramo,
+                'empresa_id'  => Tenant::requireId(),
+            ]);
         }
 
         return ['cliente_id' => $clienteId, 'agente_id' => $agenteId];
@@ -512,29 +579,31 @@ class ClientModel extends BaseModel
             $stmt = $db->prepare(
                 "SELECT a.id, COUNT(ci.id) AS citas_dia
                  FROM agentes a
-                 LEFT JOIN citas ci ON ci.agente_id = a.id AND ci.fecha = ?
+                 LEFT JOIN citas ci ON ci.agente_id = a.id AND ci.fecha = :fecha
                      AND ci.estado IN ('programada','pendiente')
-                 WHERE {$rolCond}
+                 WHERE {$rolCond}" . $this->sqlEmpresa('a') . "
                    AND a.id NOT IN (
                        SELECT DISTINCT agente_id FROM citas
-                       WHERE fecha = ? AND hora = ?
+                       WHERE fecha = :fecha2 AND hora = :hora
                          AND estado IN ('programada','pendiente')
                    )
                  GROUP BY a.id ORDER BY citas_dia ASC, RAND() LIMIT 1"
             );
-            $stmt->execute([$fecha, $fecha, $hora]);
+            $stmt->execute($this->bindEmpresa([
+                'fecha' => $fecha, 'fecha2' => $fecha, 'hora' => $hora,
+            ]));
             $row = $stmt->fetch();
 
             if (!$row) {
                 $stmt = $db->prepare(
                     "SELECT a.id, COUNT(ci.id) AS citas_dia
                      FROM agentes a
-                     LEFT JOIN citas ci ON ci.agente_id = a.id AND ci.fecha = ?
+                     LEFT JOIN citas ci ON ci.agente_id = a.id AND ci.fecha = :fecha
                          AND ci.estado IN ('programada','pendiente')
-                     WHERE {$rolCond}
+                     WHERE {$rolCond}" . $this->sqlEmpresa('a') . "
                      GROUP BY a.id ORDER BY citas_dia ASC, RAND() LIMIT 1"
                 );
-                $stmt->execute([$fecha]);
+                $stmt->execute($this->bindEmpresa(['fecha' => $fecha]));
                 $row = $stmt->fetch();
             }
         } else {
@@ -542,10 +611,10 @@ class ClientModel extends BaseModel
                 "SELECT a.id, COUNT(c.id) AS total_clientes
                  FROM agentes a
                  LEFT JOIN clientes c ON a.id = c.agente_id
-                 WHERE {$rolCond}
+                 WHERE {$rolCond}" . $this->sqlEmpresa('a') . "
                  GROUP BY a.id ORDER BY total_clientes ASC, RAND() LIMIT 1"
             );
-            $stmt->execute();
+            $stmt->execute($this->bindEmpresa());
             $row = $stmt->fetch();
         }
 

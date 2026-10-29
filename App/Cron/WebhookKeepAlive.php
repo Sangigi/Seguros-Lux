@@ -15,6 +15,12 @@ declare(strict_types=1);
  *   2. Verifica que el webhook de Telegram siga registrado (y lo re-registra si no).
  *   3. Verifica el estado del webhook de WhatsApp en Meta y loguea si hay errores.
  *   4. Limpia sesiones de bot antiguas (> 2 horas de inactividad).
+ *
+ * ESTRATEGIA DE EMPRESA: ninguna, no toca la base de datos.
+ *   Solo habla con APIs externas (Telegram, Meta), hace ping al propio sitio
+ *   y borra archivos JSON de sesión caducados. No lee ni escribe tablas de
+ *   negocio, así que no necesita contexto de empresa ni bloque sin
+ *   restricción. Los tokens que usa son de plataforma, no de empresa.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 

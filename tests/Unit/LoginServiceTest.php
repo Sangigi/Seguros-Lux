@@ -52,18 +52,25 @@ final class LoginServiceTest extends TestCase
 
     public function testLoginExitosoDevuelveDatosDelAgente(): void
     {
+        // El login dejó de resolverse con findByEmail: un mismo correo puede
+        // ser usuario de varias empresas, así que se piden TODAS sus cuentas y
+        // se decide después. Por eso el mock es cuentasPorCorreo y devuelve
+        // una lista, no una fila.
         $this->agentModelMock
-            ->method('findByEmail')
+            ->method('cuentasPorCorreo')
             ->with('asesor@lux.mx')
-            ->willReturn([
-                'id'         => 5,
-                'nombre'     => 'María',
-                'apellido'   => 'López',
-                'correo'     => 'asesor@lux.mx',
-                'contrasena' => self::$hashReal,
-                'rol'        => 'asesor',
-                'activo'     => 1,
-            ]);
+            ->willReturn([[
+                'id'             => 5,
+                'nombre'         => 'María',
+                'apellido'       => 'López',
+                'correo'         => 'asesor@lux.mx',
+                'contrasena'     => self::$hashReal,
+                'rol'            => 'asesor',
+                'activo'         => 1,
+                'empresa_id'     => 1,
+                'empresa_nombre' => 'Seguros Lux',
+                'empresa_activa' => 1,
+            ]]);
 
         $result = $this->service->login('asesor@lux.mx', 'secreto123');
 
@@ -76,16 +83,18 @@ final class LoginServiceTest extends TestCase
     public function testLoginExitosoNuncaExponeElHash(): void
     {
         $this->agentModelMock
-            ->method('findByEmail')
-            ->willReturn([
-                'id'         => 1,
-                'nombre'     => 'Admin',
-                'apellido'   => 'Test',
-                'correo'     => 'admin@lux.mx',
-                'contrasena' => self::$hashReal,
-                'rol'        => 'admin',
-                'activo'     => 1,
-            ]);
+            ->method('cuentasPorCorreo')
+            ->willReturn([[
+                'id'             => 1,
+                'nombre'         => 'Admin',
+                'apellido'       => 'Test',
+                'correo'         => 'admin@lux.mx',
+                'contrasena'     => self::$hashReal,
+                'rol'            => 'admin',
+                'activo'         => 1,
+                'empresa_id'     => 1,
+                'empresa_activa' => 1,
+            ]]);
 
         $result = $this->service->login('admin@lux.mx', 'secreto123');
 
@@ -98,16 +107,18 @@ final class LoginServiceTest extends TestCase
     public function testLoginFallaConContrasenaIncorrecta(): void
     {
         $this->agentModelMock
-            ->method('findByEmail')
-            ->willReturn([
-                'id'         => 2,
-                'nombre'     => 'Asesor',
-                'apellido'   => 'Test',
-                'correo'     => 'x@lux.mx',
-                'contrasena' => self::$hashReal,
-                'rol'        => 'asesor',
-                'activo'     => 1,
-            ]);
+            ->method('cuentasPorCorreo')
+            ->willReturn([[
+                'id'             => 2,
+                'nombre'         => 'Asesor',
+                'apellido'       => 'Test',
+                'correo'         => 'x@lux.mx',
+                'contrasena'     => self::$hashReal,
+                'rol'            => 'asesor',
+                'activo'         => 1,
+                'empresa_id'     => 1,
+                'empresa_activa' => 1,
+            ]]);
 
         $result = $this->service->login('x@lux.mx', 'contrasena_incorrecta');
 
@@ -119,8 +130,8 @@ final class LoginServiceTest extends TestCase
     public function testLoginDevuelveNullSiCorreoNoExiste(): void
     {
         $this->agentModelMock
-            ->method('findByEmail')
-            ->willReturn(null); // correo no encontrado en BD
+            ->method('cuentasPorCorreo')
+            ->willReturn([]); // el correo no es usuario de ninguna empresa
 
         $result = $this->service->login('noexiste@lux.mx', 'cualquierCosa');
 
@@ -132,16 +143,18 @@ final class LoginServiceTest extends TestCase
     public function testLoginFallaParaAgenteInactivo(): void
     {
         $this->agentModelMock
-            ->method('findByEmail')
-            ->willReturn([
-                'id'         => 3,
-                'nombre'     => 'Inactivo',
-                'apellido'   => 'Test',
-                'correo'     => 'inactivo@lux.mx',
-                'contrasena' => self::$hashReal,
-                'rol'        => 'asesor',
-                'activo'     => 0, // ← inactivo
-            ]);
+            ->method('cuentasPorCorreo')
+            ->willReturn([[
+                'id'             => 3,
+                'nombre'         => 'Inactivo',
+                'apellido'       => 'Test',
+                'correo'         => 'inactivo@lux.mx',
+                'contrasena'     => self::$hashReal,
+                'rol'            => 'asesor',
+                'activo'         => 0, // ← inactivo
+                'empresa_id'     => 1,
+                'empresa_activa' => 1,
+            ]]);
 
         $result = $this->service->login('inactivo@lux.mx', 'secreto123');
 
@@ -156,15 +169,15 @@ final class LoginServiceTest extends TestCase
      * mucho menor y permitiría enumerar usuarios por tiempo.
      *
      * No podemos medir nanosegundos en un test unitario, pero sí podemos
-     * confirmar que el código llama a findByEmail exactamente UNA vez
+     * confirmar que el código consulta las cuentas exactamente UNA vez
      * (no cortocircuita antes de verificar el hash).
      */
-    public function testLoginLlamaFindByEmailSiempreUnaVez(): void
+    public function testLoginConsultaCuentasSiempreUnaVez(): void
     {
         $this->agentModelMock
             ->expects($this->once()) // ← debe llamarse exactamente 1 vez
-            ->method('findByEmail')
-            ->willReturn(null);
+            ->method('cuentasPorCorreo')
+            ->willReturn([]);
 
         $this->service->login('noexiste@lux.mx', 'cualquierCosa');
     }
@@ -174,8 +187,8 @@ final class LoginServiceTest extends TestCase
     public function testLoginDevuelveNullConCorreoVacio(): void
     {
         $this->agentModelMock
-            ->method('findByEmail')
-            ->willReturn(null);
+            ->method('cuentasPorCorreo')
+            ->willReturn([]);
 
         $result = $this->service->login('', 'secreto123');
 
@@ -187,16 +200,18 @@ final class LoginServiceTest extends TestCase
     public function testLoginDevuelveNullConContrasenaVacia(): void
     {
         $this->agentModelMock
-            ->method('findByEmail')
-            ->willReturn([
-                'id'         => 4,
-                'nombre'     => 'Test',
-                'apellido'   => 'Vacio',
-                'correo'     => 'test@lux.mx',
-                'contrasena' => self::$hashReal,
-                'rol'        => 'asesor',
-                'activo'     => 1,
-            ]);
+            ->method('cuentasPorCorreo')
+            ->willReturn([[
+                'id'             => 4,
+                'nombre'         => 'Test',
+                'apellido'       => 'Vacio',
+                'correo'         => 'test@lux.mx',
+                'contrasena'     => self::$hashReal,
+                'rol'            => 'asesor',
+                'activo'         => 1,
+                'empresa_id'     => 1,
+                'empresa_activa' => 1,
+            ]]);
 
         $result = $this->service->login('test@lux.mx', '');
 

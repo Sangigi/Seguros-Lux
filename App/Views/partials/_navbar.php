@@ -474,6 +474,39 @@ button.sidebar-link {
 
         <?php endif; ?>
 
+        <?php
+        /*
+         * Administración de personas y de la plataforma.
+         *
+         * Va fuera del if/elseif de arriba, que reparte el menú por rol: estos
+         * dos enlaces no dependen del rol sino del permiso concreto, y así un
+         * cambio en la matriz de Roles se refleja solo aquí.
+         *
+         * Ocultar el enlace es comodidad, no seguridad: la vista y la API
+         * vuelven a comprobar el permiso por su cuenta.
+         */
+        $_puedeInvitar  = \App\Security\SessionManager::puede(\App\Security\Roles::USUARIOS_INVITAR);
+        $_puedeEmpresas = \App\Security\SessionManager::puede(\App\Security\Roles::EMPRESAS_VER);
+        ?>
+
+        <?php if ($_puedeInvitar || $_puedeEmpresas): ?>
+        <div class="sidebar-section-label" style="margin-top:8px;">Administración</div>
+
+            <?php if ($_puedeInvitar): ?>
+            <a href="/equipo" class="sidebar-link <?php echo _navActive('/equipo', $_uri); ?>">
+                <i class="bi bi-person-plus-fill"></i>
+                Equipo
+            </a>
+            <?php endif; ?>
+
+            <?php if ($_puedeEmpresas): ?>
+            <a href="/plataforma/empresas" class="sidebar-link <?php echo _navActive('/plataforma/empresas', $_uri); ?>">
+                <i class="bi bi-building"></i>
+                Empresas
+            </a>
+            <?php endif; ?>
+        <?php endif; ?>
+
     </nav>
 
     <!-- Usuario y cierre de sesión -->

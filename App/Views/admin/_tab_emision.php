@@ -15,9 +15,12 @@
 use Database\Connection;
 
 $db = Connection::getConnection();
-// Forzar visualización de errores temporalmente
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
+
+// Empresa activa: toda consulta de esta pestaña se acota a ella.
+// Se resuelve aquí y no se hereda del scope padre, para que el partial siga
+// filtrando aunque se incluya desde otro sitio.
+$empresaId = \App\Security\Tenant::requireId();
+
 // ── Paginación y filtros ──────────────────────────────────────────────────────
 $emiPage    = max(1, (int)($_GET['emi_pag'] ?? 1));
 $emiPP      = 15;
@@ -85,9 +88,10 @@ $whereSQL = implode(' AND ', $where);
 $stTotal = $db->prepare(
     "SELECT COUNT(*) FROM cotizaciones c
      JOIN clientes cl ON cl.id = c.cliente_id
-     WHERE {$whereSQL}"
+     WHERE c.empresa_id = ? AND {$whereSQL}"
 );
-$stTotal->execute($params);
+// El parámetro de empresa va primero: su marcador abre el WHERE.
+$stTotal->execute(array_merge([$empresaId], $params));
 $emiTotal = (int)$stTotal->fetchColumn();
 $emiPages = max(1, ceil($emiTotal / $emiPP));
 
@@ -104,43 +108,47 @@ $stCots = $db->prepare(
             TRIM(REPLACE(c.tipo_cobertura, 'Renovación - ', '')) AS num_poliza_anterior,
             -- Cuenta archivos subidos (incluyendo póliza)
             (SELECT COUNT(*) FROM cotizacion_archivos ca
-             WHERE ca.cotizacion_id = c.id AND ca.eliminado_en IS NULL) AS total_archivos,
+             WHERE ca.cotizacion_id = c.id AND ca.empresa_id = ? AND ca.eliminado_en IS NULL) AS total_archivos,
             -- ¿Tiene póliza subida? Susituir por la tabla polizas corregida antes
-            (SELECT COUNT(*) FROM polizas p WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL) AS tiene_poliza,
+            (SELECT COUNT(*) FROM polizas p WHERE p.cotizacion_id = c.id AND p.empresa_id = ? AND p.eliminado_en IS NULL) AS tiene_poliza,
             -- NUEVO: Traer el archivo real de la póliza principal
-            (SELECT p.nombre_archivo FROM polizas p WHERE p.cotizacion_id = c.id AND p.eliminado_en IS NULL LIMIT 1) AS archivo_poliza,
+            (SELECT p.nombre_archivo FROM polizas p WHERE p.cotizacion_id = c.id AND p.empresa_id = ? AND p.eliminado_en IS NULL LIMIT 1) AS archivo_poliza,
             -- NUEVO: Respaldo por si el coordinador la subió en los documentos de la cotización
-            (SELECT ca.nombre_archivo FROM cotizacion_archivos ca WHERE ca.cotizacion_id = c.id AND ca.tipo_documento = 'poliza' AND ca.eliminado_en IS NULL LIMIT 1) AS archivo_poliza_cot,
+            (SELECT ca.nombre_archivo FROM cotizacion_archivos ca WHERE ca.cotizacion_id = c.id AND ca.empresa_id = ? AND ca.tipo_documento = 'poliza' AND ca.eliminado_en IS NULL LIMIT 1) AS archivo_poliza_cot,
             -- Comprobante de pago del coordinador
             (SELECT id FROM cotizacion_comprobantes_pago cp
-             WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
+             WHERE cp.cotizacion_id = c.id AND cp.empresa_id = ? AND cp.eliminado_en IS NULL
              ORDER BY cp.creado_en DESC LIMIT 1) AS comprobante_id,
             -- Fecha en que se registró el comprobante (para ventana de edición)
             (SELECT cp.creado_en FROM cotizacion_comprobantes_pago cp
-             WHERE cp.cotizacion_id = c.id AND cp.eliminado_en IS NULL
+             WHERE cp.cotizacion_id = c.id AND cp.empresa_id = ? AND cp.eliminado_en IS NULL
              ORDER BY cp.creado_en DESC LIMIT 1) AS comprobante_registrado_en
      FROM cotizaciones c
      JOIN clientes cl ON cl.id = c.cliente_id
      JOIN agentes  a  ON a.id  = c.agente_id
-     WHERE {$whereSQL}
+     WHERE c.empresa_id = ? AND {$whereSQL}
      ORDER BY c.fecha DESC
      LIMIT {$emiPP} OFFSET {$emiOffset}"
 );
-$stCots->execute($params);
+// Orden de parámetros: 6 subconsultas del SELECT + el WHERE principal van
+// ANTES de los filtros, porque sus marcadores aparecen antes en la consulta.
+$stCots->execute(array_merge(array_fill(0, 7, $empresaId), $params));
 $emiCots = $stCots->fetchAll(\PDO::FETCH_ASSOC);
 
 // KPIs rápidos (solo sobre el universo de «en emisión»)
 // Las renovaciones (folio terminado en -R o tipo_cobertura LIKE 'Renovación%') se cuentan separado
-$kpiCots    = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE emision_estado IN ('en_proceso','emitida') AND folio NOT LIKE '%-R' AND tipo_cobertura NOT LIKE 'Renovación%'")->fetchColumn();
-$kpiRenov   = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE emision_estado IN ('en_proceso','emitida') AND (folio LIKE '%-R' OR tipo_cobertura LIKE 'Renovación%')")->fetchColumn();
-$kpiConPol  = $db->query("SELECT COUNT(DISTINCT p.cotizacion_id) FROM polizas p JOIN cotizaciones c ON c.id=p.cotizacion_id WHERE p.eliminado_en IS NULL AND c.emision_estado IN ('en_proceso','emitida')")->fetchColumn();
-$kpiPagConf = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='confirmado' AND emision_estado IN ('en_proceso','emitida')")->fetchColumn();
-$kpiPendPago = $db->query("SELECT COUNT(*) FROM cotizaciones WHERE estado_pago='pendiente' AND emision_estado='en_proceso'")->fetchColumn();
+$stKpi1 = $db->prepare("SELECT COUNT(*) FROM cotizaciones WHERE empresa_id = ? AND emision_estado IN ('en_proceso','emitida') AND folio NOT LIKE '%-R' AND tipo_cobertura NOT LIKE 'Renovación%'"); $stKpi1->execute([$empresaId]); $kpiCots = $stKpi1->fetchColumn();
+$stKpi2 = $db->prepare("SELECT COUNT(*) FROM cotizaciones WHERE empresa_id = ? AND emision_estado IN ('en_proceso','emitida') AND (folio LIKE '%-R' OR tipo_cobertura LIKE 'Renovación%')"); $stKpi2->execute([$empresaId]); $kpiRenov = $stKpi2->fetchColumn();
+$stKpi3 = $db->prepare("SELECT COUNT(DISTINCT p.cotizacion_id) FROM polizas p JOIN cotizaciones c ON c.id=p.cotizacion_id WHERE p.empresa_id = ? AND p.eliminado_en IS NULL AND c.emision_estado IN ('en_proceso','emitida')"); $stKpi3->execute([$empresaId]); $kpiConPol = $stKpi3->fetchColumn();
+$stKpi4 = $db->prepare("SELECT COUNT(*) FROM cotizaciones WHERE empresa_id = ? AND estado_pago='confirmado' AND emision_estado IN ('en_proceso','emitida')"); $stKpi4->execute([$empresaId]); $kpiPagConf = $stKpi4->fetchColumn();
+$stKpi5 = $db->prepare("SELECT COUNT(*) FROM cotizaciones WHERE empresa_id = ? AND estado_pago='pendiente' AND emision_estado='en_proceso'"); $stKpi5->execute([$empresaId]); $kpiPendPago = $stKpi5->fetchColumn();
 
 // Ventana de edición para coordinador (configurable por SA/dev)
 $EDIT_WINDOW_HORAS = 24; // horas por defecto
 try {
-    $cfgEdit = $db->query("SELECT valor FROM configuracion WHERE clave='emi_edit_window_horas' LIMIT 1")->fetchColumn();
+    $stCfg = $db->prepare("SELECT valor FROM configuracion WHERE clave='emi_edit_window_horas' AND empresa_id = ? LIMIT 1");
+    $stCfg->execute([$empresaId]);
+    $cfgEdit = $stCfg->fetchColumn();
     if ($cfgEdit !== false && is_numeric($cfgEdit)) $EDIT_WINDOW_HORAS = (int)$cfgEdit;
 } catch (\Throwable $e) {}
 ?>

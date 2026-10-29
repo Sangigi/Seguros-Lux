@@ -70,11 +70,15 @@ function createTestPdo(): PDO
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre            TEXT    NOT NULL,
             apellido          TEXT    NOT NULL DEFAULT '',
-            correo            TEXT    NOT NULL UNIQUE,
+            -- Sin UNIQUE global: en multiempresa el mismo correo puede ser
+            -- usuario de dos empresas distintas. La unicidad pasa a ser
+            -- (empresa_id, correo), y ese índice lo crea la migración 005.
+            correo            TEXT    NOT NULL,
             telefono          TEXT    NOT NULL DEFAULT '',
             contrasena        TEXT    NOT NULL,
             rol               TEXT    NOT NULL DEFAULT 'asesor'
-                                  CHECK(rol IN ('asesor','agente','coordinador','administrador','superadmin')),
+                                  CHECK(rol IN ('asesor','agente','coordinador','administrador','superadmin','propietario')),
+            puesto            TEXT    DEFAULT NULL,
             activo            INTEGER NOT NULL DEFAULT 1,
             telegram_chat_id  TEXT    DEFAULT NULL
         );
@@ -111,7 +115,8 @@ function createTestPdo(): PDO
             num_empleados     INTEGER,
             facturacion_anual REAL,
             telegram_chat_id  TEXT    DEFAULT NULL,
-            whatsapp_chat_id  TEXT    DEFAULT NULL
+            whatsapp_chat_id  TEXT    DEFAULT NULL,
+            origen            TEXT    DEFAULT NULL
         );
 
         CREATE TABLE citas (
@@ -211,7 +216,59 @@ function createTestPdo(): PDO
             created_at       TEXT    DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE configuracion (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            clave       TEXT NOT NULL,
+            valor       TEXT,
+            descripcion TEXT
+        );
+
     SQL);
+
+    // ── Migraciones reales sobre el esquema base ─────────────────────────────
+    //
+    // Las pruebas corren las mismas migraciones que producción en lugar de
+    // una copia a mano del esquema multiempresa. Si se escribieran aparte,
+    // acabarían divergiendo, y las pruebas pasarían sobre un esquema que no
+    // es el que se despliega —que es la clase de fallo que no avisa.
+    foreach (['005_multiempresa.php', '006_canales_empresa.php'] as $archivo) {
+        $migracion = require dirname(__DIR__) . '/Database/migrations/' . $archivo;
+        ($migracion['up'])($pdo, new \Database\SchemaHelper($pdo));
+    }
+
+    // ── Empresa por defecto en los fixtures ──────────────────────────────────
+    //
+    // Muchas pruebas insertan filas con SQL directo y sin `empresa_id`, porque
+    // se escribieron cuando no existía. Esas filas quedarían invisibles —que
+    // es el comportamiento correcto— y harían fallar pruebas que no van de
+    // multiempresa.
+    //
+    // En vez de tocar veinte ficheros de fixtures, en el esquema de PRUEBAS lo
+    // que se inserta sin empresa cae en la empresa 1. Esto no existe en
+    // producción, donde BaseModel sella la empresa activa al insertar.
+    //
+    // Las pruebas de aislamiento ponen `empresa_id` a mano, así que el
+    // disparador no las toca y siguen demostrando lo que deben demostrar.
+    $conEmpresa = $pdo->query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    )->fetchAll(PDO::FETCH_COLUMN);
+
+    foreach ($conEmpresa as $tabla) {
+        $cols = $pdo->query('PRAGMA table_info(' . $tabla . ')')->fetchAll(PDO::FETCH_COLUMN, 1);
+
+        if (!in_array('empresa_id', $cols, true)) {
+            continue;
+        }
+
+        $pdo->exec("
+            CREATE TRIGGER tg_{$tabla}_empresa_default
+            AFTER INSERT ON {$tabla}
+            FOR EACH ROW WHEN NEW.empresa_id IS NULL
+            BEGIN
+                UPDATE {$tabla} SET empresa_id = 1 WHERE rowid = NEW.rowid;
+            END;
+        ");
+    }
 
     return $pdo;
 }
@@ -219,3 +276,10 @@ function createTestPdo(): PDO
 // ── 5. Inyectar en Connection ─────────────────────────────────────────────────
 // Usamos FQCN directamente — sin `use`, evita conflictos de importación.
 \Database\Connection::setTestConnection(createTestPdo());
+
+// ── 6. Empresa activa por defecto ─────────────────────────────────────────────
+// El aislamiento es fail-closed: sin empresa en contexto, toda consulta de
+// negocio lanza. Las pruebas que no van de multiempresa trabajan dentro de la
+// empresa 1 (la que crea la migración 005). Las de aislamiento montan su
+// propia empresa y cambian de contexto con Tenant::comoEmpresa().
+\App\Security\Tenant::set(1);

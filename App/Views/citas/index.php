@@ -8,6 +8,7 @@ SessionManager::requireAuth('/login');
 
 $agenteId     = SessionManager::getAgentId();
 $ramo         = SessionManager::getRamo();
+$empresaId    = \App\Security\Tenant::requireId();
 $citaModel    = new CitaModel();
 $clienteModel = new ClientModel();
 $historialModel = new HistorialModel();
@@ -36,8 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $nuevaId = $citaModel->crear($pCliente, $agenteId, $pTipo, $pFecha, $pHora, $pComentarios, $pRamo);
         if ($pMeetLink && $nuevaId) {
             \Database\Connection::getConnection()
-                ->prepare('UPDATE citas SET comentarios = CONCAT(COALESCE(comentarios,""), "\n🎥 Meet: ", ?) WHERE id = ?')
-                ->execute([$pMeetLink, $nuevaId]);
+                ->prepare('UPDATE citas SET comentarios = CONCAT(COALESCE(comentarios,""), "\n🎥 Meet: ", ?) WHERE id = ? AND empresa_id = ?')
+                ->execute([$pMeetLink, $nuevaId, $empresaId]);
         }
         $historialModel->registrar($pCliente, $agenteId, 'cita', 'Cita programada — '.ucfirst($pTipo), "$pFecha a las $pHora. $pComentarios");
         echo json_encode(['ok'=>true,'id'=>$nuevaId]); exit;

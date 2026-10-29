@@ -8,6 +8,7 @@ use Database\Connection;
 SessionManager::requireAuth('/login');
 
 $agenteId        = SessionManager::getAgentId();
+$empresaId       = \App\Security\Tenant::requireId();
 $ramoActivo      = SessionManager::getRamo(); // null = todos
 $cotizacionModel = new CotizacionModel();
 $clienteModel    = new ClientModel();
@@ -89,8 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                     "UPDATE cotizaciones SET
                         fecha_inicio_vigencia = COALESCE(?,fecha_inicio_vigencia),
                         fecha_fin_vigencia    = COALESCE(?,fecha_fin_vigencia)
-                     WHERE id = ?"
-                )->execute([$fIni, $fFin, $cotId]);
+                     WHERE id = ? AND empresa_id = ?"
+                )->execute([$fIni, $fFin, $cotId, $empresaId]);
             }
         }
 
@@ -141,9 +142,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         if ($chk) {
             $db->prepare(
                 'INSERT INTO cotizacion_pagos
-                 (cotizacion_id,agente_id,metodo_pago,nombre_archivo,ruta,fecha_pago,monto,notas)
-                 VALUES (?,?,?,?,?,?,?,?)'
-            )->execute([$cotId, $agenteId, $metodo, $nombreArchivo, $rutaArchivo, $fechaPago, $monto, $notas]);
+                 (cotizacion_id,agente_id,metodo_pago,nombre_archivo,ruta,fecha_pago,monto,notas,empresa_id)
+                 VALUES (?,?,?,?,?,?,?,?,?)'
+            )->execute([$cotId, $agenteId, $metodo, $nombreArchivo, $rutaArchivo, $fechaPago, $monto, $notas, $empresaId]);
         }
 
         $cotizacionModel->updateEstado($cotId, 'pagado', 'Pago registrado — ' . ucfirst(str_replace('_',' ',$metodo)));
@@ -199,9 +200,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $db = Connection::getConnection();
             $stP = $db->prepare(
                 'SELECT id, metodo_pago, nombre_archivo, ruta, fecha_pago, monto, notas, creado_en
-                 FROM cotizacion_pagos WHERE cotizacion_id = ? ORDER BY creado_en ASC'
+                 FROM cotizacion_pagos WHERE cotizacion_id = ? AND empresa_id = ? ORDER BY creado_en ASC'
             );
-            $stP->execute([$cotId]);
+            $stP->execute([$cotId, $empresaId]);
             foreach ($stP->fetchAll(\PDO::FETCH_ASSOC) as $p) {
                 $urlPago = null;
                 if (!empty($p['ruta'])) {
@@ -232,9 +233,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $stPol = $db->prepare(
                 'SELECT id, nombre_archivo, nombre_original, ruta, idrive_subido, idrive_key,
                         compania, numero_poliza, fecha_inicio, fecha_fin, estado, notas, subido_en
-                 FROM polizas WHERE cotizacion_id = ? AND eliminado_en IS NULL ORDER BY subido_en ASC'
+                 FROM polizas WHERE cotizacion_id = ? AND empresa_id = ? AND eliminado_en IS NULL ORDER BY subido_en ASC'
             );
-            $stPol->execute([$cotId]);
+            $stPol->execute([$cotId, $empresaId]);
             foreach ($stPol->fetchAll(\PDO::FETCH_ASSOC) as $pol) {
                 $urlPol = null;
                 if (!empty($pol['ruta'])) {
@@ -308,18 +309,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         }
         $db = Connection::getConnection();
         // Actualizar emision_estado y estado
-        $db->prepare("UPDATE cotizaciones SET emision_estado='en_proceso', estado='enviada' WHERE id=?")->execute([$cotId]);
-        // Notificar a todos los coordinadores y superadmins
-        $coords = $db->query("SELECT id FROM agentes WHERE rol IN ('coordinador','superadmin') AND activo=1")->fetchAll(\PDO::FETCH_COLUMN);
+        $db->prepare("UPDATE cotizaciones SET emision_estado='en_proceso', estado='enviada' WHERE id=? AND empresa_id=?")->execute([$cotId, $empresaId]);
+        // Notificar a los coordinadores y superadmins de la misma empresa
+        $stCoords = $db->prepare("SELECT id FROM agentes WHERE rol IN ('coordinador','superadmin') AND activo=1 AND empresa_id=?");
+        $stCoords->execute([$empresaId]);
+        $coords = $stCoords->fetchAll(\PDO::FETCH_COLUMN);
         foreach ($coords as $coordId) {
             $db->prepare(
-                "INSERT INTO notificaciones (agente_id,tipo,titulo,mensaje,urgente,color,url_accion,leida,creada_en)
-                 VALUES (?,?,?,?,1,'blue',?,0,NOW())"
+                "INSERT INTO notificaciones (agente_id,tipo,titulo,mensaje,urgente,color,url_accion,leida,creada_en,empresa_id)
+                 VALUES (?,?,?,?,1,'blue',?,0,NOW(),?)"
             )->execute([
                 $coordId, 'emision',
                 '📋 Nueva cotización para emisión — ' . ($cot['folio'] ?? '#'.$cotId),
                 'El asesor envió la cotización de ' . ($cot['cliente_nombre'] ?? '') . ' para gestión de cobro.',
                 '/admin?tab=emision',
+                $empresaId,
             ]);
         }
         // Historial
@@ -341,12 +345,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $stCheck = $db->prepare(
                 'SELECT ca.id FROM cotizacion_archivos ca
                  JOIN cotizaciones co ON co.id = ca.cotizacion_id
-                 WHERE ca.id = ? AND co.agente_id = ? AND ca.eliminado_en IS NULL'
+                 WHERE ca.id = ? AND co.agente_id = ? AND co.empresa_id = ? AND ca.eliminado_en IS NULL'
             );
-            $stCheck->execute([$archivoId, $agenteId]);
+            $stCheck->execute([$archivoId, $agenteId, $empresaId]);
             if (!$stCheck->fetch()) { echo json_encode(['ok'=>false,'msg'=>'No autorizado.']); exit; }
-            $db->prepare('UPDATE cotizacion_archivos SET eliminado_en = NOW() WHERE id = ?')
-               ->execute([$archivoId]);
+            $db->prepare('UPDATE cotizacion_archivos SET eliminado_en = NOW() WHERE id = ? AND empresa_id = ?')
+               ->execute([$archivoId, $empresaId]);
             echo json_encode(['ok'=>true]); exit;
         } catch (\Throwable $e) {
             echo json_encode(['ok'=>false,'msg'=>'Error al eliminar.']); exit;
@@ -382,11 +386,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                  fecha_inicio_vigencia=COALESCE(?,fecha_inicio_vigencia),
                  fecha_fin_vigencia=COALESCE(?,fecha_fin_vigencia),
                  frecuencia_renovacion=COALESCE(NULLIF(?,''),frecuencia_renovacion)
-             WHERE id=? AND agente_id=?"
+             WHERE id=? AND agente_id=? AND empresa_id=?"
         )->execute([
             $compania, $cobertura, $precio, $deducible, $vigencia,
             $comentarios, $metodo, $fIni, $fFin, $fRecuencia,
-            $cotId, $agenteId,
+            $cotId, $agenteId, $empresaId,
         ]);
 
         $historialModel->registrar(
@@ -421,9 +425,9 @@ if (!empty($cotizaciones) && empty(array_filter(array_column($cotizaciones, 'fec
     $_ph    = implode(',', array_fill(0, count($_ids), '?'));
     $_db    = Connection::getConnection();
     $_stmt  = $_db->prepare(
-        "SELECT id, fecha_fin_vigencia FROM cotizaciones WHERE id IN ($_ph)"
+        "SELECT id, fecha_fin_vigencia FROM cotizaciones WHERE id IN ($_ph) AND empresa_id = ?"
     );
-    $_stmt->execute($_ids);
+    $_stmt->execute(array_merge($_ids, [$empresaId]));
     $_vigMap = array_column($_stmt->fetchAll(\PDO::FETCH_ASSOC), 'fecha_fin_vigencia', 'id');
     foreach ($cotizaciones as &$c) {
         if (empty($c['fecha_fin_vigencia'])) {

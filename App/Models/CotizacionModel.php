@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Security\Tenant;
 use App\Services\QueryCache;
 class CotizacionModel extends BaseModel
 {
@@ -65,15 +66,24 @@ class CotizacionModel extends BaseModel
      */
     public static function syntheticComprobantePagoDesdeTablaPagos(\PDO $db, int $cotizacionId): ?array
     {
+        // Método estático: no hay $this para usar sqlEmpresa(), así que el
+        // filtro se arma a mano con el mismo criterio que BaseModel.
+        $filtraEmpresa = !Tenant::esGlobal();
+        $params        = ['cotizacion_id' => $cotizacionId];
+        if ($filtraEmpresa) {
+            $params['__empresa'] = Tenant::requireId();
+        }
+
         $st = $db->prepare(
             "SELECT nombre_original, nombre_archivo, ruta, creado_en
              FROM cotizacion_pagos
-             WHERE cotizacion_id = ?
-               AND COALESCE(NULLIF(ruta,''), NULLIF(nombre_archivo,'')) IS NOT NULL
+             WHERE cotizacion_id = :cotizacion_id
+               AND COALESCE(NULLIF(ruta,''), NULLIF(nombre_archivo,'')) IS NOT NULL"
+            . ($filtraEmpresa ? ' AND empresa_id = :__empresa' : '') . "
              ORDER BY COALESCE(creado_en, id) DESC
              LIMIT 1"
         );
-        $st->execute([$cotizacionId]);
+        $st->execute($params);
         $row = $st->fetch(\PDO::FETCH_ASSOC);
         if (!$row) {
             return null;
@@ -205,22 +215,31 @@ class CotizacionModel extends BaseModel
 
     public function getByAgenteId(int $agenteId): array
     {
-        $stmt = $this->db()->prepare('SELECT * FROM cotizaciones WHERE agente_id = ? ORDER BY fecha_creacion DESC');
-        $stmt->execute([$agenteId]);
+        $stmt = $this->db()->prepare(
+            'SELECT * FROM cotizaciones WHERE agente_id = :agente_id' . $this->sqlEmpresa() . '
+             ORDER BY fecha_creacion DESC'
+        );
+        $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         return $stmt->fetchAll();
     }
 
     public function getByClienteId(int $clienteId): array
     {
-        $stmt = $this->db()->prepare('SELECT * FROM cotizaciones WHERE cliente_id = ? ORDER BY fecha_creacion DESC');
-        $stmt->execute([$clienteId]);
+        $stmt = $this->db()->prepare(
+            'SELECT * FROM cotizaciones WHERE cliente_id = :cliente_id' . $this->sqlEmpresa() . '
+             ORDER BY fecha_creacion DESC'
+        );
+        $stmt->execute($this->bindEmpresa(['cliente_id' => $clienteId]));
         return $stmt->fetchAll();
     }
 
     public function getByIdYAgente(int $id, int $agenteId): ?array
     {
-        $stmt = $this->db()->prepare('SELECT * FROM cotizaciones WHERE id = ? AND agente_id = ?');
-        $stmt->execute([$id, $agenteId]);
+        $stmt = $this->db()->prepare(
+            'SELECT * FROM cotizaciones WHERE id = :id AND agente_id = :agente_id'
+            . $this->sqlEmpresa()
+        );
+        $stmt->execute($this->bindEmpresa(['id' => $id, 'agente_id' => $agenteId]));
         return $stmt->fetch() ?: null;
     }
 
@@ -231,7 +250,7 @@ class CotizacionModel extends BaseModel
      */
     public function getAllConCliente(int $agenteId, ?string $ramo = null): array
     {
-        $ramoFilter = $ramo ? 'AND co.ramo = ?' : '';
+        $ramoFilter = $ramo ? 'AND co.ramo = :ramo' : '';
         $stmt = $this->db()->prepare(
             "SELECT co.id, co.cliente_id,
                     CONCAT(cl.nombre,' ',cl.apellido_paterno,' ',cl.apellido_materno) AS cliente_nombre,
@@ -271,11 +290,12 @@ class CotizacionModel extends BaseModel
              FROM cotizaciones co
              JOIN clientes cl ON cl.id = co.cliente_id
              LEFT JOIN cotizacion_detalles cd ON cd.cotizacion_id = co.id
-             WHERE co.agente_id = ? {$ramoFilter}
+             WHERE co.agente_id = :agente_id {$ramoFilter}" . $this->sqlEmpresa('co') . "
              ORDER BY co.fecha DESC, co.id DESC"
         );
-        $params = $ramo ? [$agenteId, $ramo] : [$agenteId];
-        $stmt->execute($params);
+        $params = ['agente_id' => $agenteId];
+        if ($ramo) { $params['ramo'] = $ramo; }
+        $stmt->execute($this->bindEmpresa($params));
         $rows = $stmt->fetchAll();
 
         // Decodificar JSON de detalles_ramo
@@ -300,9 +320,9 @@ class CotizacionModel extends BaseModel
              FROM cotizaciones co
              JOIN clientes cl ON cl.id = co.cliente_id
              LEFT JOIN cotizacion_detalles cd ON cd.cotizacion_id = co.id
-             WHERE co.id = ? AND co.agente_id = ?"
+             WHERE co.id = :id AND co.agente_id = :agente_id" . $this->sqlEmpresa('co')
         );
-        $stmt->execute([$id, $agenteId]);
+        $stmt->execute($this->bindEmpresa(['id' => $id, 'agente_id' => $agenteId]));
         $row = $stmt->fetch();
         if (!$row) return null;
         $row['detalles_ramo'] = !empty($row['detalles_ramo'])
@@ -321,10 +341,15 @@ class CotizacionModel extends BaseModel
     {
         $json = json_encode($detalles, JSON_UNESCAPED_UNICODE);
         $this->db()->prepare(
-            "INSERT INTO cotizacion_detalles (cotizacion_id, ramo, detalles)
-             VALUES (?, ?, ?)
+            "INSERT INTO cotizacion_detalles (cotizacion_id, ramo, detalles, empresa_id)
+             VALUES (:cotizacion_id, :ramo, :detalles, :empresa_id)
              ON DUPLICATE KEY UPDATE ramo = VALUES(ramo), detalles = VALUES(detalles)"
-        )->execute([$cotizacionId, $ramo, $json]);
+        )->execute([
+            'cotizacion_id' => $cotizacionId,
+            'ramo'          => $ramo,
+            'detalles'      => $json,
+            'empresa_id'    => Tenant::requireId(),
+        ]);
     }
 
     /**
@@ -333,9 +358,10 @@ class CotizacionModel extends BaseModel
     public function getDetalles(int $cotizacionId): array
     {
         $stmt = $this->db()->prepare(
-            'SELECT ramo, detalles FROM cotizacion_detalles WHERE cotizacion_id = ?'
+            'SELECT ramo, detalles FROM cotizacion_detalles WHERE cotizacion_id = :cotizacion_id'
+            . $this->sqlEmpresa()
         );
-        $stmt->execute([$cotizacionId]);
+        $stmt->execute($this->bindEmpresa(['cotizacion_id' => $cotizacionId]));
         $row = $stmt->fetch();
         if (!$row) return [];
         return json_decode($row['detalles'], true) ?? [];
@@ -345,7 +371,7 @@ class CotizacionModel extends BaseModel
 
     public function getKpis(int $agenteId, ?string $ramo = null): array
     {
-        $ramoFilter = $ramo ? 'AND ramo = ?' : '';
+        $ramoFilter = $ramo ? 'AND ramo = :ramo' : '';
         $ventaSql   = self::ventaConcretadaSql('cotizaciones');
         $stmt = $this->db()->prepare(
             "SELECT COUNT(*) AS cotizaciones_total,
@@ -355,10 +381,12 @@ class CotizacionModel extends BaseModel
                     SUM(CASE WHEN {$ventaSql} THEN precio ELSE 0 END) AS ingreso_total,
                     SUM(CASE WHEN {$ventaSql} AND YEAR(fecha_creacion)=YEAR(NOW()) AND MONTH(fecha_creacion)=MONTH(NOW()) THEN precio ELSE 0 END) AS ingreso_mes,
                     AVG(CASE WHEN {$ventaSql} THEN precio END) AS ticket_promedio
-             FROM cotizaciones WHERE agente_id = ? {$ramoFilter}"
+             FROM cotizaciones
+             WHERE agente_id = :agente_id {$ramoFilter}" . $this->sqlEmpresa()
         );
-        $params = $ramo ? [$agenteId, $ramo] : [$agenteId];
-        $stmt->execute($params);
+        $params = ['agente_id' => $agenteId];
+        if ($ramo) { $params['ramo'] = $ramo; }
+        $stmt->execute($this->bindEmpresa($params));
         $d  = $stmt->fetch();
         $ct = (int)($d['cotizaciones_total'] ?? 0);
         $vt = (int)($d['ventas_total']       ?? 0);
@@ -382,12 +410,15 @@ class CotizacionModel extends BaseModel
             key:   "countEnviadas:{$agenteId}:{$ramo}",
             ttl:   90,
             fn:    function () use ($agenteId, $ramo): int {
-                $ramoFilter = $ramo ? 'AND ramo = ?' : '';
+                $ramoFilter = $ramo ? 'AND ramo = :ramo' : '';
                 $stmt = $this->db()->prepare(
                     "SELECT COUNT(*) FROM cotizaciones
-                     WHERE agente_id = ? AND estado = 'enviada' {$ramoFilter}"
+                     WHERE agente_id = :agente_id
+                       AND estado = 'enviada' {$ramoFilter}" . $this->sqlEmpresa()
                 );
-                $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+                $params = ['agente_id' => $agenteId];
+                if ($ramo) { $params['ramo'] = $ramo; }
+                $stmt->execute($this->bindEmpresa($params));
                 return (int) $stmt->fetchColumn();
             }
         );
@@ -402,9 +433,10 @@ class CotizacionModel extends BaseModel
             fn:    function () use ($agenteId): array {
                 $stmt = $this->db()->prepare(
                     "SELECT ramo, COUNT(*) AS cotizaciones, SUM(" . self::ventaConcretadaSql('cotizaciones') . ") AS ventas
-                     FROM cotizaciones WHERE agente_id = ? GROUP BY ramo"
+                     FROM cotizaciones WHERE agente_id = :agente_id" . $this->sqlEmpresa() . "
+                     GROUP BY ramo"
                 );
-                $stmt->execute([$agenteId]);
+                $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId]));
                 $ramos = [
                     'autos'          => ['cotizaciones'=>0,'ventas'=>0],
                     'vida'           => ['cotizaciones'=>0,'ventas'=>0],
@@ -433,12 +465,17 @@ class CotizacionModel extends BaseModel
             fn:    function () use ($agenteId, $ramo): array {
                 $ramoFiltroClientes = '';
                 $ramoFiltroCot      = '';
-                $params             = [$agenteId];
 
                 if ($ramo) {
-                    $ramoFiltroClientes = " AND ramo = '{$ramo}'";
-                    $ramoFiltroCot      = " AND ramo = '{$ramo}'";
+                    // El ramo va como parámetro preparado, no interpolado en el SQL.
+                    // Cada subconsulta necesita el suyo: PDO no admite repetir
+                    // un placeholder con nombre dentro de la misma sentencia.
+                    $ramoFiltroClientes = ' AND ramo = :ramo_cl';
+                    $ramoFiltroCot      = ' AND ramo = :ramo_co';
                 }
+
+                // Por el mismo motivo, la segunda subconsulta lleva :__empresa2.
+                $empresaCot = $this->filtraPorEmpresa() ? ' AND empresa_id = :__empresa2' : '';
 
                 $stmt = $this->db()->prepare(
                     "SELECT DATE_FORMAT(meses.mes_inicio,'%b') AS mes,
@@ -453,18 +490,31 @@ class CotizacionModel extends BaseModel
                      ) meses
                      LEFT JOIN (
                          SELECT DATE_FORMAT(fecha_registro,'%Y-%m-01') AS m, COUNT(*) AS total
-                         FROM clientes WHERE agente_id = ?{$ramoFiltroClientes} GROUP BY m
+                         FROM clientes
+                         WHERE agente_id = :agente_cl{$ramoFiltroClientes}" . $this->sqlEmpresa() . "
+                         GROUP BY m
                      ) cl ON cl.m = meses.mes_inicio
                      LEFT JOIN (
                          SELECT DATE_FORMAT(fecha_creacion,'%Y-%m-01') AS m,
                                 COUNT(*) AS total,
                                 SUM(" . self::ventaConcretadaSql('cotizaciones') . ") AS ventas,
                                 SUM(CASE WHEN " . self::ventaConcretadaSql('cotizaciones') . " THEN precio ELSE 0 END) AS ingresos
-                         FROM cotizaciones WHERE agente_id = ?{$ramoFiltroCot} GROUP BY m
+                         FROM cotizaciones
+                         WHERE agente_id = :agente_co{$ramoFiltroCot}{$empresaCot}
+                         GROUP BY m
                      ) co ON co.m = meses.mes_inicio
                      ORDER BY meses.mes_inicio ASC"
                 );
-                $stmt->execute([$agenteId, $agenteId]);
+
+                $params = $this->bindEmpresa(['agente_cl' => $agenteId, 'agente_co' => $agenteId]);
+                if ($ramo) {
+                    $params['ramo_cl'] = $ramo;
+                    $params['ramo_co'] = $ramo;
+                }
+                if (isset($params['__empresa'])) {
+                    $params['__empresa2'] = $params['__empresa'];
+                }
+                $stmt->execute($params);
                 return array_map(fn($e) => [
                     'mes'          => $e['mes'],
                     'clientes'     => (int)   $e['clientes'],
@@ -501,9 +551,10 @@ class CotizacionModel extends BaseModel
              FROM cotizaciones co
              JOIN clientes cl ON cl.id = co.cliente_id
              JOIN agentes  a  ON a.id  = co.agente_id
-             ORDER BY co.fecha DESC, co.id DESC LIMIT ?"
+             WHERE 1=1" . $this->sqlEmpresa('co') . "
+             ORDER BY co.fecha DESC, co.id DESC LIMIT :limit"
         );
-        $stmt->execute([$limit]);
+        $stmt->execute($this->bindEmpresa(['limit' => $limit]));
         return $stmt->fetchAll();
     }
 
@@ -567,18 +618,24 @@ class CotizacionModel extends BaseModel
     public function updateEstado(int $id, string $estado, string $comentarios = ''): bool
     {
         $stmt = $this->db()->prepare(
-            "UPDATE cotizaciones SET estado = ?, comentarios = COALESCE(NULLIF(?,''), comentarios)
-             WHERE id = ?"
+            "UPDATE cotizaciones
+             SET estado = :estado, comentarios = COALESCE(NULLIF(:comentarios,''), comentarios)
+             WHERE id = :id" . $this->sqlEmpresa()
         );
-        return $stmt->execute([$estado, $comentarios, $id]);
+        return $stmt->execute($this->bindEmpresa([
+            'estado' => $estado, 'comentarios' => $comentarios, 'id' => $id,
+        ]));
     }
 
     public function updateMetodoPago(int $id, int $agenteId, string $metodo): bool
     {
         $stmt = $this->db()->prepare(
-            'UPDATE cotizaciones SET metodo_pago = ? WHERE id = ? AND agente_id = ?'
+            'UPDATE cotizaciones SET metodo_pago = :metodo
+             WHERE id = :id AND agente_id = :agente_id' . $this->sqlEmpresa()
         );
-        return $stmt->execute([$metodo, $id, $agenteId]);
+        return $stmt->execute($this->bindEmpresa([
+            'metodo' => $metodo, 'id' => $id, 'agente_id' => $agenteId,
+        ]));
     }
 
     // ── Archivos ──────────────────────────────────────────────────────────────
@@ -587,9 +644,17 @@ class CotizacionModel extends BaseModel
     {
         $this->db()->prepare(
             'INSERT INTO cotizacion_archivos
-             (cotizacion_id, agente_id, tipo_documento, nombre_original, nombre_archivo, ruta)
-             VALUES (?,?,?,?,?,?)'
-        )->execute([$cotizacionId, $agenteId, $tipoDocumento, $nombreOriginal, $nombreArchivo, $ruta]);
+             (cotizacion_id, agente_id, tipo_documento, nombre_original, nombre_archivo, ruta, empresa_id)
+             VALUES (:cotizacion_id,:agente_id,:tipo_documento,:nombre_original,:nombre_archivo,:ruta,:empresa_id)'
+        )->execute([
+            'cotizacion_id'   => $cotizacionId,
+            'agente_id'       => $agenteId,
+            'tipo_documento'  => $tipoDocumento,
+            'nombre_original' => $nombreOriginal,
+            'nombre_archivo'  => $nombreArchivo,
+            'ruta'            => $ruta,
+            'empresa_id'      => Tenant::requireId(),
+        ]);
         return (int) $this->db()->lastInsertId();
     }
 
@@ -606,25 +671,37 @@ class CotizacionModel extends BaseModel
         // Obtener el archivo anterior activo del mismo tipo
         $stmt = $db->prepare(
             'SELECT id, ruta FROM cotizacion_archivos
-             WHERE cotizacion_id = ? AND tipo_documento = ? AND eliminado_en IS NULL
+             WHERE cotizacion_id = :cotizacion_id AND tipo_documento = :tipo_documento
+               AND eliminado_en IS NULL' . $this->sqlEmpresa() . '
              ORDER BY subido_en DESC LIMIT 1'
         );
-        $stmt->execute([$cotizacionId, $tipoDocumento]);
+        $stmt->execute($this->bindEmpresa([
+            'cotizacion_id' => $cotizacionId, 'tipo_documento' => $tipoDocumento,
+        ]));
         $anterior = $stmt->fetch() ?: null;
 
         // Soft-delete del registro anterior
         if ($anterior) {
             $db->prepare(
-                'UPDATE cotizacion_archivos SET eliminado_en = NOW() WHERE id = ?'
-            )->execute([$anterior['id']]);
+                'UPDATE cotizacion_archivos SET eliminado_en = NOW() WHERE id = :id'
+                . $this->sqlEmpresa()
+            )->execute($this->bindEmpresa(['id' => $anterior['id']]));
         }
 
         // Insertar el nuevo
         $db->prepare(
             'INSERT INTO cotizacion_archivos
-             (cotizacion_id, agente_id, tipo_documento, nombre_original, nombre_archivo, ruta)
-             VALUES (?,?,?,?,?,?)'
-        )->execute([$cotizacionId, $agenteId, $tipoDocumento, $nombreOriginal, $nombreArchivo, $ruta]);
+             (cotizacion_id, agente_id, tipo_documento, nombre_original, nombre_archivo, ruta, empresa_id)
+             VALUES (:cotizacion_id,:agente_id,:tipo_documento,:nombre_original,:nombre_archivo,:ruta,:empresa_id)'
+        )->execute([
+            'cotizacion_id'   => $cotizacionId,
+            'agente_id'       => $agenteId,
+            'tipo_documento'  => $tipoDocumento,
+            'nombre_original' => $nombreOriginal,
+            'nombre_archivo'  => $nombreArchivo,
+            'ruta'            => $ruta,
+            'empresa_id'      => Tenant::requireId(),
+        ]);
 
         return [
             'nuevo_id'    => (int) $db->lastInsertId(),
@@ -637,21 +714,28 @@ class CotizacionModel extends BaseModel
         $stmt = $this->db()->prepare(
             "SELECT ca.*, CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
              FROM cotizacion_archivos ca JOIN agentes a ON a.id = ca.agente_id
-             WHERE ca.cotizacion_id = ? AND ca.eliminado_en IS NULL
+             WHERE ca.cotizacion_id = :cotizacion_id AND ca.eliminado_en IS NULL"
+            . $this->sqlEmpresa('ca') . "
              ORDER BY ca.subido_en DESC"
         );
-        $stmt->execute([$cotizacionId]);
+        $stmt->execute($this->bindEmpresa(['cotizacion_id' => $cotizacionId]));
         return $stmt->fetchAll();
     }
 
     public function marcarIdriveSubido(int $archivoId): void
     {
-        $this->db()->prepare('UPDATE cotizacion_archivos SET idrive_subido = NOW() WHERE id = ?')->execute([$archivoId]);
+        $this->db()->prepare(
+            'UPDATE cotizacion_archivos SET idrive_subido = NOW() WHERE id = :id'
+            . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['id' => $archivoId]));
     }
 
     public function marcarBorradoLocal(int $archivoId): void
     {
-        $this->db()->prepare('UPDATE cotizacion_archivos SET idrive_borrado = NOW() WHERE id = ?')->execute([$archivoId]);
+        $this->db()->prepare(
+            'UPDATE cotizacion_archivos SET idrive_borrado = NOW() WHERE id = :id'
+            . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['id' => $archivoId]));
     }
 
     // ── Reportes ──────────────────────────────────────────────────────────────
@@ -661,11 +745,11 @@ class CotizacionModel extends BaseModel
         $where  = ['1=1'];
         $params = [];
 
-        if ($agenteId)   { $where[] = 'co.agente_id = ?'; $params[] = $agenteId; }
-        if ($fechaDesde) { $where[] = 'co.fecha >= ?';     $params[] = $fechaDesde; }
-        if ($fechaHasta) { $where[] = 'co.fecha <= ?';     $params[] = $fechaHasta; }
-        if ($estado)     { $where[] = 'co.estado = ?';     $params[] = $estado; }
-        if ($ramo)       { $where[] = 'co.ramo = ?';       $params[] = $ramo; }
+        if ($agenteId)   { $where[] = 'co.agente_id = :agente_id';   $params['agente_id']   = $agenteId; }
+        if ($fechaDesde) { $where[] = 'co.fecha >= :fecha_desde';    $params['fecha_desde'] = $fechaDesde; }
+        if ($fechaHasta) { $where[] = 'co.fecha <= :fecha_hasta';    $params['fecha_hasta'] = $fechaHasta; }
+        if ($estado)     { $where[] = 'co.estado = :estado';         $params['estado']      = $estado; }
+        if ($ramo)       { $where[] = 'co.ramo = :ramo';             $params['ramo']        = $ramo; }
 
         $sql = "SELECT co.folio, co.fecha, co.estado, co.precio, co.tipo_cobertura,
                        co.compania, co.vigencia, co.deducible, co.fecha_fin_vigencia,
@@ -677,18 +761,21 @@ class CotizacionModel extends BaseModel
                 FROM cotizaciones co
                 JOIN clientes cl ON cl.id = co.cliente_id
                 JOIN agentes  a  ON a.id  = co.agente_id
-                WHERE " . implode(' AND ', $where) . "
+                WHERE " . implode(' AND ', $where) . $this->sqlEmpresa('co') . "
                 ORDER BY co.fecha DESC";
 
         $stmt = $this->db()->prepare($sql);
-        $stmt->execute($params);
+        $stmt->execute($this->bindEmpresa($params));
         return $stmt->fetchAll();
     }
 
     public function contarPorCliente(int $clienteId): int
     {
-        $stmt = $this->db()->prepare('SELECT COUNT(*) FROM cotizaciones WHERE cliente_id = ?');
-        $stmt->execute([$clienteId]);
+        $stmt = $this->db()->prepare(
+            'SELECT COUNT(*) FROM cotizaciones WHERE cliente_id = :cliente_id'
+            . $this->sqlEmpresa()
+        );
+        $stmt->execute($this->bindEmpresa(['cliente_id' => $clienteId]));
         return (int) $stmt->fetchColumn();
     }
 
@@ -723,19 +810,22 @@ class CotizacionModel extends BaseModel
         $stmtMax = $this->db()->prepare(
             "SELECT MAX(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(folio, '-', 5), '-', -1) AS UNSIGNED))
              FROM cotizaciones
-             WHERE agente_id = ? AND YEAR(fecha_creacion) = YEAR(NOW())
-               AND folio REGEXP '^[A-Z]+-[A-Z]+-[0-9]+-[0-9]+-[0-9]+-[A-Z]+$'"
+             WHERE agente_id = :agente_id AND YEAR(fecha_creacion) = YEAR(NOW())
+               AND folio REGEXP '^[A-Z]+-[A-Z]+-[0-9]+-[0-9]+-[0-9]+-[A-Z]+$'" . $this->sqlEmpresa()
         );
-        $stmtMax->execute([$agenteId]);
+        $stmtMax->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         $maxConsec   = (int)($stmtMax->fetchColumn() ?? 0);
         $consecutivo = $maxConsec + 1;
 
-        // Generar folio y verificar unicidad, incrementando si ya existe
-        $stmtCheck = $this->db()->prepare('SELECT COUNT(*) FROM cotizaciones WHERE folio = ?');
+        // Generar folio y verificar unicidad, incrementando si ya existe.
+        // La unicidad es por empresa: cada una lleva su propia numeración.
+        $stmtCheck = $this->db()->prepare(
+            'SELECT COUNT(*) FROM cotizaciones WHERE folio = :folio' . $this->sqlEmpresa()
+        );
         do {
             $folio = "{$ramoPrefix}-{$cobPrefix}-{$anio}-{$agenteCod}-" .
                      str_pad((string)$consecutivo, 4, '0', STR_PAD_LEFT) . '-' . strtoupper($estado);
-            $stmtCheck->execute([$folio]);
+            $stmtCheck->execute($this->bindEmpresa(['folio' => $folio]));
             if ((int)$stmtCheck->fetchColumn() === 0) break;
             $consecutivo++;
         } while ($consecutivo < 9999);
@@ -753,12 +843,16 @@ class CotizacionModel extends BaseModel
     /** Conteo de aceptadas+pagadas — usado por dash-index.php */
     public function countAceptadas(int $agenteId, ?string $ramo = null): int
     {
-        $ramoFilter = $ramo ? 'AND ramo = ?' : '';
+        $ramoFilter = $ramo ? 'AND ramo = :ramo' : '';
         $stmt = $this->db()->prepare(
             "SELECT COUNT(*) FROM cotizaciones
-             WHERE agente_id = ? AND " . self::ventaConcretadaSql('cotizaciones') . " {$ramoFilter}"
+             WHERE agente_id = :agente_id
+               AND " . self::ventaConcretadaSql('cotizaciones') . " {$ramoFilter}"
+            . $this->sqlEmpresa()
         );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+        $params = ['agente_id' => $agenteId];
+        if ($ramo) { $params['ramo'] = $ramo; }
+        $stmt->execute($this->bindEmpresa($params));
         return (int) $stmt->fetchColumn();
     }
 
@@ -771,19 +865,21 @@ class CotizacionModel extends BaseModel
     /** Ranking compañías por ventas — usado por reportes/index.php */
     public function getRankingCompanias(int $agenteId, ?string $ramo = null, int $limit = 8): array
     {
-        $ramoFilter = $ramo ? 'AND ramo = ?' : '';
+        $ramoFilter = $ramo ? 'AND ramo = :ramo' : '';
         $stmt = $this->db()->prepare(
             "SELECT compania,
                     COUNT(*) AS cotizaciones,
                     SUM(" . self::ventaConcretadaSql('cotizaciones') . ") AS aceptadas,
                     SUM(CASE WHEN " . self::ventaConcretadaSql('cotizaciones') . " THEN precio ELSE 0 END) AS ingreso
              FROM cotizaciones
-             WHERE agente_id = ? {$ramoFilter}
+             WHERE agente_id = :agente_id {$ramoFilter}" . $this->sqlEmpresa() . "
              GROUP BY compania
              ORDER BY aceptadas DESC, ingreso DESC
              LIMIT {$limit}"
         );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+        $params = ['agente_id' => $agenteId];
+        if ($ramo) { $params['ramo'] = $ramo; }
+        $stmt->execute($this->bindEmpresa($params));
         return array_map(fn($r) => [
             'compania'     => $r['compania'],
             'cotizaciones' => (int)   $r['cotizaciones'],
@@ -795,19 +891,21 @@ class CotizacionModel extends BaseModel
     /** Coberturas más vendidas — usado por reportes/index.php */
     public function getPorCobertura(int $agenteId, ?string $ramo = null, int $limit = 8): array
     {
-        $ramoFilter = $ramo ? 'AND ramo = ?' : '';
+        $ramoFilter = $ramo ? 'AND ramo = :ramo' : '';
         $stmt = $this->db()->prepare(
             "SELECT tipo_cobertura AS tipo,
                     COUNT(*) AS total,
                     SUM(" . self::ventaConcretadaSql('cotizaciones') . ") AS ventas,
                     ramo
              FROM cotizaciones
-             WHERE agente_id = ? {$ramoFilter}
+             WHERE agente_id = :agente_id {$ramoFilter}" . $this->sqlEmpresa() . "
              GROUP BY tipo_cobertura, ramo
              ORDER BY ventas DESC, total DESC
              LIMIT {$limit}"
         );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+        $params = ['agente_id' => $agenteId];
+        if ($ramo) { $params['ramo'] = $ramo; }
+        $stmt->execute($this->bindEmpresa($params));
         return array_map(fn($r) => [
             'tipo'   => $r['tipo'],
             'total'  => (int) $r['total'],
@@ -819,7 +917,7 @@ class CotizacionModel extends BaseModel
     /** Top clientes por valor de ventas cerradas — usado por reportes/index.php */
     public function getTopClientes(int $agenteId, ?string $ramo = null, int $limit = 5): array
     {
-        $ramoFilter = $ramo ? 'AND co.ramo = ?' : '';
+        $ramoFilter = $ramo ? 'AND co.ramo = :ramo' : '';
         $stmt = $this->db()->prepare(
             "SELECT CONCAT(cl.nombre,' ',cl.apellido_paterno) AS nombre,
                     COUNT(*) AS ventas,
@@ -827,13 +925,16 @@ class CotizacionModel extends BaseModel
                     cl.ciudad
              FROM cotizaciones co
              JOIN clientes cl ON cl.id = co.cliente_id
-             WHERE co.agente_id = ?
-               AND " . self::ventaConcretadaSql('co') . " {$ramoFilter}
+             WHERE co.agente_id = :agente_id
+               AND " . self::ventaConcretadaSql('co') . " {$ramoFilter}"
+            . $this->sqlEmpresa('co') . "
              GROUP BY co.cliente_id, cl.nombre, cl.apellido_paterno, cl.ciudad
              ORDER BY valor DESC
              LIMIT {$limit}"
         );
-        $stmt->execute($ramo ? [$agenteId, $ramo] : [$agenteId]);
+        $params = ['agente_id' => $agenteId];
+        if ($ramo) { $params['ramo'] = $ramo; }
+        $stmt->execute($this->bindEmpresa($params));
         return array_map(fn($r) => [
             'nombre' => $r['nombre'],
             'ventas' => (int)   $r['ventas'],
@@ -854,29 +955,35 @@ class CotizacionModel extends BaseModel
         // Verificar existencia (el coordinador puede borrar cualquier cotización, 
         // el asesor solo las suyas; si agente_id = 0 se omite el filtro)
         $checkSql = $agenteId > 0
-            ? 'SELECT agente_id FROM cotizaciones WHERE id = ? AND agente_id = ?'
-            : 'SELECT agente_id FROM cotizaciones WHERE id = ?';
-        $checkParams = $agenteId > 0 ? [$id, $agenteId] : [$id];
-        $st = $db->prepare($checkSql);
-        $st->execute($checkParams);
+            ? 'SELECT agente_id FROM cotizaciones WHERE id = :id AND agente_id = :agente_id'
+            : 'SELECT agente_id FROM cotizaciones WHERE id = :id';
+        $checkParams = ['id' => $id];
+        if ($agenteId > 0) { $checkParams['agente_id'] = $agenteId; }
+        $st = $db->prepare($checkSql . $this->sqlEmpresa());
+        $st->execute($this->bindEmpresa($checkParams));
         if (!$st->fetch()) {
             return false;
         }
 
         // Soft-delete de archivos vinculados (para no perder evidencia documental)
         try {
-            $db->prepare('UPDATE cotizacion_archivos SET eliminado_en = NOW() WHERE cotizacion_id = ? AND eliminado_en IS NULL')
-               ->execute([$id]);
+            $db->prepare(
+                'UPDATE cotizacion_archivos SET eliminado_en = NOW()
+                 WHERE cotizacion_id = :id AND eliminado_en IS NULL' . $this->sqlEmpresa()
+            )->execute($this->bindEmpresa(['id' => $id]));
         } catch (\Throwable $e) {}
 
         // Borrar registros relacionados sin soft-delete
         foreach (['cotizacion_detalles', 'cotizacion_pagos'] as $tabla) {
-            try { $db->prepare("DELETE FROM {$tabla} WHERE cotizacion_id = ?")->execute([$id]); } catch (\Throwable $e) {}
+            try {
+                $db->prepare("DELETE FROM {$tabla} WHERE cotizacion_id = :id" . $this->sqlEmpresa())
+                   ->execute($this->bindEmpresa(['id' => $id]));
+            } catch (\Throwable $e) {}
         }
 
         // Borrar la cotización (sin filtro de agente para que coordinador pueda borrar cualquiera)
-        $stmt = $db->prepare('DELETE FROM cotizaciones WHERE id = ?');
-        $stmt->execute([$id]);
+        $stmt = $db->prepare('DELETE FROM cotizaciones WHERE id = :id' . $this->sqlEmpresa());
+        $stmt->execute($this->bindEmpresa(['id' => $id]));
         return $stmt->rowCount() > 0;
     }
 
@@ -891,13 +998,14 @@ class CotizacionModel extends BaseModel
                     cl.telefono AS cliente_telefono
              FROM cotizaciones co
              JOIN clientes cl ON cl.id = co.cliente_id
-             WHERE co.agente_id = ?
+             WHERE co.agente_id = :agente_id
                AND co.fecha_fin_vigencia IS NOT NULL
                AND " . self::ventaConcretadaSql('co') . "
-               AND DATEDIFF(co.fecha_fin_vigencia, CURDATE()) BETWEEN 0 AND ?
+               AND DATEDIFF(co.fecha_fin_vigencia, CURDATE()) BETWEEN 0 AND :dias"
+            . $this->sqlEmpresa('co') . "
              ORDER BY co.fecha_fin_vigencia ASC"
         );
-        $stmt->execute([$agenteId, $dias]);
+        $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId, 'dias' => $dias]));
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
@@ -905,10 +1013,17 @@ class CotizacionModel extends BaseModel
     public function forzarEstado(int $id, string $estado, string $emisionEstado): bool {
         $ok = ['pendiente', 'en_proceso', 'emitida', 'rechazado', 'pagado']; // ← también fix del Bug 2
         if (!in_array($emisionEstado, $ok, true)) return false;
+        // :estado va dos veces con nombres distintos: PDO no admite repetir
+        // un placeholder con nombre dentro de la misma sentencia.
         return $this->db()->prepare(
-            'UPDATE cotizaciones SET estado=?, emision_estado=?,
-             estado_pago = IF(? = \'pagado\', \'confirmado\', \'pendiente\')
-             WHERE id=?'
-        )->execute([$estado, $emisionEstado, $estado, $id]);
+            'UPDATE cotizaciones SET estado=:estado, emision_estado=:emision_estado,
+             estado_pago = IF(:estado2 = \'pagado\', \'confirmado\', \'pendiente\')
+             WHERE id=:id' . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa([
+            'estado'         => $estado,
+            'emision_estado' => $emisionEstado,
+            'estado2'        => $estado,
+            'id'             => $id,
+        ]));
     }
 }

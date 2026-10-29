@@ -5,6 +5,13 @@ declare(strict_types=1);
  * App/Cron/CronMail.php
  * Procesa la cola de emails pendientes en la tabla mail_queue.
  *
+ * ESTRATEGIA DE EMPRESA: GLOBAL (Tenant::sinRestriccion()).
+ *   Es un proceso de infraestructura: vacía la cola de toda la plataforma y
+ *   no crea datos de negocio. Cada correo ya trae su destinatario y su
+ *   empresa_id desde que se encoló; aquí solo se envía y se marca el
+ *   resultado sobre la fila que ya existe. Recorrer empresa por empresa
+ *   abriría una conexión SMTP por empresa sin ganar aislamiento alguno.
+ *
  * HOSTGATOR CRON (cada minuto):
  *   * * * * * /usr/local/bin/php /home2/grupoide/seguroslux.mx/App/Cron/CronMail.php >> /home2/grupoide/seguroslux.mx/logs/cron_mail.log 2>&1
  *
@@ -36,6 +43,7 @@ if (!file_exists($autoload)) {
 }
 require_once $autoload;
 
+use App\Security\Tenant;
 use App\Services\MailQueue;
 
 // ── Log ───────────────────────────────────────────────────────────────────────
@@ -57,7 +65,9 @@ if (file_exists($logFile) && filesize($logFile) > 5 * 1024 * 1024) {
 $start = microtime(true);
 
 try {
-    MailQueue::flush(batchSize: 20);
+    // La cola es de toda la plataforma: se declara explícitamente en vez de
+    // depender de que no haya empresa en contexto.
+    Tenant::sinRestriccion(static fn() => MailQueue::flush(batchSize: 20));
 } catch (\Throwable $e) {
     log_cron_mail('[CronMail] ERROR: ' . $e->getMessage(), $logFile);
     exit(1);

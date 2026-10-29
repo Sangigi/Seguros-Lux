@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Models\NotificacionModel;
+use App\Security\EmpresaPublica;
+use App\Security\Tenant;
 use Database\Connection;
 use PDO;
 
@@ -30,11 +32,29 @@ use PDO;
  *   meta_verify_token       → Token que tú eliges para verificar el webhook
  *   meta_form_ramo_<formId> → (opcional) mapea un form_id de Meta a un ramo
  *                              fijo, ej. meta_form_ramo_123456789 = autos
+ *   meta_form_empresa_<formId> → (opcional) mapea un form_id a la empresa
+ *                              dueña del formulario, por slug o por id.
+ *   meta_page_empresa_<pageId> → (opcional) lo mismo a nivel de página de
+ *                              Facebook, para cuando todos los formularios de
+ *                              una página son de la misma empresa.
+ *
+ * MULTIEMPRESA:
+ *   El webhook de Meta no trae empresa: llega un leadgen_id y nada más. Se
+ *   resuelve antes de tocar la base, siguiendo el patrón del contrato:
+ *     1. identificar el registro por form_id / page_id;
+ *     2. leer su empresa en modo plataforma (las claves meta_* viven en
+ *        empresa_id = 0, son de la plataforma, no de ninguna empresa);
+ *     3. entrar a esa empresa con Tenant::comoEmpresa() y trabajar dentro.
+ *   Si no hay mapeo se usa la empresa por defecto de la plataforma. Nunca se
+ *   crea un lead sin empresa: quedaría invisible para todos.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 class MetaLeadsService
 {
     private const GRAPH_VERSION = 'v21.0';
+
+    /** empresa_id de los ajustes globales de plataforma: claves meta_ y wa_. */
+    private const EMPRESA_PLATAFORMA = 0;
 
     /**
      * Procesa un leadgen_id recibido en el webhook: lo descarga de Graph API,
@@ -61,31 +81,90 @@ class MetaLeadsService
                 return;
             }
 
-            $campos = self::normalizarCampos($datosLead);
-            $ramo   = self::resolverRamo($formId, $campos);
+            // ── Empresa del lead ─────────────────────────────────────────────
+            // Se resuelve antes de entrar: a partir de aquí todo ocurre dentro
+            // de una empresa concreta y lo que se cree queda sellado en ella.
+            $empresaId = self::resolverEmpresa($formId, $pageId);
 
-            if ($campos['nombre'] === '' || ($campos['telefono'] === '' && $campos['correo'] === '')) {
-                error_log("[MetaLeadsService] Lead {$leadgenId} sin nombre/contacto suficiente. Datos: " . json_encode($campos));
-                self::marcarProcesado($leadgenId, $formId, $pageId, 0);
-                return;
-            }
+            Tenant::comoEmpresa($empresaId, static function () use (
+                $datosLead, $leadgenId, $formId, $pageId
+            ): void {
+                $campos = self::normalizarCampos($datosLead);
+                $ramo   = self::resolverRamo($formId, $campos);
 
-            [$clienteId, $agenteId, $esNuevo] = self::guardarEnCRM($campos, $ramo, $leadgenId, $formId);
+                if ($campos['nombre'] === '' || ($campos['telefono'] === '' && $campos['correo'] === '')) {
+                    error_log("[MetaLeadsService] Lead {$leadgenId} sin nombre/contacto suficiente. Datos: " . json_encode($campos));
+                    self::marcarProcesado($leadgenId, $formId, $pageId, 0);
+                    return;
+                }
 
-            self::marcarProcesado($leadgenId, $formId, $pageId, $agenteId);
+                [$clienteId, $agenteId, $esNuevo] = self::guardarEnCRM($campos, $ramo, $leadgenId, $formId);
 
-            if (!$esNuevo || !$agenteId) {
-                // Cliente repetido o sin agentes activos: no se duplican avisos.
-                return;
-            }
+                self::marcarProcesado($leadgenId, $formId, $pageId, $agenteId);
 
-            self::notificarAsesor($agenteId, $campos, $ramo, $clienteId);
-            self::encolarEmailAsesor($agenteId, $campos, $ramo);
-            self::notificarWhatsApp($campos, $ramo, $agenteId);
+                if (!$esNuevo || !$agenteId) {
+                    // Cliente repetido o sin agentes activos: no se duplican avisos.
+                    return;
+                }
+
+                self::notificarAsesor($agenteId, $campos, $ramo, $clienteId);
+                self::encolarEmailAsesor($agenteId, $campos, $ramo);
+                self::notificarWhatsApp($campos, $ramo, $agenteId);
+            });
 
         } catch (\Throwable $e) {
             error_log('[MetaLeadsService] Error procesando lead: ' . $e->getMessage());
         }
+    }
+
+    // ── Empresa dueña del lead ───────────────────────────────────────────────
+
+    /**
+     * A qué empresa pertenece un lead de Meta.
+     *
+     * El formulario de Meta es lo único que identifica al dueño, así que el
+     * mapeo se declara en la configuración de plataforma: primero por form_id
+     * (lo más específico) y, si no hay, por page_id. Lo que se declare se
+     * valida contra `empresas` —puede estar mal escrito o apuntar a una
+     * empresa suspendida— y si nada resuelve cae en la empresa por defecto.
+     */
+    private static function resolverEmpresa(string $formId, string $pageId): int
+    {
+        $candidatos = [];
+        if ($formId !== '') {
+            $candidatos[] = self::config("meta_form_empresa_{$formId}");
+        }
+        if ($pageId !== '') {
+            $candidatos[] = self::config("meta_page_empresa_{$pageId}");
+        }
+
+        foreach ($candidatos as $valor) {
+            $empresaId = self::empresaDeValor($valor);
+            if ($empresaId !== null) {
+                return $empresaId;
+            }
+        }
+
+        return EmpresaPublica::porDefecto();
+    }
+
+    /**
+     * Convierte el valor de un mapeo (id numérico o slug) en una empresa real
+     * y activa. Devuelve null si no resuelve: el valor lo escribe una persona
+     * en el panel y no puede darse por bueno sin comprobarlo.
+     */
+    private static function empresaDeValor(string $valor): ?int
+    {
+        $valor = trim($valor);
+        if ($valor === '') {
+            return null;
+        }
+
+        if (ctype_digit($valor)) {
+            return EmpresaPublica::existeActiva((int) $valor) ? (int) $valor : null;
+        }
+
+        return EmpresaPublica::desdeSlug($valor);
     }
 
     // ── Descarga del lead vía Graph API ───────────────────────────────────────
@@ -198,32 +277,41 @@ class MetaLeadsService
     {
         $db = Connection::getConnection();
 
-        // No duplicar si ya existe el correo o teléfono
+        // Empresa resuelta en procesarLead(); toda esta alta ocurre dentro.
+        $empresaId = Tenant::requireId();
+
+        // No duplicar si ya existe el correo o teléfono EN ESTA EMPRESA. El
+        // mismo contacto en otra empresa es otro cliente: devolver su id aquí
+        // dejaría el lead apuntando a un registro que esta empresa no ve.
         if ($campos['correo'] !== '' || $campos['telefono'] !== '') {
             $st = $db->prepare(
                 'SELECT id, agente_id FROM clientes
-                 WHERE (correo = ? AND correo <> "")
-                    OR (telefono = ? AND telefono <> "")
+                 WHERE ((correo = ? AND correo <> "")
+                    OR (telefono = ? AND telefono <> ""))
+                   AND empresa_id = ?
                  LIMIT 1'
             );
-            $st->execute([$campos['correo'], $campos['telefono']]);
+            $st->execute([$campos['correo'], $campos['telefono'], $empresaId]);
             $existente = $st->fetch(PDO::FETCH_ASSOC);
             if ($existente) {
                 return [(int) $existente['id'], (int) ($existente['agente_id'] ?? 0), false];
             }
         }
 
-        // Agente con menor número de clientes asignados (mismo criterio que
-        // el formulario público propio en VidaSolicitudController).
-        $stA = $db->query(
+        // Agente con menor número de clientes asignados dentro de la empresa
+        // (mismo criterio que el formulario público propio en
+        // VidaSolicitudController). El reparto nunca cruza empresas.
+        $stA = $db->prepare(
             "SELECT a.id
              FROM agentes a
-             LEFT JOIN clientes c ON c.agente_id = a.id
+             LEFT JOIN clientes c ON c.agente_id = a.id AND c.empresa_id = :empresa_cli
              WHERE a.rol = 'asesor' AND COALESCE(a.activo,1) = 1
+               AND a.empresa_id = :empresa
              GROUP BY a.id
              ORDER BY COUNT(c.id) ASC
              LIMIT 1"
         );
+        $stA->execute(['empresa' => $empresaId, 'empresa_cli' => $empresaId]);
         $agRow    = $stA->fetch(PDO::FETCH_ASSOC);
         $agenteId = $agRow ? (int) $agRow['id'] : 0;
 
@@ -250,6 +338,9 @@ class MetaLeadsService
             'estado_cliente'   => 'nuevo',
             'asegurado'        => 'no',
             'origen'           => 'meta_lead_ads',
+            // La empresa va dentro del INSERT: un lead sin empresa no lo vería
+            // nadie, que es exactamente lo que no puede pasar con un lead pagado.
+            'empresa_id'       => $empresaId,
         ];
 
         if ($ramo === 'empresas' && $campos['empresa'] !== '') {
@@ -259,12 +350,14 @@ class MetaLeadsService
         // 'origen' puede no existir en instalaciones antiguas de la tabla.
         try {
             $cols   = implode(', ', array_keys($datos));
+            // $datos lleva empresa_id dentro.
             $places = implode(', ', array_fill(0, count($datos), '?'));
             $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
         } catch (\Throwable $e) {
             error_log('[MetaLeadsService] INSERT clientes falló con origen incluido: ' . $e->getMessage());
             unset($datos['origen']);
             $cols   = implode(', ', array_keys($datos));
+            // El reintento quita 'origen', nunca empresa_id.
             $places = implode(', ', array_fill(0, count($datos), '?'));
             $db->prepare("INSERT INTO clientes ({$cols}) VALUES ({$places})")->execute(array_values($datos));
         }
@@ -292,20 +385,46 @@ class MetaLeadsService
                 ramo            VARCHAR(20)  DEFAULT NULL,
                 cliente_id      INT          DEFAULT NULL,
                 agente_id       INT          DEFAULT NULL,
+                empresa_id      INT          DEFAULT NULL,
                 procesado_en    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_leadgen_id (leadgen_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ");
+
+        // La migración 005 solo añade empresa_id a tablas que ya existían; esta
+        // se crea en caliente, así que la columna se asegura aquí también.
+        try {
+            $chk = $db->prepare(
+                "SELECT 1 FROM information_schema.columns
+                 WHERE table_schema = DATABASE() AND table_name = 'meta_leads' AND column_name = 'empresa_id'"
+            );
+            $chk->execute();
+            if (!$chk->fetch()) {
+                $db->exec('ALTER TABLE meta_leads ADD COLUMN empresa_id INT DEFAULT NULL');
+            }
+        } catch (\Throwable) {}
     }
 
+    /**
+     * Idempotencia del webhook.
+     *
+     * El leadgen_id es único en Meta para toda la plataforma, así que la
+     * comprobación tiene que mirar todas las empresas: si se filtrara por la
+     * empresa activa, un reintento de Meta mal mapeado crearía el mismo lead
+     * otra vez en otra empresa. Además se ejecuta antes de resolver la
+     * empresa, cuando todavía no hay contexto.
+     */
     private static function yaProcesado(string $leadgenId): bool
     {
-        $db = Connection::getConnection();
-        self::asegurarTablaLeads($db);
+        return Tenant::sinRestriccion(static function () use ($leadgenId): bool {
+            $db = Connection::getConnection();
+            self::asegurarTablaLeads($db);
 
-        $st = $db->prepare('SELECT id FROM meta_leads WHERE leadgen_id = ? LIMIT 1');
-        $st->execute([$leadgenId]);
-        return (bool) $st->fetchColumn();
+            // tenant-ok: el leadgen_id es único en toda la plataforma; la idempotencia del webhook no puede ser por empresa
+            $st = $db->prepare('SELECT id FROM meta_leads WHERE leadgen_id = ? LIMIT 1');
+            $st->execute([$leadgenId]);
+            return (bool) $st->fetchColumn();
+        });
     }
 
     private static function marcarProcesado(string $leadgenId, string $formId, string $pageId, int $agenteId): void
@@ -313,10 +432,12 @@ class MetaLeadsService
         $db = Connection::getConnection();
         self::asegurarTablaLeads($db);
 
+        // empresa_id se graba junto al lead: el log histórico de Meta también
+        // es de una empresa concreta, no de la plataforma.
         $db->prepare(
-            'INSERT IGNORE INTO meta_leads (leadgen_id, form_id, page_id, agente_id)
-             VALUES (?, ?, ?, ?)'
-        )->execute([$leadgenId, $formId ?: null, $pageId ?: null, $agenteId ?: null]);
+            'INSERT IGNORE INTO meta_leads (leadgen_id, form_id, page_id, agente_id, empresa_id)
+             VALUES (?, ?, ?, ?, ?)'
+        )->execute([$leadgenId, $formId ?: null, $pageId ?: null, $agenteId ?: null, Tenant::requireId()]);
     }
 
     private static function guardarLogLead(
@@ -328,10 +449,10 @@ class MetaLeadsService
             $db->prepare(
                 'UPDATE meta_leads
                  SET nombre = ?, correo = ?, telefono = ?, ramo = ?, cliente_id = ?, agente_id = ?
-                 WHERE leadgen_id = ?'
+                 WHERE leadgen_id = ? AND empresa_id = ?'
             )->execute([
                 $campos['nombre'] ?: null, $campos['correo'] ?: null, $campos['telefono'] ?: null,
-                $ramo, $clienteId ?: null, $agenteId ?: null, $leadgenId,
+                $ramo, $clienteId ?: null, $agenteId ?: null, $leadgenId, Tenant::requireId(),
             ]);
         } catch (\Throwable $e) {
             error_log('[MetaLeadsService] Error guardando log de lead: ' . $e->getMessage());
@@ -372,8 +493,8 @@ class MetaLeadsService
     {
         try {
             $db = Connection::getConnection();
-            $st = $db->prepare('SELECT nombre, correo FROM agentes WHERE id = ? LIMIT 1');
-            $st->execute([$agenteId]);
+            $st = $db->prepare('SELECT nombre, correo FROM agentes WHERE id = ? AND empresa_id = ? LIMIT 1');
+            $st->execute([$agenteId, Tenant::requireId()]);
             $agente = $st->fetch(PDO::FETCH_ASSOC);
             if (!$agente || empty($agente['correo'])) {
                 return;
@@ -421,8 +542,8 @@ class MetaLeadsService
             $waPid   = self::config('wa_pid');
             $db      = Connection::getConnection();
 
-            $st = $db->prepare('SELECT telefono FROM agentes WHERE id = ? LIMIT 1');
-            $st->execute([$agenteId]);
+            $st = $db->prepare('SELECT telefono FROM agentes WHERE id = ? AND empresa_id = ? LIMIT 1');
+            $st->execute([$agenteId, Tenant::requireId()]);
             $telAsesor = $st->fetchColumn();
 
             if (!$waToken || !$waPid || !$telAsesor) {
@@ -459,11 +580,24 @@ class MetaLeadsService
 
     // ── Config helper (tabla `configuracion`, clave/valor) ────────────────────
 
+    /**
+     * Lee un ajuste de PLATAFORMA (empresa_id = 0).
+     *
+     * Todas las claves que usa este servicio —meta_app_secret,
+     * meta_verify_token, meta_page_access_token, meta_form_*, wa_token,
+     * wa_pid— son de la integración, no de una empresa: hay una sola app de
+     * Meta y un solo número de WhatsApp para toda la plataforma. Por eso se
+     * fija el ámbito explícitamente en vez de depender de la empresa activa:
+     * el webhook llega sin ninguna, y además meta_webhook.php llama a este
+     * método antes de resolver nada para verificar la firma.
+     */
     public static function config(string $clave): string
     {
         try {
-            $st = Connection::getConnection()->prepare('SELECT valor FROM configuracion WHERE clave = ? LIMIT 1');
-            $st->execute([$clave]);
+            $st = Connection::getConnection()->prepare(
+                'SELECT valor FROM configuracion WHERE clave = ? AND empresa_id = ? LIMIT 1'
+            );
+            $st->execute([$clave, self::EMPRESA_PLATAFORMA]);
             $valor = $st->fetchColumn();
             return $valor !== false ? (string) $valor : '';
         } catch (\Throwable $e) {

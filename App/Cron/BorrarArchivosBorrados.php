@@ -7,6 +7,13 @@
  * Solo elimina la carpeta cuando TODOS los archivos de esa cotización
  * ya están en iDrive — si queda alguno pendiente, se omite.
  *
+ * ESTRATEGIA DE EMPRESA: GLOBAL (Tenant::sinRestriccion()).
+ *   Es mantenimiento de disco: recorre las carpetas de uploads/ de toda la
+ *   plataforma y no crea ningún dato de negocio. Lo único que escribe en la
+ *   base es la marca `idrive_borrado` sobre filas que ya existen y ya tienen
+ *   su empresa_id, así que no hay nada que sellar. Las carpetas se nombran
+ *   por cotizacion_id, que es único en toda la plataforma.
+ *
  * HOSTGATOR CRON (una vez al día a las 03:00 AM):
  *   0 3 * * * /usr/local/bin/php /home2/grupoide/public_html/src/Cron/BorrarArchivosBorrados.php
  *
@@ -31,6 +38,7 @@ if (file_exists(PROJECT_ROOT . '/.env.php')) {
 require_once PROJECT_ROOT . '/Core/Autoloader.php';
 
 use App\Models\CotizacionModel;
+use App\Security\Tenant;
 use Database\Connection;
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
@@ -65,77 +73,85 @@ function borrarCarpetaRecursiva(string $dir): bool
 $cotModel = new CotizacionModel();
 $db       = Connection::getConnection();
 
-// Archivos subidos a iDrive hace >24 hrs y aún no marcados como borrados local
-$stmt = $db->query(
-    "SELECT id, cotizacion_id, nombre_archivo
-     FROM cotizacion_archivos
-     WHERE idrive_subido IS NOT NULL
-       AND idrive_borrado IS NULL
-       AND idrive_subido < DATE_SUB(NOW(), INTERVAL 24 HOUR)
-     ORDER BY cotizacion_id ASC"
-);
-$paraBorrar = $stmt->fetchAll();
+// El bloque sin restricción se pide explícitamente y queda acotado aquí: todo
+// lo que sigue recorre la plataforma entera.
+Tenant::sinRestriccion(function () use ($cotModel, $db, $logFile): void {
 
-if (empty($paraBorrar)) {
-    log_msg_bl('Sin carpetas pendientes de borrado local.', $logFile);
-    exit(0);
-}
-
-log_msg_bl('=== INICIO BORRADO LOCAL (' . count($paraBorrar) . ' archivos) ===', $logFile);
-
-// Agrupar por cotizacion_id para borrar carpetas completas de una sola vez
-$porCotizacion = [];
-foreach ($paraBorrar as $arch) {
-    $porCotizacion[(int)$arch['cotizacion_id']][] = $arch;
-}
-
-$carpetasBorradas = 0;
-$errores          = 0;
-
-foreach ($porCotizacion as $cotId => $archivos) {
-    // Verificar que NO queden archivos sin subir a iDrive en esta cotización
-    $chk = $db->prepare(
-        "SELECT COUNT(*) FROM cotizacion_archivos
-         WHERE cotizacion_id = ? AND idrive_subido IS NULL"
+    // Archivos subidos a iDrive hace >24 hrs y aún no marcados como borrados local
+    $stmt = $db->query(
+        // tenant-ok: mantenimiento de disco de toda la plataforma; no crea ni expone datos.
+        "SELECT id, cotizacion_id, nombre_archivo
+         FROM cotizacion_archivos
+         WHERE idrive_subido IS NOT NULL
+           AND idrive_borrado IS NULL
+           AND idrive_subido < DATE_SUB(NOW(), INTERVAL 24 HOUR)
+         ORDER BY cotizacion_id ASC"
     );
-    $chk->execute([$cotId]);
-    $pendientes = (int)$chk->fetchColumn();
+    $paraBorrar = $stmt->fetchAll();
 
-    if ($pendientes > 0) {
-        log_msg_bl(
-            "⏭️  Cotización #{$cotId}: {$pendientes} archivo(s) aún sin subir a iDrive. Omitida.",
-            $logFile
-        );
-        continue;
+    if (empty($paraBorrar)) {
+        log_msg_bl('Sin carpetas pendientes de borrado local.', $logFile);
+        return;
     }
 
-    $carpeta = UPLOADS_ROOT . "/cotizaciones/{$cotId}";
+    log_msg_bl('=== INICIO BORRADO LOCAL (' . count($paraBorrar) . ' archivos) ===', $logFile);
 
-    if (is_dir($carpeta)) {
-        $archivosEnCarpeta = count(array_diff(scandir($carpeta), ['.', '..']));
+    // Agrupar por cotizacion_id para borrar carpetas completas de una sola vez
+    $porCotizacion = [];
+    foreach ($paraBorrar as $arch) {
+        $porCotizacion[(int)$arch['cotizacion_id']][] = $arch;
+    }
 
-        if (borrarCarpetaRecursiva($carpeta)) {
+    $carpetasBorradas = 0;
+    $errores          = 0;
+
+    foreach ($porCotizacion as $cotId => $archivos) {
+        // Verificar que NO queden archivos sin subir a iDrive en esta cotización
+        $chk = $db->prepare(
+            // tenant-ok: la carpeta es física y se borra entera, así que hay que contarlos todos.
+            "SELECT COUNT(*) FROM cotizacion_archivos
+             WHERE cotizacion_id = ? AND idrive_subido IS NULL"
+        );
+        $chk->execute([$cotId]);
+        $pendientes = (int)$chk->fetchColumn();
+
+        if ($pendientes > 0) {
             log_msg_bl(
-                "🗑️  Carpeta borrada: uploads/cotizaciones/{$cotId}/ ({$archivosEnCarpeta} archivo(s))",
+                "⏭️  Cotización #{$cotId}: {$pendientes} archivo(s) aún sin subir a iDrive. Omitida.",
                 $logFile
             );
-            $carpetasBorradas++;
-        } else {
-            log_msg_bl("⚠️  No se pudo borrar: uploads/cotizaciones/{$cotId}/", $logFile);
-            $errores++;
-            continue; // No marcar como borrado si falló el rmdir
+            continue;
         }
-    } else {
-        log_msg_bl("ℹ️  Carpeta ya no existe: uploads/cotizaciones/{$cotId}/", $logFile);
+
+        $carpeta = UPLOADS_ROOT . "/cotizaciones/{$cotId}";
+
+        if (is_dir($carpeta)) {
+            $archivosEnCarpeta = count(array_diff(scandir($carpeta), ['.', '..']));
+
+            if (borrarCarpetaRecursiva($carpeta)) {
+                log_msg_bl(
+                    "🗑️  Carpeta borrada: uploads/cotizaciones/{$cotId}/ ({$archivosEnCarpeta} archivo(s))",
+                    $logFile
+                );
+                $carpetasBorradas++;
+            } else {
+                log_msg_bl("⚠️  No se pudo borrar: uploads/cotizaciones/{$cotId}/", $logFile);
+                $errores++;
+                continue; // No marcar como borrado si falló el rmdir
+            }
+        } else {
+            log_msg_bl("ℹ️  Carpeta ya no existe: uploads/cotizaciones/{$cotId}/", $logFile);
+        }
+
+        // Marcar todos los archivos de esta cotización como borrados localmente.
+        // Es un UPDATE por id sobre filas que ya existen: no hay empresa que sellar.
+        foreach ($archivos as $arch) {
+            $cotModel->marcarBorradoLocal((int)$arch['id']);
+        }
     }
 
-    // Marcar todos los archivos de esta cotización como borrados localmente
-    foreach ($archivos as $arch) {
-        $cotModel->marcarBorradoLocal((int)$arch['id']);
-    }
-}
-
-log_msg_bl(
-    "=== FIN: {$carpetasBorradas} carpeta(s) borrada(s), {$errores} error(es) ===",
-    $logFile
-);
+    log_msg_bl(
+        "=== FIN: {$carpetasBorradas} carpeta(s) borrada(s), {$errores} error(es) ===",
+        $logFile
+    );
+});

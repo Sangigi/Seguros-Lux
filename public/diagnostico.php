@@ -1,10 +1,23 @@
 <?php
-$claveAcceso = 'diag_lux_2025';
-if (($_GET['clave'] ?? '') !== $claveAcceso) {
-    http_response_code(403);
-    echo 'Acceso denegado. Usa: diagnostico.php?clave=diag_lux_2025';
-    exit;
-}
+declare(strict_types=1);
+
+/**
+ * Diagnóstico del webhook de Meta Lead Ads.
+ *
+ * Esta página vuelca tokens, logs del webhook y registros de la base, así que
+ * es material para el dueño de la plataforma y para nadie más.
+ *
+ * Antes se protegía con una clave fija en el código —y el propio mensaje de
+ * error la publicaba: «Usa: diagnostico.php?clave=…»—, de modo que cualquiera
+ * que diera con la URL entraba. Ahora exige dos cosas, y las dos a la vez:
+ *
+ *   1. DIAGNOSTICO_HABILITADO=1 en el entorno. En producción se deja apagada,
+ *      y entonces la página no existe para nadie.
+ *   2. Sesión iniciada con rol `propietario`. No hay clave que filtrar, se
+ *      reutiliza el login que ya existe.
+ *
+ * Ante el fallo responde 404, no 403: un 403 confirma que el archivo está ahí.
+ */
 
 $projectRoot = dirname(__DIR__);
 if (is_file($projectRoot . '/.env.php')) {
@@ -17,7 +30,27 @@ if (file_exists($projectRoot . '/Core/Autoloader.php')) {
     require_once $projectRoot . '/Core/Autoloader.php';
 }
 
+use App\Security\Roles;
+use App\Security\Tenant;
 use App\Services\MetaLeadsService;
+
+$diagNoExiste = static function (): never {
+    http_response_code(404);
+    echo 'Not Found';
+    exit;
+};
+
+if (!filter_var(getenv('DIAGNOSTICO_HABILITADO') ?: '0', FILTER_VALIDATE_BOOLEAN)) {
+    $diagNoExiste();
+}
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+if ((string) ($_SESSION['agente_rol'] ?? '') !== Roles::PROPIETARIO) {
+    $diagNoExiste();
+}
 
 header('Content-Type: text/plain; charset=utf-8');
 echo "=== Diagnóstico Meta Lead Ads Webhook ===\n";
@@ -116,8 +149,11 @@ echo "\n";
 echo "--- Base de datos ---\n";
 try {
     $db = \Database\Connection::getConnection();
+    // tenant-ok: SELECT VERSION() no toca ninguna tabla; el auditor lo asocia
+    // por cercanía con la consulta de abajo
     echo "Conexión: OK (MySQL " . $db->query('SELECT VERSION()')->fetchColumn() . ")\n";
 
+    // tenant-ok: diagnóstico de plataforma, restringido al propietario arriba
     $claves = $db->query("SELECT clave, LEFT(valor,30) as preview FROM configuracion WHERE clave LIKE 'meta_%'")->fetchAll(\PDO::FETCH_ASSOC);
     echo "Claves meta_* en configuracion:\n";
     foreach ($claves as $row) {
@@ -126,9 +162,11 @@ try {
     if (empty($claves)) echo "  (ninguna — tokens solo en .env.php)\n";
 
     try {
+        // tenant-ok: diagnóstico de plataforma, restringido al propietario arriba
         $count = $db->query('SELECT COUNT(*) FROM meta_leads')->fetchColumn();
         echo "\nmeta_leads: {$count} registro(s)\n";
         if ($count > 0) {
+            // tenant-ok: diagnóstico de plataforma, restringido al propietario arriba
             $recientes = $db->query('SELECT * FROM meta_leads ORDER BY id DESC LIMIT 5')->fetchAll(\PDO::FETCH_ASSOC);
             foreach ($recientes as $r) {
                 echo "  [{$r['procesado_en']}] leadgen_id={$r['leadgen_id']} nombre={$r['nombre']}\n";

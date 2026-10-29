@@ -13,9 +13,10 @@ if (SessionManager::isAdmin()) {
     exit;
 }
 
-$agenteId = SessionManager::getAgentId();
-$agente   = SessionManager::getAgentData();
-$ramo     = SessionManager::getRamo();
+$agenteId  = SessionManager::getAgentId();
+$agente    = SessionManager::getAgentData();
+$ramo      = SessionManager::getRamo();
+$empresaId = \App\Security\Tenant::requireId();
 
 $clienteModel    = new ClientModel();
 $cotizacionModel = new CotizacionModel();
@@ -41,8 +42,8 @@ $conteos_ramo           = $cotizacionModel->contarPorRamo($agenteId);
 // ── Números ATC ───────────────────────────────────────────────────────────
 $atc_numeros = [];
 $db          = Connection::getConnection();
-$stmtAtc     = $db->query("SELECT clave, valor FROM configuracion WHERE clave LIKE 'atc_%' ORDER BY clave");
-if ($stmtAtc) {
+$stmtAtc     = $db->prepare("SELECT clave, valor FROM configuracion WHERE clave LIKE 'atc_%' AND empresa_id = ? ORDER BY clave");
+if ($stmtAtc && $stmtAtc->execute([$empresaId])) {
     $atc_raw = array_column($stmtAtc->fetchAll(), 'valor', 'clave');
     for ($i = 1; $i <= 3; $i++) {
         $num = $atc_raw["atc_numero_{$i}"] ?? '';

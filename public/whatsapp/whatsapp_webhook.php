@@ -139,11 +139,39 @@ if (!is_file($waEnvFile)) {
     exit;
 }
 
-// ── 7. Procesar mensaje con el bot ────────────────────────────────────────────
-// $payload y $value quedan en scope para WhatsAppBot.php
-require_once WA_PROJECT_ROOT . '/App/Controllers/WhatsAppBot.php';
+// ── 7. Resolver a qué empresa pertenece este número ───────────────────────────
+// Meta identifica el número que recibió el mensaje con `phone_number_id`. Es
+// lo único del payload que dice de quién es la conversación, así que de ahí
+// sale la empresa. Si no se puede resolver, NO se procesa: un mensaje
+// atribuido a la empresa equivocada es peor que un mensaje perdido, y crear el
+// cliente "sin empresa" lo dejaría invisible para todos.
+$waPhoneId = (string) ($value['metadata']['phone_number_id'] ?? '');
+$waEmpresa = $waPhoneId !== ''
+    ? (new App\Models\EmpresaModel())->porCanal('whatsapp', $waPhoneId)
+    : null;
 
-// ── 8. Respuesta 200 obligatoria (Meta requiere respuesta en < 20 s) ──────────
+if ($waEmpresa === null) {
+    error_log('whatsapp_webhook: phone_number_id sin empresa registrada: ' . $waPhoneId);
+    $waWebhookLog("ERROR: phone_number_id [{$waPhoneId}] no está dado de alta en empresa_canales\n\n");
+
+    // 200 igualmente: Meta reintenta ante cualquier otro código y acabaría
+    // marcando el webhook como caído por un problema de configuración nuestro.
+    http_response_code(200);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+// ── 8. Procesar mensaje con el bot, dentro de su empresa ──────────────────────
+// $payload y $value quedan en scope para WhatsAppBot.php
+App\Security\Tenant::comoEmpresa($waEmpresa, static function () use ($payload, $value, $waPhoneId): void {
+    // El bot responde por el número que recibió el mensaje, no por el del
+    // .env: cada empresa tiene el suyo.
+    $waPhoneIdEntrante = $waPhoneId;
+
+    require_once WA_PROJECT_ROOT . '/App/Controllers/WhatsAppBot.php';
+});
+
+// ── 9. Respuesta 200 obligatoria (Meta requiere respuesta en < 20 s) ──────────
 http_response_code(200);
 echo json_encode(['ok' => true]);
 exit;

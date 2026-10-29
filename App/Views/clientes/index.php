@@ -17,6 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $agenteId      = SessionManager::getAgentId();
+$empresaId     = \App\Security\Tenant::requireId();
 $ramo          = SessionManager::getRamo(); // null = todos los ramos
 $clienteModel  = new ClientModel();
 $citaModel     = new CitaModel();
@@ -54,8 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         if (!$clienteId || !$fecha || !$hora) { echo json_encode(['ok'=>false,'msg'=>'Faltan campos.']); exit; }
         // Límite: máx 20 citas por cliente (anti-spam)
         $db_citas = \Database\Connection::getConnection();
-        $stCount = $db_citas->prepare('SELECT COUNT(*) FROM citas WHERE cliente_id = ?');
-        $stCount->execute([$clienteId]);
+        $stCount = $db_citas->prepare('SELECT COUNT(*) FROM citas WHERE cliente_id = ? AND empresa_id = ?');
+        $stCount->execute([$clienteId, $empresaId]);
         if ((int)$stCount->fetchColumn() >= 20) {
             echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene 20 citas registradas (límite máximo).']); exit;
         }
@@ -134,19 +135,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['accion'])) {
             $input['giro_empresa'],   $input['num_empleados'],    $input['facturacion_anual'],
             $input['calle'],          $input['colonia'],          $input['estado'],
             $input['codigo_postal'],  $input['fecha_cita'],       $input['hora_cita'],
-            $agenteId,
+            $agenteId,                $empresaId,
         ];
         try {
             // Intento con 'origen' (para el reporte de landing vs. alta manual)
             $db->prepare(
-                "INSERT INTO clientes {$sqlBase}, origen)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo','manual')"
+                "INSERT INTO clientes {$sqlBase}, empresa_id, origen)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo',?,'manual')"
             )->execute($valsBase);
         } catch (\Throwable $e) {
             // 'origen' puede no existir en instalaciones antiguas de la tabla.
             $db->prepare(
-                "INSERT INTO clientes {$sqlBase})
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo')"
+                "INSERT INTO clientes {$sqlBase}, empresa_id)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'nuevo',?)"
             )->execute($valsBase);
         }
         $nuevoId = (int) $db->lastInsertId();
@@ -180,7 +181,8 @@ if ($esCoordinador && isset($_GET['asesor_id']) && $_GET['asesor_id'] !== 'todos
 }
 
 if ($esCoordinador) {
-    // Coordinador: ve TODOS los clientes, con info del asesor asignado
+    // Coordinador: ve TODOS los clientes de SU empresa, con info del asesor
+    // asignado. El filtro por agente desaparece; el de empresa nunca.
     $agenteWhere = '';
     $agenteParam = [];
     if ($filtroAsesorId) {
@@ -198,17 +200,19 @@ if ($esCoordinador) {
                 CONCAT(a.nombre,' ',COALESCE(a.apellido,'')) AS asesor_nombre
          FROM clientes c
          LEFT JOIN agentes a ON a.id = c.agente_id
-         WHERE 1=1 {$ramoWhere} {$agenteWhere}
+         WHERE c.empresa_id = ? {$ramoWhere} {$agenteWhere}
          ORDER BY c.fecha_registro DESC"
     );
-    $stmt->execute(array_merge($ramoParam, $agenteParam));
+    $stmt->execute(array_merge([$empresaId], $ramoParam, $agenteParam));
 
     // Lista de asesores para filtro dropdown
-    $stAsesores = $db->query(
+    $stAsesores = $db->prepare(
         "SELECT id, CONCAT(nombre,' ',COALESCE(apellido,'')) AS nombre_completo
          FROM agentes WHERE rol IN ('asesor','agente') AND COALESCE(activo,1)=1
+           AND empresa_id = ?
          ORDER BY nombre ASC"
     );
+    $stAsesores->execute([$empresaId]);
     $listaAsesores = $stAsesores->fetchAll(\PDO::FETCH_ASSOC);
 
 } else {
@@ -222,10 +226,10 @@ if ($esCoordinador) {
                 c.asegurado, c.estado_cliente, c.fecha_registro,
                 '' AS asesor_nombre
          FROM clientes c
-         WHERE c.agente_id = ? {$ramoWhere}
+         WHERE c.agente_id = ? AND c.empresa_id = ? {$ramoWhere}
          ORDER BY c.nombre ASC, c.apellido_paterno ASC"
     );
-    $stmt->execute(array_merge([$agenteId], $ramoParam));
+    $stmt->execute(array_merge([$agenteId, $empresaId], $ramoParam));
     $listaAsesores = [];
 }
 
@@ -257,14 +261,15 @@ $estados_cliente = [
 
 // Conteos por ramo (según modo)
 if ($esCoordinador) {
-    $ramoCountStmt = $db->query(
-        "SELECT ramo, COUNT(*) AS total FROM clientes GROUP BY ramo"
+    $ramoCountStmt = $db->prepare(
+        "SELECT ramo, COUNT(*) AS total FROM clientes WHERE empresa_id = ? GROUP BY ramo"
     );
+    $ramoCountStmt->execute([$empresaId]);
 } else {
     $ramoCountStmt = $db->prepare(
-        "SELECT ramo, COUNT(*) AS total FROM clientes WHERE agente_id = ? GROUP BY ramo"
+        "SELECT ramo, COUNT(*) AS total FROM clientes WHERE agente_id = ? AND empresa_id = ? GROUP BY ramo"
     );
-    $ramoCountStmt->execute([$agenteId]);
+    $ramoCountStmt->execute([$agenteId, $empresaId]);
 }
 $ramoConteos = array_column($ramoCountStmt->fetchAll(\PDO::FETCH_ASSOC), 'total', 'ramo');
 

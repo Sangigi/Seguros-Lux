@@ -31,9 +31,11 @@ class ConfigControllerTest extends TestCase
             )
         ");
         $this->pdo->exec("DELETE FROM configuracion WHERE clave LIKE 'atc_%' OR clave LIKE 'test_%'");
-        $this->pdo->exec("INSERT INTO configuracion (clave,valor,descripcion)
-                          VALUES ('atc_tiempo_espera','5','Tiempo espera'),
-                                 ('atc_max_citas','10','Max citas')");
+        // Con empresa explícita: `configuracion.empresa_id` es NOT NULL y los
+        // ajustes se leen siempre dentro de una empresa.
+        $this->pdo->exec("INSERT INTO configuracion (empresa_id,clave,valor,descripcion)
+                          VALUES (1,'atc_tiempo_espera','5','Tiempo espera'),
+                                 (1,'atc_max_citas','10','Max citas')");
 
         unset($_GET['grupo']);
         $_SERVER['REQUEST_METHOD'] = 'GET';
@@ -100,14 +102,19 @@ class ConfigControllerTest extends TestCase
         // Override file_get_contents for php://input via bootstrap trick
         // La manera más limpia es probar el resultado vía BD directamente
         // simulando lo que haría el controller
+        // `clave` ya no es única global: lo es por (empresa_id, clave), para
+        // que dos empresas puedan tener la misma clave con valores distintos.
+        // El conflicto se resuelve sobre ese par, no sobre la clave sola.
         $stmt = $this->pdo->prepare(
-            "INSERT INTO configuracion (clave, valor, descripcion)
-             VALUES (?,?,?)
-             ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor, descripcion=excluded.descripcion"
+            "INSERT INTO configuracion (empresa_id, clave, valor, descripcion)
+             VALUES (?,?,?,?)
+             ON CONFLICT(empresa_id, clave) DO UPDATE SET valor=excluded.valor, descripcion=excluded.descripcion"
         );
-        $stmt->execute(['test_clave1', 'valor1', 'desc1']);
+        $stmt->execute([1, 'test_clave1', 'valor1', 'desc1']);
 
-        $row = $this->pdo->query("SELECT valor FROM configuracion WHERE clave='test_clave1'")->fetchColumn();
+        $row = $this->pdo->query(
+            "SELECT valor FROM configuracion WHERE clave='test_clave1' AND empresa_id=1"
+        )->fetchColumn();
         $this->assertSame('valor1', $row);
 
         if (isset($tmp) && file_exists($tmp)) unlink($tmp);

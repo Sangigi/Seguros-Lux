@@ -236,16 +236,11 @@ final class SessionManagerTest extends TestCase
      */
     public function testJerarquiaDeRolesEsCorrecta(): void
     {
-        $ref     = new \ReflectionMethod(SessionManager::class, 'requireRole');
-        $src     = file_get_contents(
-            (new \ReflectionClass(SessionManager::class))->getFileName()
-        );
-
-        // Extraer el array $jerarquia del código fuente y evaluarlo
-        preg_match('/\$jerarquia\s*=\s*(\[.*?\]);/s', $src, $m);
-        $this->assertNotEmpty($m, 'No se encontró el array $jerarquia en SessionManager');
-
-        eval('$jerarquia = ' . $m[1] . ';');
+        // La jerarquía vivía en un array local dentro de requireRole(), y esta
+        // prueba la sacaba del código fuente con una expresión regular y un
+        // eval(). Ahora es Roles::NIVELES, así que se lee la constante: la
+        // prueba comprueba la jerarquía de verdad, no cómo está escrita.
+        $jerarquia = \App\Security\Roles::NIVELES;
 
         // Verificar la jerarquía esperada
         $this->assertSame(1, $jerarquia['asesor']);
@@ -253,6 +248,8 @@ final class SessionManagerTest extends TestCase
         $this->assertSame(2, $jerarquia['coordinador']);
         $this->assertSame(2, $jerarquia['administrador']);
         $this->assertSame(3, $jerarquia['superadmin']);
+        // El propietario de la plataforma está por encima de todos.
+        $this->assertSame(4, $jerarquia['propietario']);
 
         // asesor NO puede requerir rol coordinador
         $this->assertLessThan($jerarquia['coordinador'], $jerarquia['asesor']);

@@ -40,8 +40,12 @@ class PolizaModel extends BaseModel
     public function marcarPagada(int $polizaId): void
     {
         $this->db()->prepare(
-            "UPDATE polizas SET notas = CONCAT(IFNULL(notas,''), ?) WHERE id = ?"
-        )->execute(["\n[" . date('Y-m-d H:i') . "] Pago confirmado por coordinador.", $polizaId]);
+            "UPDATE polizas SET notas = CONCAT(IFNULL(notas,''), :nota) WHERE id = :id"
+            . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa([
+            'nota' => "\n[" . date('Y-m-d H:i') . "] Pago confirmado por coordinador.",
+            'id'   => $polizaId,
+        ]));
     }
 
     // ── Obtener todas del agente ─────────────────────────────────────────────
@@ -53,12 +57,12 @@ class PolizaModel extends BaseModel
                        DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes
                 FROM polizas p
                 JOIN clientes c ON c.id = p.cliente_id
-                WHERE p.agente_id = ?
-                  AND p.eliminado_en IS NULL
+                WHERE p.agente_id = :agente_id
+                  AND p.eliminado_en IS NULL' . $this->sqlEmpresa('p') . '
                 ORDER BY p.fecha_fin ASC';
-                
+
         $st = $this->db()->prepare($sql);
-        $st->execute([$agenteId]);
+        $st->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
@@ -70,11 +74,11 @@ class PolizaModel extends BaseModel
                     DATEDIFF(p.fecha_fin, CURDATE())        AS dias_restantes
              FROM   polizas p
              JOIN   clientes c ON c.id = p.cliente_id
-             WHERE  p.agente_id = ?
-               AND  p.eliminado_en IS NULL
+             WHERE  p.agente_id = :agente_id
+               AND  p.eliminado_en IS NULL' . $this->sqlEmpresa('p') . '
              ORDER  BY p.fecha_fin ASC'
         );
-        $st->execute([$agenteId]);
+        $st->execute($this->bindEmpresa(['agente_id' => $agenteId]));
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
@@ -99,11 +103,11 @@ class PolizaModel extends BaseModel
              LEFT JOIN cotizaciones                cot ON cot.id  = p.cotizacion_id
              LEFT JOIN cotizacion_comprobantes_pago ccp ON ccp.cotizacion_id = p.cotizacion_id AND ccp.eliminado_en IS NULL
              LEFT JOIN cotizacion_pagos             cp  ON cp.cotizacion_id  = p.cotizacion_id
-             WHERE  p.cliente_id = ?
-               AND  p.eliminado_en IS NULL
+             WHERE  p.cliente_id = :cliente_id
+               AND  p.eliminado_en IS NULL' . $this->sqlEmpresa('p') . '
              ORDER  BY p.fecha_fin ASC'
         );
-        $st->execute([$clienteId]);
+        $st->execute($this->bindEmpresa(['cliente_id' => $clienteId]));
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
@@ -111,9 +115,11 @@ class PolizaModel extends BaseModel
     {
         $st = $this->db()->prepare(
             'SELECT p.*, DATEDIFF(p.fecha_fin, CURDATE()) AS dias_restantes
-             FROM polizas p WHERE p.id = ? AND p.agente_id = ? AND p.eliminado_en IS NULL'
+             FROM polizas p
+             WHERE p.id = :id AND p.agente_id = :agente_id AND p.eliminado_en IS NULL'
+            . $this->sqlEmpresa('p')
         );
-        $st->execute([$id, $agenteId]);
+        $st->execute($this->bindEmpresa(['id' => $id, 'agente_id' => $agenteId]));
         return $st->fetch(\PDO::FETCH_ASSOC) ?: null;
     }
 
@@ -124,37 +130,45 @@ class PolizaModel extends BaseModel
         $allow  = ['compania','numero_poliza','fecha_inicio','fecha_fin','frecuencia_renovacion','notas','estado'];
         foreach ($allow as $f) {
             if (array_key_exists($f, $data)) {
-                $campos[] = "`{$f}` = ?";
-                $vals[]   = $data[$f];
+                $campos[]  = "`{$f}` = :{$f}";
+                $vals[$f]  = $data[$f];
             }
         }
         if (empty($campos)) return false;
-        $vals[] = $id;
-        $vals[] = $agenteId;
-        $st = $this->db()->prepare('UPDATE polizas SET ' . implode(', ', $campos) . ' WHERE id = ? AND agente_id = ?');
-        return $st->execute($vals);
+        $vals['__id']     = $id;
+        $vals['__agente'] = $agenteId;
+        $st = $this->db()->prepare(
+            'UPDATE polizas SET ' . implode(', ', $campos)
+            . ' WHERE id = :__id AND agente_id = :__agente' . $this->sqlEmpresa()
+        );
+        return $st->execute($this->bindEmpresa($vals));
     }
 
     public function eliminar(int $id, int $agenteId): bool
     {
-        $st = $this->db()->prepare('UPDATE polizas SET eliminado_en = NOW() WHERE id = ? AND agente_id = ?');
-        return $st->execute([$id, $agenteId]);
+        $st = $this->db()->prepare(
+            'UPDATE polizas SET eliminado_en = NOW() WHERE id = :id AND agente_id = :agente_id'
+            . $this->sqlEmpresa()
+        );
+        return $st->execute($this->bindEmpresa(['id' => $id, 'agente_id' => $agenteId]));
     }
 
     // ── Restaurar póliza eliminada (I2) ──────────────────────────────────────
     public function restaurar(int $id): bool
     {
         $st = $this->db()->prepare(
-            'UPDATE polizas SET eliminado_en = NULL WHERE id = ?'
+            'UPDATE polizas SET eliminado_en = NULL WHERE id = :id' . $this->sqlEmpresa()
         );
-        return $st->execute([$id]) && $st->rowCount() > 0;
+        return $st->execute($this->bindEmpresa(['id' => $id])) && $st->rowCount() > 0;
     }
 
     // ── iDrive ───────────────────────────────────────────────────────────────
     public function marcarIdrive(int $id, string $key): void
     {
-        $this->db()->prepare('UPDATE polizas SET idrive_key = ?, idrive_subido = 1 WHERE id = ?')
-                   ->execute([$key, $id]);
+        $this->db()->prepare(
+            'UPDATE polizas SET idrive_key = :key, idrive_subido = 1 WHERE id = :id'
+            . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['key' => $key, 'id' => $id]));
     }
 
     // ── Notificaciones de renovación ─────────────────────────────────────────
@@ -169,25 +183,28 @@ class PolizaModel extends BaseModel
                AND  p.eliminado_en IS NULL
                AND  p.estado IN ('vigente','por_vencer')
                AND  DATEDIFF(p.fecha_fin, CURDATE()) BETWEEN 0 AND 30
-               AND  p.renovacion_notificada = 0"
+               AND  p.renovacion_notificada = 0" . $this->sqlEmpresa('p')
         );
-        $st->execute();
+        $st->execute($this->bindEmpresa());
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     public function marcarNotificada(int $id): void
     {
-        $this->db()->prepare('UPDATE polizas SET renovacion_notificada = 1, estado = "por_vencer" WHERE id = ?')
-                   ->execute([$id]);
+        $this->db()->prepare(
+            'UPDATE polizas SET renovacion_notificada = 1, estado = "por_vencer" WHERE id = :id'
+            . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa(['id' => $id]));
     }
 
     public function actualizarEstadosVencidos(): void
     {
-        $this->db()->exec(
+        // Con prepare() en vez de exec() para poder enlazar el filtro de empresa.
+        $this->db()->prepare(
             "UPDATE polizas SET estado = 'vencida'
              WHERE fecha_fin < CURDATE()
                AND estado NOT IN ('vencida','cancelada')
-               AND eliminado_en IS NULL"
-        );
+               AND eliminado_en IS NULL" . $this->sqlEmpresa()
+        )->execute($this->bindEmpresa());
     }
 }

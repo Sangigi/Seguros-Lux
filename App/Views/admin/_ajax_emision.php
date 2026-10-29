@@ -10,6 +10,11 @@
 
 use App\Models\NotificacionModel;
 
+// Empresa activa: toda consulta de este manejador se acota a ella.
+// Se resuelve aquí y no se hereda del scope padre, para que el partial siga
+// filtrando aunque se incluya desde otro sitio.
+$empresaId = \App\Security\Tenant::requireId();
+
 $accion = $_POST['accion'] ?? '';
 
 switch ($accion) {
@@ -26,19 +31,19 @@ switch ($accion) {
              FROM cotizaciones c
              JOIN clientes cl ON cl.id = c.cliente_id
              JOIN agentes   a ON a.id  = c.agente_id
-             WHERE c.id = ?"
+             WHERE c.id = ? AND c.empresa_id = ?"
         );
-        $st->execute([$cotId]);
+        $st->execute([$cotId, $empresaId]);
         $cot = $st->fetch(\PDO::FETCH_ASSOC);
         if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
 
         $stDocs = $db->prepare(
             "SELECT tipo_documento, nombre_original, nombre_archivo, subido_en, idrive_subido, idrive_borrado
              FROM cotizacion_archivos
-             WHERE cotizacion_id = ? AND eliminado_en IS NULL
+             WHERE cotizacion_id = ? AND empresa_id = ? AND eliminado_en IS NULL
              ORDER BY subido_en ASC"
         );
-        $stDocs->execute([$cotId]);
+        $stDocs->execute([$cotId, $empresaId]);
         $archivos = $stDocs->fetchAll(\PDO::FETCH_ASSOC);
 
         $docs = array_map(function ($a) use ($cotId) {
@@ -71,10 +76,10 @@ switch ($accion) {
             "SELECT tipo_documento, nombre_original, nombre_archivo, cotizacion_id,
                     ruta, idrive_subido, idrive_borrado
              FROM cotizacion_archivos
-             WHERE cotizacion_id = ? AND eliminado_en IS NULL
+             WHERE cotizacion_id = ? AND empresa_id = ? AND eliminado_en IS NULL
              ORDER BY subido_en ASC"
         );
-        $stDocs->execute([$cotId]);
+        $stDocs->execute([$cotId, $empresaId]);
         $docs = $stDocs->fetchAll(\PDO::FETCH_ASSOC);
 
         // Añadir alias archivo_relative para la URL
@@ -87,11 +92,11 @@ switch ($accion) {
         $stCk = $db->prepare(
             "SELECT doc_tipo, estado, nota
              FROM emi_checklist
-             WHERE cotizacion_id = ?
+             WHERE cotizacion_id = ? AND empresa_id = ?
              ORDER BY actualizado_en DESC"
         );
         try {
-            $stCk->execute([$cotId]);
+            $stCk->execute([$cotId, $empresaId]);
             $checklist = $stCk->fetchAll(\PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
             // Si la tabla no existe aún, devolver vacío
@@ -102,10 +107,10 @@ switch ($accion) {
         $stComp = $db->prepare(
             "SELECT id, nombre_archivo, nombre_original, metodo_pago, monto
              FROM cotizacion_comprobantes_pago
-             WHERE cotizacion_id = ? AND eliminado_en IS NULL
+             WHERE cotizacion_id = ? AND empresa_id = ? AND eliminado_en IS NULL
              ORDER BY creado_en DESC LIMIT 1"
         );
-        $stComp->execute([$cotId]);
+        $stComp->execute([$cotId, $empresaId]);
         $comprobante = $stComp->fetch(\PDO::FETCH_ASSOC);
 
         // Si hay comprobante del coordinador, incluirlo como doc virtual para el checklist
@@ -126,12 +131,12 @@ switch ($accion) {
             if (!$yaMarcado) {
                 try {
                     $db->prepare(
-                        "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en)
-                         VALUES (?,?,?,?,NOW())
+                        "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en, empresa_id)
+                         VALUES (?,?,?,?,NOW(),?)
                          ON DUPLICATE KEY UPDATE estado='ok', nota='Comprobante subido por coordinador', actualizado_en=NOW()"
-                    )->execute([$cotId, 'comprobante_pago', 'ok', 'Comprobante subido por coordinador']);
+                    )->execute([$cotId, 'comprobante_pago', 'ok', 'Comprobante subido por coordinador', $empresaId]);
                     // Recargar checklist
-                    $stCk->execute([$cotId]);
+                    $stCk->execute([$cotId, $empresaId]);
                     $checklist = $stCk->fetchAll(\PDO::FETCH_ASSOC);
                 } catch (\Throwable $e) {
                     error_log('[emi_get_checklist auto-mark] ' . $e->getMessage());
@@ -157,10 +162,10 @@ switch ($accion) {
 
         try {
             $db->prepare(
-                "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en)
-                 VALUES (?,?,?,?,NOW())
+                "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en, empresa_id)
+                 VALUES (?,?,?,?,NOW(),?)
                  ON DUPLICATE KEY UPDATE estado=VALUES(estado), nota=VALUES(nota), actualizado_en=NOW()"
-            )->execute([$cotId, $tipo, $estado, $nota ?: null]);
+            )->execute([$cotId, $tipo, $estado, $nota ?: null, $empresaId]);
             echo json_encode(['ok'=>true]);
         } catch (\Throwable $e) {
             // Si la tabla no existe, intentar crearla
@@ -173,14 +178,16 @@ switch ($accion) {
                         estado          ENUM('pendiente','ok','rechazado') DEFAULT 'pendiente',
                         nota            TEXT,
                         actualizado_en  DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE KEY uq_cot_tipo (cotizacion_id, doc_tipo)
+                        empresa_id      INT DEFAULT NULL,
+                        UNIQUE KEY uq_cot_tipo (cotizacion_id, doc_tipo),
+                        KEY idx_emp_cot (empresa_id, cotizacion_id)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
                 );
                 $db->prepare(
-                    "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en)
-                     VALUES (?,?,?,?,NOW())
+                    "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en, empresa_id)
+                     VALUES (?,?,?,?,NOW(),?)
                      ON DUPLICATE KEY UPDATE estado=VALUES(estado), nota=VALUES(nota), actualizado_en=NOW()"
-                )->execute([$cotId, $tipo, $estado, $nota ?: null]);
+                )->execute([$cotId, $tipo, $estado, $nota ?: null, $empresaId]);
                 echo json_encode(['ok'=>true]);
             } catch (\Throwable $e2) {
                 echo json_encode(['ok'=>false,'msg'=>'Error BD: '.$e2->getMessage()]);
@@ -194,15 +201,15 @@ switch ($accion) {
         $cotId = (int)($_POST['cotizacion_id'] ?? 0);
         if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
 
-        $db->prepare("UPDATE cotizaciones SET emision_estado='en_proceso' WHERE id=?")
-           ->execute([$cotId]);
+        $db->prepare("UPDATE cotizaciones SET emision_estado='en_proceso' WHERE id=? AND empresa_id=?")
+           ->execute([$cotId, $empresaId]);
 
         // Registrar en historial
         try {
             $db->prepare(
-                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id)
-                 VALUES (?,?,?,?,?)"
-            )->execute([$agenteId, 'emision', '📋 Caso tomado', 'El coordinador tomó el caso para procesarlo.', $cotId]);
+                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id, empresa_id)
+                 VALUES (?,?,?,?,?,?)"
+            )->execute([$agenteId, 'emision', '📋 Caso tomado', 'El coordinador tomó el caso para procesarlo.', $cotId, $empresaId]);
         } catch (\Throwable $e) {}
 
         echo json_encode(['ok'=>true]);
@@ -215,12 +222,12 @@ switch ($accion) {
         $motivo = trim($_POST['nota'] ?? '');
         if (!$cotId || !$motivo) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
 
-        $db->prepare("UPDATE cotizaciones SET emision_estado='rechazado', estado='pendiente' WHERE id=?")
-           ->execute([$cotId]);
+        $db->prepare("UPDATE cotizaciones SET emision_estado='rechazado', estado='pendiente' WHERE id=? AND empresa_id=?")
+           ->execute([$cotId, $empresaId]);
 
         // Obtener asesor
-        $st = $db->prepare("SELECT agente_id, folio, cliente_id FROM cotizaciones WHERE id=?");
-        $st->execute([$cotId]);
+        $st = $db->prepare("SELECT agente_id, folio, cliente_id FROM cotizaciones WHERE id=? AND empresa_id=?");
+        $st->execute([$cotId, $empresaId]);
         $cot = $st->fetch(\PDO::FETCH_ASSOC);
 
         if ($cot) {
@@ -238,12 +245,13 @@ switch ($accion) {
             // Historial cliente
             try {
                 $db->prepare(
-                    "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion)
-                     VALUES (?,?,?,?,?)"
+                    "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, empresa_id)
+                     VALUES (?,?,?,?,?,?)"
                 )->execute([
                     $cot['cliente_id'] ?? 0, $agenteId, 'nota',
                     '⚠️ Documentos rechazados',
                     'Motivo: ' . $motivo,
+                    $empresaId,
                 ]);
             } catch (\Throwable $e) {}
         }
@@ -271,15 +279,15 @@ switch ($accion) {
                     CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
              FROM cotizaciones c
              JOIN clientes cl ON cl.id = c.cliente_id
-             WHERE c.id = ?"
+             WHERE c.id = ? AND c.empresa_id = ?"
         );
-        $st->execute([$cotId]);
+        $st->execute([$cotId, $empresaId]);
         $cot = $st->fetch(\PDO::FETCH_ASSOC);
         if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
 
         // Verificar que el asesor ya envió esta cotización al coordinador
-        $stEst = $db->prepare("SELECT emision_estado FROM cotizaciones WHERE id=?");
-        $stEst->execute([$cotId]);
+        $stEst = $db->prepare("SELECT emision_estado FROM cotizaciones WHERE id=? AND empresa_id=?");
+        $stEst->execute([$cotId, $empresaId]);
         $emisEst = $stEst->fetchColumn();
         if ($emisEst === 'pendiente') {
             echo json_encode(['ok'=>false,'msg'=>'El asesor aún no ha enviado esta cotización al coordinador. Pídele que la envíe primero.']); exit;
@@ -322,8 +330,8 @@ switch ($accion) {
         }
 
         // Insertar o actualizar en tabla polizas
-        $stExist = $db->prepare("SELECT id FROM polizas WHERE cotizacion_id=? AND eliminado_en IS NULL LIMIT 1");
-        $stExist->execute([$cotId]);
+        $stExist = $db->prepare("SELECT id FROM polizas WHERE cotizacion_id=? AND empresa_id=? AND eliminado_en IS NULL LIMIT 1");
+        $stExist->execute([$cotId, $empresaId]);
         $polizaExist = $stExist->fetch(\PDO::FETCH_ASSOC);
 
         if ($polizaExist) {
@@ -331,29 +339,29 @@ switch ($accion) {
                 "UPDATE polizas SET numero_poliza=?, fecha_inicio=?, fecha_fin=?, periodicidad=?,
                  notas=?, nombre_archivo=COALESCE(?,nombre_archivo),
                  nombre_original=COALESCE(?,nombre_original), subido_en=NOW()
-                 WHERE id=?"
+                 WHERE id=? AND empresa_id=?"
             );
             $upd->execute([$numero, $fechaInicio, $fechaFin, $periodicidad,
-                           $notas ?: null, $nombreArch, $nombreOrig, $polizaExist['id']]);
+                           $notas ?: null, $nombreArch, $nombreOrig, $polizaExist['id'], $empresaId]);
         } else {
             $ins = $db->prepare(
                 "INSERT INTO polizas
                  (cotizacion_id, agente_id, cliente_id, compania, numero_poliza,
-                  fecha_inicio, fecha_fin, periodicidad, notas, nombre_archivo, nombre_original, subido_en)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())"
+                  fecha_inicio, fecha_fin, periodicidad, notas, nombre_archivo, nombre_original, subido_en, empresa_id)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW(),?)"
             );
             $ins->execute([
                 $cotId, $cot['agente_id'], $cot['cliente_id'],
                 $cot['compania'], $numero,
                 $fechaInicio, $fechaFin, $periodicidad, $notas ?: null,
-                $nombreArch, $nombreOrig,
+                $nombreArch, $nombreOrig, $empresaId,
             ]);
         }
 
         // Marcar cotización como emitida
         $db->prepare(
-            "UPDATE cotizaciones SET emision_estado='emitida', estado=CASE WHEN estado_pago='confirmado' THEN 'pagado' ELSE estado END WHERE id=?"
-        )->execute([$cotId]);
+            "UPDATE cotizaciones SET emision_estado='emitida', estado=CASE WHEN estado_pago='confirmado' THEN 'pagado' ELSE estado END WHERE id=? AND empresa_id=?"
+        )->execute([$cotId, $empresaId]);
 
         // Notificar al asesor
         _emi_notificar(
@@ -370,12 +378,13 @@ switch ($accion) {
         // Historial cliente
         try {
             $db->prepare(
-                "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion)
-                 VALUES (?,?,?,?,?)"
+                "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, empresa_id)
+                 VALUES (?,?,?,?,?,?)"
             )->execute([
                 $cot['cliente_id'], $agenteId, 'venta',
                 '📄 Póliza emitida — ' . $numero,
                 'Compañía: ' . $cot['compania'] . ' | Vigencia: ' . $fechaInicio . ' — ' . $fechaFin,
+                $empresaId,
             ]);
         } catch (\Throwable $e) {}
 
@@ -389,8 +398,8 @@ switch ($accion) {
         $asesorId = (int)($_POST['agente_id']     ?? 0);
         if (!$cotId || !$asesorId) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit; }
 
-        $st = $db->prepare("SELECT folio, compania FROM cotizaciones WHERE id=?");
-        $st->execute([$cotId]);
+        $st = $db->prepare("SELECT folio, compania FROM cotizaciones WHERE id=? AND empresa_id=?");
+        $st->execute([$cotId, $empresaId]);
         $cot = $st->fetch(\PDO::FETCH_ASSOC);
 
         _emi_notificar(
@@ -423,8 +432,8 @@ switch ($accion) {
             echo json_encode(['ok'=>false,'msg'=>'Datos inválidos.']); exit;
         }
         // Verificar que el asesor ya envió esta cotización
-        $stEst2 = $db->prepare("SELECT emision_estado FROM cotizaciones WHERE id=?");
-        $stEst2->execute([$cotId]);
+        $stEst2 = $db->prepare("SELECT emision_estado FROM cotizaciones WHERE id=? AND empresa_id=?");
+        $stEst2->execute([$cotId, $empresaId]);
         $emisEst2 = $stEst2->fetchColumn();
         if ($emisEst2 === 'pendiente') {
             echo json_encode(['ok'=>false,'msg'=>'El asesor aún no ha enviado esta cotización al coordinador.']); exit;
@@ -477,14 +486,14 @@ switch ($accion) {
         $db->prepare(
             "UPDATE cotizacion_comprobantes_pago
              SET eliminado_en = NOW()
-             WHERE cotizacion_id = ? AND eliminado_en IS NULL"
-        )->execute([$cotId]);
+             WHERE cotizacion_id = ? AND empresa_id = ? AND eliminado_en IS NULL"
+        )->execute([$cotId, $empresaId]);
 
         // Insertar comprobante
         $ins = $db->prepare(
             "INSERT INTO cotizacion_comprobantes_pago
-             (cotizacion_id, coordinador_id, metodo_pago, banco, referencia, monto, comentarios, nombre_archivo, nombre_original)
-             VALUES (?,?,?,?,?,?,?,?,?)"
+             (cotizacion_id, coordinador_id, metodo_pago, banco, referencia, monto, comentarios, nombre_archivo, nombre_original, empresa_id)
+             VALUES (?,?,?,?,?,?,?,?,?,?)"
         );
         $ins->execute([
             $cotId, $agenteId, $metodo,
@@ -494,13 +503,14 @@ switch ($accion) {
             $coments ?: null,
             $nombreArch,
             $nombreOrig,
+            $empresaId,
         ]);
         $comprobanteId = $db->lastInsertId();
 
         // Actualizar estado de pago en cotizacion + marcarla como pagado
         $db->prepare(
-            "UPDATE cotizaciones SET estado_pago='confirmado', comprobante_pago_id=?, estado='pagado' WHERE id=?"
-        )->execute([$comprobanteId, $cotId]);
+            "UPDATE cotizaciones SET estado_pago='confirmado', comprobante_pago_id=?, estado='pagado' WHERE id=? AND empresa_id=?"
+        )->execute([$comprobanteId, $cotId, $empresaId]);
 
         // Obtener datos completos de cotización para notificaciones
         $stCot = $db->prepare(
@@ -508,9 +518,9 @@ switch ($accion) {
                     CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
              FROM cotizaciones c
              JOIN clientes cl ON cl.id = c.cliente_id
-             WHERE c.id = ?"
+             WHERE c.id = ? AND c.empresa_id = ?"
         );
-        $stCot->execute([$cotId]);
+        $stCot->execute([$cotId, $empresaId]);
         $datosCot = $stCot->fetch(\PDO::FETCH_ASSOC);
 
         // Si no se pasó asesorId, obtenerlo de la cotización
@@ -520,17 +530,18 @@ switch ($accion) {
 
         // Actualizar estado de la PÓLIZA vinculada (si existe)
         $stPol = $db->prepare(
-            "SELECT id FROM polizas WHERE cotizacion_id=? AND eliminado_en IS NULL LIMIT 1"
+            "SELECT id FROM polizas WHERE cotizacion_id=? AND empresa_id=? AND eliminado_en IS NULL LIMIT 1"
         );
-        $stPol->execute([$cotId]);
+        $stPol->execute([$cotId, $empresaId]);
         $polizaRow = $stPol->fetch(\PDO::FETCH_ASSOC);
         if ($polizaRow) {
             $db->prepare(
                 "UPDATE polizas SET estado_pago='confirmado', pago_confirmado_en=NOW(),
-                 notas=CONCAT(IFNULL(notas,''),?) WHERE id=?"
+                 notas=CONCAT(IFNULL(notas,''),?) WHERE id=? AND empresa_id=?"
             )->execute([
                 "\n[" . date('Y-m-d H:i') . "] Pago confirmado por coordinador — Método: " . _emi_metodoLabel($metodo) . ".",
-                $polizaRow['id']
+                $polizaRow['id'],
+                $empresaId
             ]);
         }
 
@@ -539,10 +550,10 @@ switch ($accion) {
         // el archivo (si lo hay) ya se guardó correctamente. El marcado del checklist es seguro.
         try {
             $db->prepare(
-                "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en)
-                 VALUES (?,?,?,?,NOW())
+                "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en, empresa_id)
+                 VALUES (?,?,?,?,NOW(),?)
                  ON DUPLICATE KEY UPDATE estado='ok', nota='Comprobante subido por coordinador', actualizado_en=NOW()"
-            )->execute([$cotId, 'comprobante_pago', 'ok', 'Comprobante subido por coordinador']);
+            )->execute([$cotId, 'comprobante_pago', 'ok', 'Comprobante subido por coordinador', $empresaId]);
         } catch (\Throwable $e) {
             // Si la tabla no existe, crearla
             try {
@@ -554,14 +565,16 @@ switch ($accion) {
                         estado          ENUM('pendiente','ok','rechazado') DEFAULT 'pendiente',
                         nota            TEXT,
                         actualizado_en  DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE KEY uq_cot_tipo (cotizacion_id, doc_tipo)
+                        empresa_id      INT DEFAULT NULL,
+                        UNIQUE KEY uq_cot_tipo (cotizacion_id, doc_tipo),
+                        KEY idx_emp_cot (empresa_id, cotizacion_id)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
                 );
                 $db->prepare(
-                    "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en)
-                     VALUES (?,?,?,?,NOW())
+                    "INSERT INTO emi_checklist (cotizacion_id, doc_tipo, estado, nota, actualizado_en, empresa_id)
+                     VALUES (?,?,?,?,NOW(),?)
                      ON DUPLICATE KEY UPDATE estado='ok', nota='Comprobante subido por coordinador', actualizado_en=NOW()"
-                )->execute([$cotId, 'comprobante_pago', 'ok', 'Comprobante subido por coordinador']);
+                )->execute([$cotId, 'comprobante_pago', 'ok', 'Comprobante subido por coordinador', $empresaId]);
             } catch (\Throwable $e2) {
                 error_log('[emi_checklist create] ' . $e2->getMessage());
             }
@@ -570,31 +583,33 @@ switch ($accion) {
         // Registrar en historial del coordinador
         try {
             $db->prepare(
-                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id, cliente_id)
-                 VALUES (?,?,?,?,?,?)"
+                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id, cliente_id, empresa_id)
+                 VALUES (?,?,?,?,?,?,?)"
             )->execute([
                 $agenteId, 'cobro',
                 '💳 Comprobante de pago registrado',
                 "Folio: {$datosCot['folio']} — Cliente: {$datosCot['cliente_nombre']} — Método: " . _emi_metodoLabel($metodo),
                 $cotId,
                 $datosCot['cliente_id'] ?? null,
+                $empresaId,
             ]);
         } catch (\Throwable $e) {}
 
         // Registrar en historial del cliente
         try {
             $db->prepare(
-                "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion)
-                 VALUES (?,?,?,?,?)"
+                "INSERT INTO historial_cliente (cliente_id, agente_id, tipo, titulo, descripcion, empresa_id)
+                 VALUES (?,?,?,?,?,?)"
             )->execute([
                 $datosCot['cliente_id'] ?? 0, $agenteId, 'venta',
                 '💰 Pago confirmado por coordinador — ' . ($datosCot['folio'] ?? '#'.$cotId),
                 'Método: ' . _emi_metodoLabel($metodo) . ($ref ? " · Ref: {$ref}" : '') . ($monto ? " · $" . number_format((float)$monto, 2) : ''),
+                $empresaId,
             ]);
-            
+
             // ACTUALIZACIÓN EXTRA: Cambiar estado del cliente a "Cerrado" automáticamente
             if (!empty($datosCot['cliente_id'])) {
-                $db->prepare("UPDATE clientes SET estado_cliente='cerrado' WHERE id=?")->execute([$datosCot['cliente_id']]);
+                $db->prepare("UPDATE clientes SET estado_cliente='cerrado' WHERE id=? AND empresa_id=?")->execute([$datosCot['cliente_id'], $empresaId]);
             }
             
         } catch (\Throwable $he) { error_log('[historial_cliente cobro] ' . $he->getMessage()); }
@@ -635,8 +650,8 @@ switch ($accion) {
         $id = (int)($_POST['comprobante_id'] ?? 0);
         if (!$id) { echo json_encode(['ok'=>false, 'msg'=>'ID de comprobante inválido.']); exit; }
 
-        $st = $db->prepare("SELECT * FROM cotizacion_comprobantes_pago WHERE id=? AND eliminado_en IS NULL");
-        $st->execute([$id]);
+        $st = $db->prepare("SELECT * FROM cotizacion_comprobantes_pago WHERE id=? AND empresa_id=? AND eliminado_en IS NULL");
+        $st->execute([$id, $empresaId]);
         $comp = $st->fetch(\PDO::FETCH_ASSOC);
 
         if (!$comp) {
@@ -674,16 +689,18 @@ switch ($accion) {
         if (!$isSuperadmin) { echo json_encode(['ok'=>false,'msg'=>'Solo el superadmin puede hacer esto.']); exit; }
         $horas = max(0, (int)($_POST['horas'] ?? 24));
         try {
+            // La clave es única por empresa: el empresa_id entra en el INSERT para
+            // que el ON DUPLICATE KEY solo pise el ajuste de esta empresa.
             $db->prepare(
-                "INSERT INTO configuracion (clave, valor, descripcion)
-                 VALUES ('emi_edit_window_horas', ?, 'Ventana de edición de comprobantes del coordinador (en horas)')
+                "INSERT INTO configuracion (clave, valor, descripcion, empresa_id)
+                 VALUES ('emi_edit_window_horas', ?, 'Ventana de edición de comprobantes del coordinador (en horas)', ?)
                  ON DUPLICATE KEY UPDATE valor=VALUES(valor)"
-            )->execute([$horas]);
+            )->execute([$horas, $empresaId]);
             // Registrar en historial
             $db->prepare(
-                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion)
-                 VALUES (?,?,?,?)"
-            )->execute([$agenteId, 'nota', '⚙️ Ventana de edición actualizada', "Nueva ventana: {$horas} hora(s). Por superadmin."]);
+                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, empresa_id)
+                 VALUES (?,?,?,?,?)"
+            )->execute([$agenteId, 'nota', '⚙️ Ventana de edición actualizada', "Nueva ventana: {$horas} hora(s). Por superadmin.", $empresaId]);
             echo json_encode(['ok'=>true]);
         } catch (\Throwable $e) {
             echo json_encode(['ok'=>false,'msg'=>$e->getMessage()]);
@@ -704,19 +721,20 @@ switch ($accion) {
         // Actualizar creado_en del comprobante más reciente a NOW() para reiniciar la ventana
         $db->prepare(
             "UPDATE cotizacion_comprobantes_pago SET creado_en=NOW()
-             WHERE cotizacion_id=? AND eliminado_en IS NULL
+             WHERE cotizacion_id=? AND empresa_id=? AND eliminado_en IS NULL
              ORDER BY id DESC LIMIT 1"
-        )->execute([$cotId]);
+        )->execute([$cotId, $empresaId]);
         // Registrar en historial
         try {
             $db->prepare(
-                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id)
-                 VALUES (?,?,?,?,?)"
+                "INSERT INTO historial_coordinador (coordinador_id, tipo, titulo, descripcion, cotizacion_id, empresa_id)
+                 VALUES (?,?,?,?,?,?)"
             )->execute([
                 $agenteId, 'nota',
                 '⏱ Temporizador de edición reiniciado',
                 'El superadmin reinició la ventana de edición para esta cotización.',
-                $cotId
+                $cotId,
+                $empresaId
             ]);
         } catch (\Throwable $e) {}
         echo json_encode(['ok'=>true]);
@@ -735,9 +753,13 @@ function _emi_notificar(\PDO $db, int $asesorId, string $titulo, string $cuerpo,
                          bool $urgente = false, string $color = 'blue', string $url = ''): void
 {
     try {
+        // La función tiene su propio ámbito: la empresa se resuelve aquí dentro,
+        // no se hereda de la variable del archivo.
+        $empresaId = \App\Security\Tenant::requireId();
+
         $db->prepare(
-            "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en)
-             VALUES (?,?,?,?,?,?,?,0,NOW())"
+            "INSERT INTO notificaciones (agente_id, tipo, titulo, mensaje, urgente, color, url_accion, leida, creada_en, empresa_id)
+             VALUES (?,?,?,?,?,?,?,0,NOW(),?)"
         )->execute([
             $asesorId,
             'emision',
@@ -746,6 +768,7 @@ function _emi_notificar(\PDO $db, int $asesorId, string $titulo, string $cuerpo,
             $urgente ? 1 : 0,
             $color ?: 'blue',
             $url ?: null,
+            $empresaId,
         ]);
     } catch (\Throwable $e) {
         error_log('[_emi_notificar] ' . $e->getMessage());

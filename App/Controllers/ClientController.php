@@ -4,13 +4,32 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Models\{ClientModel, CitaModel};
+use App\Security\EmpresaPublica;
+use App\Security\RateLimiter;
+use App\Security\Roles;
 use App\Security\SessionManager;
+use App\Security\Tenant;
 use RuntimeException;
 use Throwable;
 
+/**
+ * ClientController — alta de clientes y citas desde el formulario del sitio.
+ *
+ * MULTIEMPRESA: handlePost() es el endpoint PÚBLICO del formulario de alta
+ * (POST /api/clientes). Llega sin sesión, así que no hay empresa en contexto
+ * y, por el fail-closed de Tenant, todas las consultas fallarían. La empresa
+ * se resuelve antes de tocar nada y todo el alta ocurre dentro de ella: un
+ * cliente creado "sin empresa" quedaría invisible para todos.
+ */
 class ClientController
 {
     private const EMPRESA_NOMBRE = 'Seguros LUX';
+    /** Altas sin sesión permitidas por IP y empresa dentro de la ventana. */
+    private const MAX_ALTAS_PUBLICAS = 10;
+
+    /** Ventana del freno al formulario público, en segundos. */
+    private const VENTANA_ALTAS_PUBLICAS = 900;
+
     private const EMPRESA_EMAIL  = 'noreply@seguroslux.mx';
     private const ASESOR_EMAIL   = 'contacto@seguroslux.mx';
 
@@ -70,8 +89,21 @@ class ClientController
             return;
         }
 
+        // find() ya acota a la empresa activa: un id de otra empresa no
+        // devuelve nada por mucho que se acierte el número.
         $cliente = (new ClientModel())->find($id);
         if (!$cliente) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Cliente no encontrado']);
+            return;
+        }
+
+        // Dentro de la empresa sigue habiendo una frontera: quien no tenga
+        // permiso para ver toda la cartera solo ve la suya. Sin esto, un
+        // asesor podía recorrer ids y leer los clientes de sus compañeros.
+        // Se responde 404, no 403: un 403 confirmaría que ese cliente existe.
+        if (!SessionManager::puede(Roles::CLIENTES_VER_TODOS)
+            && (int) ($cliente['agente_id'] ?? 0) !== SessionManager::getAgentId()) {
             http_response_code(404);
             echo json_encode(['success' => false, 'error' => 'Cliente no encontrado']);
             return;
@@ -90,6 +122,53 @@ class ClientController
             return;
         }
 
+        // ── Empresa del lead (petición sin sesión) ────────────────────────────
+        // Orden: a) el slug que declare el formulario, validado contra la tabla
+        // `empresas` (tiene que existir y estar activa); b) si no viene, la
+        // empresa por defecto de la plataforma. Ver App\Security\EmpresaPublica.
+        //
+        // Si la petición SÍ trae empresa en contexto (un asesor dando de alta
+        // desde el CRM), manda esa y el campo del POST no puede cambiarla:
+        // el dato de entrada nunca decide el tenant.
+        $empresaId = Tenant::id()
+            ?? EmpresaPublica::resolver($input[EmpresaPublica::CAMPO_SLUG] ?? null);
+
+        // ── Freno al formulario público ──────────────────────────────────────
+        // Este endpoint acepta altas sin sesión, porque de él viven los leads
+        // de la web. Eso también lo deja abierto a que alguien lo use en
+        // bucle y llene el CRM de basura, que además dispara correos y
+        // notificaciones a los asesores.
+        //
+        // El freno se aplica solo a las peticiones sin sesión: un asesor
+        // dando de alta clientes desde el CRM no tiene por qué sufrirlo.
+        if (!SessionManager::isAuthenticated()) {
+            $ip    = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+            $clave = 'lead-publico:' . $empresaId;
+
+            if (RateLimiter::tooManyAttempts($clave, $ip, self::MAX_ALTAS_PUBLICAS, self::VENTANA_ALTAS_PUBLICAS)) {
+                http_response_code(429);
+                echo json_encode([
+                    'success' => false,
+                    'error'   => 'Demasiadas solicitudes seguidas. Espera unos minutos e inténtalo de nuevo.',
+                ]);
+                return;
+            }
+
+            // Se cuenta la petición, no el fallo: aquí lo que se limita es el
+            // ritmo de altas, y un alta correcta repetida mil veces hace el
+            // mismo daño que una incorrecta.
+            RateLimiter::hit($clave, $ip, self::VENTANA_ALTAS_PUBLICAS);
+        }
+
+        Tenant::comoEmpresa($empresaId, static fn() => self::registrar($input));
+    }
+
+    /**
+     * Alta del cliente y su cita. Siempre se ejecuta dentro de una empresa,
+     * de modo que el cliente, la cita y el historial quedan sellados en ella.
+     */
+    private static function registrar(array $input): void
+    {
         try {
             $clientModel      = new ClientModel();
             $citaModel        = new CitaModel();
@@ -439,17 +518,29 @@ HTML;
     {
         if ($agenteIdActual > 0) return $agenteIdActual;
 
+        // El reparto de carga es por empresa: un cliente nunca puede acabar
+        // asignado al asesor de otra, ni la cuenta de clientes de un asesor
+        // puede incluir los de empresas ajenas.
+        $empresaId = Tenant::requireId();
+
         $db   = \Database\Connection::getConnection();
-        $stmt = $db->query(
+        // Dos placeholders distintos para la misma empresa: con
+        // ATTR_EMULATE_PREPARES desactivado, PDO no admite repetir un nombre.
+        $stmt = $db->prepare(
             "SELECT a.id FROM agentes a
              WHERE a.rol IN ('asesor','agente') AND COALESCE(a.activo,1) = 1
-             ORDER BY (SELECT COUNT(*) FROM clientes WHERE agente_id = a.id) ASC, RAND() LIMIT 1"
+               AND a.empresa_id = :empresa
+             ORDER BY (SELECT COUNT(*) FROM clientes
+                        WHERE agente_id = a.id AND empresa_id = :empresa_cli) ASC, RAND()
+             LIMIT 1"
         );
+        $stmt->execute(['empresa' => $empresaId, 'empresa_cli' => $empresaId]);
         $row = $stmt->fetch();
         if (!$row) throw new RuntimeException('No hay asesores activos.');
 
         $nuevoId = (int)$row['id'];
-        $db->prepare('UPDATE clientes SET agente_id = ? WHERE id = ?')->execute([$nuevoId, $clienteId]);
+        $db->prepare('UPDATE clientes SET agente_id = ? WHERE id = ? AND empresa_id = ?')
+           ->execute([$nuevoId, $clienteId, $empresaId]);
 
         return $nuevoId;
     }

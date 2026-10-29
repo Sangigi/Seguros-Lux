@@ -5,6 +5,7 @@ namespace App\Controllers;
 
 use App\Models\CitaModel;
 use App\Security\SessionManager;
+use App\Security\Tenant;
 
 class CitaController
 {
@@ -78,9 +79,12 @@ class CitaController
             );
 
             if ($meetLink && $citaId) {
+                // El filtro de empresa va aunque la cita se acabe de crear
+                // aquí: una consulta por id sin él es exactamente por donde se
+                // cuela el acceso a la fila de otra empresa.
                 \Database\Connection::getConnection()
-                    ->prepare('UPDATE citas SET comentarios = CONCAT(COALESCE(comentarios,""), "\n🎥 Meet: ", ?) WHERE id = ?')
-                    ->execute([$meetLink, $citaId]);
+                    ->prepare('UPDATE citas SET comentarios = CONCAT(COALESCE(comentarios,""), "\n🎥 Meet: ", ?) WHERE id = ? AND empresa_id = ?')
+                    ->execute([$meetLink, $citaId, Tenant::requireId()]);
             }
 
             self::notificarWhatsApp($_POST, $fecha, $hora);

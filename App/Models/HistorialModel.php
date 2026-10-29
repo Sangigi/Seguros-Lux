@@ -36,9 +36,10 @@ class HistorialModel extends BaseModel
     public function getByClienteId(int $clienteId): array
     {
         $stmt = $this->db()->prepare(
-            'SELECT * FROM historial_cliente WHERE cliente_id = ? ORDER BY fecha DESC'
+            'SELECT * FROM historial_cliente WHERE cliente_id = :cliente_id' . $this->sqlEmpresa() . '
+             ORDER BY fecha DESC'
         );
-        $stmt->execute([$clienteId]);
+        $stmt->execute($this->bindEmpresa(['cliente_id' => $clienteId]));
         return $stmt->fetchAll();
     }
 
@@ -49,9 +50,10 @@ class HistorialModel extends BaseModel
                     CONCAT(a.nombre,' ',a.apellido) AS agente_nombre
              FROM historial_cliente h
              LEFT JOIN agentes a ON a.id = h.agente_id
-             WHERE h.cliente_id = ? ORDER BY h.fecha DESC LIMIT ?"
+             WHERE h.cliente_id = :cliente_id" . $this->sqlEmpresa('h') . "
+             ORDER BY h.fecha DESC LIMIT :limit"
         );
-        $stmt->execute([$clienteId, $limit]);
+        $stmt->execute($this->bindEmpresa(['cliente_id' => $clienteId, 'limit' => $limit]));
         return $stmt->fetchAll();
     }
 
@@ -67,9 +69,10 @@ class HistorialModel extends BaseModel
                             CONCAT(cl.nombre,' ',cl.apellido_paterno) AS cliente_nombre
                      FROM historial_cliente h
                      JOIN clientes cl ON cl.id = h.cliente_id
-                     WHERE h.agente_id = ? ORDER BY h.fecha DESC LIMIT ?"
+                     WHERE h.agente_id = :agente_id" . $this->sqlEmpresa('h') . "
+                     ORDER BY h.fecha DESC LIMIT :limit"
                 );
-                $stmt->execute([$agenteId, $limit]);
+                $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId, 'limit' => $limit]));
                 return $stmt->fetchAll();
             }
         );
