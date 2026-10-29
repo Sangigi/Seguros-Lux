@@ -27,6 +27,7 @@ class LoginController
         '/dashboard',
         '/admin',
         '/admin?tab=resumen',
+        '/plataforma/empresas',
     ];
 
     public static function handle(): void
@@ -106,9 +107,12 @@ class LoginController
      */
     private static function safeRedirect(string $rol): string
     {
-        $destino = in_array($rol, ['coordinador', 'administrador', 'superadmin'], true)
-            ? '/admin?tab=resumen'
-            : '/dashboard';
+        // El propietario no pertenece a ninguna empresa: entra eligiendo una.
+        $destino = match (true) {
+            $rol === 'propietario'                                               => '/plataforma/empresas',
+            in_array($rol, ['coordinador', 'administrador', 'superadmin'], true) => '/admin?tab=resumen',
+            default                                                              => '/dashboard',
+        };
 
         // Verificar que el destino está en la lista blanca (doble check)
         return in_array($destino, self::ALLOWED_REDIRECTS, true) ? $destino : '/dashboard';

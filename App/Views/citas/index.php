@@ -422,7 +422,7 @@ if (isset($_GET['_ajax'])) {
             <?php endif; ?>
 
             <!-- Ramo activo en sesión — se envía siempre en el POST -->
-            <input type="hidden" id="ncRamo" value="<?php echo htmlspecialchars($ramoFiltro ?? $ramo); ?>">
+            <input type="hidden" id="ncRamo" value="<?php echo htmlspecialchars((string) ($ramoFiltro ?? $ramo)); ?>">
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalNuevaCita">Cancelar</button>

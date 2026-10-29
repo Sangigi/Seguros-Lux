@@ -173,8 +173,9 @@ class SessionManager
         }
 
         if (
-            isset($_SESSION['LAST_ACTIVITY']) &&
-            (time() - $_SESSION['LAST_ACTIVITY']) > self::TIMEOUT
+            (isset($_SESSION['LAST_ACTIVITY']) &&
+            (time() - $_SESSION['LAST_ACTIVITY']) > self::TIMEOUT) ||
+            self::sesionSinEmpresa()
         ) {
             SecurityLogger::log('session_expired', ['agente_id' => self::getAgentId()]);
             self::destroy();
@@ -195,6 +196,11 @@ class SessionManager
         // ruta autenticada pueda ejecutarse sin él.
         Tenant::desdeSesion();
 
+        if (self::debeElegirEmpresa((string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH))) {
+            header('Location: /plataforma/empresas');
+            exit;
+        }
+
         // Un usuario de una empresa suspendida no sigue operando con la
         // sesión que abrió antes de la suspensión.
         if (!self::empresaOperativa()) {
@@ -206,6 +212,33 @@ class SessionManager
             header('Location: ' . $loginPath . '?empresa_inactiva=1');
             exit;
         }
+    }
+
+    /**
+     * True si la sesión es de un usuario de empresa pero no trae empresa.
+     *
+     * Es una sesión abierta antes de multiempresa: el login es lo único que
+     * fija la empresa, y sin ella toda consulta de negocio falla. Se trata
+     * como expirada para que el usuario vuelva a entrar.
+     */
+    public static function sesionSinEmpresa(): bool
+    {
+        return !self::isPropietario() && self::getEmpresaId() === null;
+    }
+
+    /**
+     * True si el propietario pide una pantalla de negocio sin haber entrado
+     * a una empresa.
+     *
+     * El propietario no pertenece a ninguna: hasta que elige una, esas
+     * pantallas no tienen nada que mostrar y la primera consulta fallaría.
+     * Las de /plataforma/ son las suyas y funcionan sin empresa.
+     */
+    public static function debeElegirEmpresa(string $ruta): bool
+    {
+        return self::isPropietario()
+            && !Tenant::hayContexto()
+            && !str_starts_with($ruta, '/plataforma/');
     }
 
     /**
@@ -255,8 +288,9 @@ class SessionManager
     {
         self::start();
 
-        $expired = isset($_SESSION['LAST_ACTIVITY']) &&
-                   (time() - $_SESSION['LAST_ACTIVITY']) > self::TIMEOUT;
+        $expired = (isset($_SESSION['LAST_ACTIVITY']) &&
+                   (time() - $_SESSION['LAST_ACTIVITY']) > self::TIMEOUT) ||
+                   (self::isAuthenticated() && self::sesionSinEmpresa());
 
         if (!self::isAuthenticated() || $expired || !self::validateFingerprint()) {
             if ($expired) {

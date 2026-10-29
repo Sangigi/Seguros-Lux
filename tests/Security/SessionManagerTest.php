@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Tests\Security;
 
 use App\Security\SessionManager;
+use App\Security\Tenant;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -46,6 +47,10 @@ final class SessionManagerTest extends TestCase
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_destroy();
         }
+        // Tenant guarda la empresa en estático: se restaura la del bootstrap
+        // para no contaminar la prueba siguiente.
+        Tenant::reset();
+        Tenant::set(1);
     }
 
     // ── CSRF ──────────────────────────────────────────────────────────────────
@@ -222,6 +227,62 @@ final class SessionManagerTest extends TestCase
         // Sin $_SESSION['agente'] → no autenticado
 
         $this->assertFalse(SessionManager::isAuthenticated());
+    }
+
+    // ── Sesiones sin empresa ──────────────────────────────────────────────────
+
+    public function testSesionDeEmpresaSinEmpresaSeTrataComoExpirada(): void
+    {
+        // Una sesión abierta antes de multiempresa no trae empresa_id.
+        $_SESSION['agente_rol'] = 'superadmin';
+
+        $this->assertTrue(SessionManager::sesionSinEmpresa());
+    }
+
+    public function testSesionConEmpresaEsValida(): void
+    {
+        $_SESSION['agente_rol'] = 'asesor';
+        $_SESSION['empresa_id'] = 1;
+
+        $this->assertFalse(SessionManager::sesionSinEmpresa());
+    }
+
+    public function testPropietarioSinEmpresaNoSeTrataComoExpirada(): void
+    {
+        $_SESSION['agente_rol'] = 'propietario';
+
+        $this->assertFalse(SessionManager::sesionSinEmpresa());
+    }
+
+    /** @dataProvider rutasPropietarioProvider */
+    public function testPropietarioSinEmpresaVaAElegirUna(string $ruta, ?int $empresaActiva, bool $esperado): void
+    {
+        $_SESSION['agente_rol'] = 'propietario';
+        if ($empresaActiva !== null) {
+            $_SESSION['empresa_activa'] = $empresaActiva;
+        }
+        Tenant::desdeSesion();
+
+        $this->assertSame($esperado, SessionManager::debeElegirEmpresa($ruta));
+    }
+
+    public static function rutasPropietarioProvider(): array
+    {
+        return [
+            'admin sin empresa'           => ['/admin',               null, true],
+            'citas sin empresa'           => ['/citas',               null, true],
+            'panel de empresas'           => ['/plataforma/empresas', null, false],
+            'admin dentro de una empresa' => ['/admin',               1,    false],
+        ];
+    }
+
+    public function testUsuarioDeEmpresaNuncaVaAElegirEmpresa(): void
+    {
+        $_SESSION['agente_rol'] = 'superadmin';
+        $_SESSION['empresa_id'] = 1;
+        Tenant::desdeSesion();
+
+        $this->assertFalse(SessionManager::debeElegirEmpresa('/admin'));
     }
 
     // ── Jerarquía de requireRole (lógica pura, sin header/exit) ──────────────
