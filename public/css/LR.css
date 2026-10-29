@@ -178,6 +178,20 @@
 }
 .field-inner.active .field-bar{width:100%;}
 
+/* Sin JS (activación de cuenta): la etiqueta sube al enfocar el campo o si ya
+   trae un valor. El valor se detecta con :placeholder-shown, así que solo
+   aplica a los inputs que llevan placeholder=" ". */
+.field-inner:focus-within{border-color:#111110;}
+.field-inner:focus-within .field-bar{width:100%;}
+.field-inner:focus-within .field-label,
+.field-inner:has(.field-inp[placeholder]:not(:placeholder-shown)) .field-label{
+  top:-2px;
+  font-size:10px;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  color:rgba(0,0,0,0.5);
+}
+
 .eye-btn{
   position:absolute;right:0;top:10px;
   background:none;border:none;cursor:pointer;

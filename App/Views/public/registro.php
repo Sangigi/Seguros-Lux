@@ -152,7 +152,7 @@ $h = static fn(?string $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 
                 <div class="field">
                     <div class="field-inner">
                         <span class="field-label">Nombre</span>
-                        <input class="field-inp" type="text" name="nombre" required maxlength="80"
+                        <input class="field-inp" type="text" name="nombre" placeholder=" " required maxlength="80"
                                value="<?= $h((string) ($_POST['nombre'] ?? $invitacion['nombre'])) ?>">
                         <div class="field-bar"></div>
                     </div>
@@ -161,7 +161,7 @@ $h = static fn(?string $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 
                 <div class="field">
                     <div class="field-inner">
                         <span class="field-label">Apellido</span>
-                        <input class="field-inp" type="text" name="apellido" maxlength="80"
+                        <input class="field-inp" type="text" name="apellido" placeholder=" " maxlength="80"
                                value="<?= $h((string) ($_POST['apellido'] ?? $invitacion['apellido'])) ?>">
                         <div class="field-bar"></div>
                     </div>
@@ -170,7 +170,7 @@ $h = static fn(?string $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 
                 <div class="field">
                     <div class="field-inner">
                         <span class="field-label">Teléfono</span>
-                        <input class="field-inp" type="tel" name="telefono" maxlength="30"
+                        <input class="field-inp" type="tel" name="telefono" placeholder=" " maxlength="30"
                                value="<?= $h((string) ($_POST['telefono'] ?? $invitacion['telefono'])) ?>">
                         <div class="field-bar"></div>
                     </div>
@@ -179,7 +179,7 @@ $h = static fn(?string $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 
                 <div class="field">
                     <div class="field-inner">
                         <span class="field-label">Contraseña</span>
-                        <input class="field-inp" type="password" name="contrasena" required
+                        <input class="field-inp" type="password" name="contrasena" placeholder=" " required
                                autocomplete="new-password" maxlength="128">
                         <div class="field-bar"></div>
                     </div>
@@ -188,7 +188,7 @@ $h = static fn(?string $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 
                 <div class="field">
                     <div class="field-inner">
                         <span class="field-label">Repite la contraseña</span>
-                        <input class="field-inp" type="password" name="contrasena2" required
+                        <input class="field-inp" type="password" name="contrasena2" placeholder=" " required
                                autocomplete="new-password" maxlength="128">
                         <div class="field-bar"></div>
                     </div>

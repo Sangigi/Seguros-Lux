@@ -24,6 +24,14 @@ if ($appEnv === 'development') {
 use App\Security\SessionManager;
 
 require ROOT . '/.env.php';
+
+// Dependencias de Composer (PHPMailer, AWS SDK). Antes solo las cargaban
+// algunos controladores por su cuenta, y lo que pasaba por aquí sin hacerlo
+// —como el correo de invitación— no encontraba PHPMailer.
+if (is_file(ROOT . '/vendor/autoload.php')) {
+    require_once ROOT . '/vendor/autoload.php';
+}
+
 require ROOT . '/Core/Autoloader.php';
 require ROOT . '/Core/helpers.php';
 require ROOT . '/Core/Router.php';

@@ -34,13 +34,6 @@ $csrfToken = SessionManager::getCsrfToken();
 
     <!-- PANEL IZQ -->
     <div class="left" id="leftPanel">
-        <div class="cursor-light" id="cursorLight"></div>
-        <canvas id="particles-canvas" style="position:absolute;inset:0;pointer-events:none;"></canvas>
-
-        <svg id="kinetic-svg" viewBox="0 0 400 700" preserveAspectRatio="xMidYMid slice">
-            <!-- Líneas generadas por JS -->
-        </svg>
-
         <div class="left-logo">
             <div class="left-logo-mark">
                 <div class="logo-square"></div>
