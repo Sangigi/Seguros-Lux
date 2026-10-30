@@ -32,10 +32,8 @@ foreach ($catalogo->ramos(false) + CatalogoModel::RAMOS as $rk => $rLabel) {
     $ramos_info[$rk] = ['icono' => CatalogoModel::ICONOS_RAMO[$rk] ?? 'clipboard', 'label' => $rLabel];
 }
 
-// Filtro de ramo de ESTA página (?ramo=<clave>); sin parámetro, todos.
-// No se guarda en la sesión: no afecta a ninguna otra pantalla.
-$ramoGet = $_GET['ramo'] ?? '';
-$ramo    = is_string($ramoGet) && isset($ramosActivos[$ramoGet]) ? $ramoGet : null;
+// Filtro de ramo único del CRM, elegido en el menú lateral; null = todos.
+$ramo = \App\Security\FiltroRamo::desdePeticion();
 
 // ── AJAX ──────────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
@@ -351,27 +349,6 @@ $pageTitle = 'Clientes';
                 </div>
             </div>
         </header>
-
-        <!-- ── Pestañas de ramo (filtro de esta página: ?ramo=<clave>) ── -->
-        <?php
-        // Cada pestaña conserva el filtro de asesor que ya hubiera en la URL.
-        $urlRamo = static function (?string $rk) use ($filtroAsesorId): string {
-            $q = array_filter(['ramo' => $rk, 'asesor_id' => $filtroAsesorId]);
-            return '/clientes' . ($q ? '?' . http_build_query($q) : '');
-        };
-        ?>
-        <div class="ramo-tabs">
-            <a href="<?php echo htmlspecialchars($urlRamo(null)); ?>" class="ramo-tab <?php echo !$ramo ? 'active' : ''; ?>">
-                <?= icono('people') ?> Todos
-                <span class="tab-count"><?php echo array_sum($ramoConteos); ?></span>
-            </a>
-            <?php foreach ($ramosActivos as $rk => $rLabel): ?>
-            <a href="<?php echo htmlspecialchars($urlRamo($rk)); ?>" class="ramo-tab <?php echo $ramo === $rk ? 'active' : ''; ?>">
-                <?php echo icono($ramos_info[$rk]['icono']).' '.htmlspecialchars($rLabel); ?>
-                <span class="tab-count"><?php echo $ramoConteos[$rk] ?? 0; ?></span>
-            </a>
-            <?php endforeach; ?>
-        </div>
 
         <!-- Stats -->
         <section class="stats-grid" style="grid-template-columns:repeat(5,1fr);">

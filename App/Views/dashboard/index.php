@@ -17,13 +17,10 @@ $agenteId  = SessionManager::getAgentId();
 $agente    = SessionManager::getAgentData();
 $empresaId = \App\Security\Tenant::requireId();
 
-// ── Ramos (catálogo de la empresa) y filtro de esta página ────────────────
-// Las tarjetas de ramo filtran los KPIs y la gráfica de cotizaciones de ESTA
-// pantalla con ?ramo=<clave>; sin parámetro se ve todo. No se guarda en la
-// sesión, así que no filtra ninguna otra pantalla.
+// ── Ramos (catálogo de la empresa) y filtro ───────────────────────────────
+// El ramo es el filtro único del CRM, elegido en el menú lateral; null = todos.
 $ramosActivos = (new CatalogoModel())->ramos();
-$ramoGet      = $_GET['ramo'] ?? '';
-$ramo         = is_string($ramoGet) && isset($ramosActivos[$ramoGet]) ? $ramoGet : null;
+$ramo         = \App\Security\FiltroRamo::desdePeticion();
 
 $clienteModel    = new ClientModel();
 $cotizacionModel = new CotizacionModel();
@@ -96,8 +93,8 @@ $pageTitle = 'Dashboard';
     <style>
         :root { --success-color:#31e04e; --warning-color:#e0ce31; }
         .ramo-selector{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;}
-        .ramo-card{position:relative;display:block;border-radius:var(--border-radius-lg);padding:0;cursor:pointer;overflow:hidden;border:3px solid transparent;transition:all .25s;text-decoration:none;background:none;text-align:center;color:inherit;}
-        .ramo-card:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.12);}
+        .ramo-card{position:relative;display:block;border-radius:var(--border-radius-lg);padding:0;cursor:default;overflow:hidden;border:3px solid transparent;transition:all .25s;text-decoration:none;background:none;text-align:center;color:inherit;}
+        .ramo-card:hover{box-shadow:0 6px 18px rgba(0,0,0,.08);}
         .ramo-card.active{border-color:var(--ramo-color);box-shadow:0 8px 24px rgba(0,0,0,.15);}
         .ramo-card-inner{padding:22px 20px;background:var(--bg-card);}
         .ramo-card.active .ramo-card-inner{background:var(--ramo-light);}
@@ -168,24 +165,22 @@ $pageTitle = 'Dashboard';
             </div>
         </header>
 
-        <!-- Selector de ramo: filtra esta página (?ramo=<clave>); la tarjeta
-             activa vuelve a mostrar todos los ramos. -->
+        <!-- Resumen por ramo. El filtro se cambia en el menú lateral; aquí
+             solo se marca el ramo que está filtrando. -->
         <div class="ramo-selector">
             <?php foreach ($ramos_info as $ramo_key => $info):
                 $es_activo = ($ramo_key === $ramo);
                 $total_cot = $conteos_ramo[$ramo_key]['cotizaciones'] ?? 0;
                 $total_ven = $conteos_ramo[$ramo_key]['ventas']       ?? 0;
-                $href_ramo = $es_activo ? '/dashboard' : '/dashboard?' . http_build_query(['ramo' => $ramo_key]);
             ?>
-                <a href="<?php echo htmlspecialchars($href_ramo); ?>"
+                <div
                     class="ramo-card <?php echo $es_activo ? 'active' : ''; ?>"
-                    <?php if ($es_activo): ?>title="Quitar el filtro y ver todos los ramos"<?php endif; ?>
                     style="--ramo-color:<?php echo $info['color']; ?>;--ramo-light:<?php echo $info['color_light']; ?>;">
                     <div class="ramo-active-indicator"></div>
                     <div class="ramo-card-inner">
                         <div class="ramo-card-top">
                             <span class="ramo-emoji"><?= icono($info['icon']) ?></span>
-                            <span class="ramo-badge"><?php echo $es_activo ? 'Activo' : 'Cambiar'; ?></span>
+                            <?php if ($es_activo): ?><span class="ramo-badge">Filtrando</span><?php endif; ?>
                         </div>
                         <div class="ramo-nombre"><?php echo htmlspecialchars($info['nombre']); ?></div>
                         <div class="ramo-desc"><?php echo $info['desc']; ?></div>
@@ -200,7 +195,7 @@ $pageTitle = 'Dashboard';
                             </div>
                         </div>
                     </div>
-                </a>
+                </div>
             <?php endforeach; ?>
         </div>
 

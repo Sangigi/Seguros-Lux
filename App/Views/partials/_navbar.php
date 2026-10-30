@@ -145,6 +145,13 @@ $_adminTabsSA = array_merge($_adminTabs, [
     background: rgba(255,255,255,.15);
     border-radius: 4px;
 }
+.sidebar-ramos { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 8px; }
+.sidebar-ramo {
+    font-size: 11px; padding: 3px 9px; border-radius: 99px; text-decoration: none;
+    color: rgba(255,255,255,.6); border: 1px solid rgba(255,255,255,.15);
+}
+.sidebar-ramo:hover { color: #fff; border-color: rgba(255,255,255,.4); }
+.sidebar-ramo.active { background: #fff; color: #111110; border-color: #fff; }
 .sidebar-section-label {
     font-size: 10px;
     font-weight: 700;
@@ -383,6 +390,27 @@ button.sidebar-link {
     </a>
 
     <nav class="sidebar-nav">
+
+        <?php
+        // Filtro de ramo único: se elige aquí y lo aplican Clientes,
+        // Cotizaciones, Citas, Dashboard y Reportes.
+        $_ramosFiltro = ($_isAsesor || $_isCoord || $_isSuperadmin) ? \App\Security\FiltroRamo::activos() : [];
+        $_ramoFiltro  = \App\Security\FiltroRamo::actual();
+        $_volverA     = $_SERVER['REQUEST_URI'] ?? '/dashboard';
+        $_urlRamo     = static fn(string $r): string =>
+            '/set-ramo?' . http_build_query(['ramo' => $r, 'redirect' => $_volverA]);
+        ?>
+        <?php if (count($_ramosFiltro) > 1): ?>
+        <div class="sidebar-section-label">Ramo</div>
+        <div class="sidebar-ramos">
+            <a href="<?= htmlspecialchars($_urlRamo('todos')) ?>"
+               class="sidebar-ramo <?= $_ramoFiltro === null ? 'active' : '' ?>">Todos</a>
+            <?php foreach ($_ramosFiltro as $_rk => $_rl): ?>
+            <a href="<?= htmlspecialchars($_urlRamo($_rk)) ?>"
+               class="sidebar-ramo <?= $_ramoFiltro === $_rk ? 'active' : '' ?>"><?= htmlspecialchars($_rl) ?></a>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
 
         <?php if ($_isAsesor): ?>
         <!-- ══════════════════════════════════════════════

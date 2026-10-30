@@ -13,8 +13,8 @@ $cotizacionModel = new CotizacionModel();
 $citaModel       = new CitaModel();
 $historialModel  = new HistorialModel();
 
-// ── Filtro de ramo de esta página (GET ?ramo=<clave>; sin parámetro, todos) ─
-// Los ramos salen del catálogo de la empresa: solo se ofrecen los activos.
+// ── Ramos del catálogo y filtro ──────────────────────────────────────────
+// El ramo es el filtro único del CRM, elegido en el menú lateral.
 $coloresRamo = ['autos'=>'#0ea5e9', 'vida'=>'#c9a227', 'gastos_medicos'=>'#10b981', 'empresas'=>'#8b5cf6'];
 $ramoLabels  = ['todos' => ['label'=>'Todos los ramos', 'icon'=>'bar-chart', 'color'=>'#64748b']];
 foreach ((new CatalogoModel())->ramos() as $clave => $etiqueta) {
@@ -24,8 +24,7 @@ foreach ((new CatalogoModel())->ramos() as $clave => $etiqueta) {
         'color' => $coloresRamo[$clave] ?? '#64748b',
     ];
 }
-$ramoGet    = $_GET['ramo'] ?? '';
-$ramoFiltro = is_string($ramoGet) && $ramoGet !== 'todos' && isset($ramoLabels[$ramoGet]) ? $ramoGet : 'todos';
+$ramoFiltro = \App\Security\FiltroRamo::desdePeticion() ?? 'todos';
 $ramoParam  = $ramoFiltro === 'todos' ? null : $ramoFiltro;
 
 $kpis = $cotizacionModel->getKpis($agenteId, $ramoParam);
@@ -109,18 +108,7 @@ $pageTitle = 'Reportes';
             </div>
         </header>
 
-        <!-- ── Selector de ramo ─────────────────────────────────────────────── -->
-        <div class="ramo-tabs">
-            <?php foreach ($ramoLabels as $slug => $info): ?>
-            <a href="/reportes<?php echo $slug === 'todos' ? '' : '?' . htmlspecialchars(http_build_query(['ramo' => $slug])); ?>"
-               class="ramo-tab <?php echo $ramoFiltro === $slug ? 'active' : ''; ?>"
-               style="<?php echo $ramoFiltro === $slug ? 'background:'.$info['color'].';' : ''; ?>">
-                <?php echo icono($info['icon']); ?> <?php echo htmlspecialchars($info['label']); ?>
-            </a>
-            <?php endforeach; ?>
-        </div>
-
-        <!-- Banner ramo activo (para quitar el filtro está la pestaña "Todos los ramos") -->
+        <!-- Banner ramo activo (el filtro se quita en el menú lateral) -->
         <?php if ($ramoFiltro !== 'todos'): ?>
         <div class="ramo-banner"
              style="background:<?php echo $ramoActualInfo['color']; ?>15;border:1.5px solid <?php echo $ramoActualInfo['color']; ?>40;">

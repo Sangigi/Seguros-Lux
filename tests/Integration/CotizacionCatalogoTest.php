@@ -252,8 +252,11 @@ class CotizacionCatalogoTest extends TestCase
 
         foreach (['crear.php' => $crear, 'index.php' => $lista] as $ruta => $codigo) {
             $this->assertStringContainsString('CatalogoModel', $codigo, "{$ruta} no lee el catálogo.");
-            $this->assertStringContainsString("\$_GET['ramo']", $codigo, "{$ruta} no toma el ramo de la URL.");
         }
+        // La lista filtra con el ramo único del menú; la nueva cotización acepta
+        // además un ?ramo= explícito (p. ej. desde la ficha del cliente).
+        $this->assertStringContainsString('FiltroRamo::desdePeticion()', $lista);
+        $this->assertStringContainsString("\$_GET['ramo']", $crear);
 
         $this->assertStringNotContainsString("['GNP','Qualitas','Chubb','Inbursa']", $crear);
         $this->assertStringNotContainsString("'Ana Seguros'", $lista);

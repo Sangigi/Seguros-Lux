@@ -278,14 +278,16 @@ $clienteSel   = $clienteIdPre ? $clienteModel->getSeleccionado($clienteIdPre, $a
 
 // ── Ramo de la cotización ─────────────────────────────────────────────────
 // Al editar, el de la cotización guardada (aunque hoy esté apagado). Si es
-// nueva, el de ?ramo=, y solo si es un ramo activo; si no, $ramoCot queda en
+// nueva, el de ?ramo= (solo un ramo activo) o, si no viene, el del filtro del
+// menú lateral. Con ?elegir=1 o sin ninguno de los dos, $ramoCot queda en
 // null y la pantalla pide elegirlo.
 $ramoCot = $modoEdicion
     ? ((string)($cotizacionEdit['ramo'] ?? '') ?: 'autos')
-    : CotizacionModel::ramoDeParametro($_GET['ramo'] ?? null, $ramosActivos);
+    : (CotizacionModel::ramoDeParametro($_GET['ramo'] ?? null, $ramosActivos)
+        ?? (isset($_GET['elegir']) ? null : \App\Security\FiltroRamo::actual()));
 
 // Parámetros que conservan los enlaces del selector de ramo.
-$paramsSinRamo = array_filter(['cliente_id' => $clienteIdPre ?: null]);
+$paramsSinRamo = array_filter(['cliente_id' => $clienteIdPre ?: null, 'elegir' => 1]);
 $urlCambiarRamo = '/crear-cotizacion' . ($paramsSinRamo ? '?' . http_build_query($paramsSinRamo) : '');
 
 $ramoLabel = null;

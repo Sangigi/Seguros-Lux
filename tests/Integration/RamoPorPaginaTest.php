@@ -6,20 +6,21 @@ namespace Tests\Integration;
 use App\Controllers\CitaController;
 use App\Controllers\ClientController;
 use App\Models\CatalogoModel;
+use App\Security\FiltroRamo;
 use App\Security\Tenant;
 use App\Services\QueryCache;
 use PHPUnit\Framework\TestCase;
 
 /**
- * El ramo deja de ser estado de sesión: cada pantalla filtra con su propio
- * ?ramo=<clave> y todo ramo que entra se valida contra el catálogo de la
- * empresa, no contra una lista escrita a mano.
+ * El ramo se filtra en un solo sitio, el menú lateral (FiltroRamo), y todo
+ * ramo que entra se valida contra el catálogo de la empresa, no contra una
+ * lista escrita a mano.
  *
  * Dos partes:
  *  - Controladores: el ramo que llega se resuelve con el catálogo (activos,
  *    alias de formularios viejos, ramos desactivados).
- *  - Fuente de las vistas: ninguna lee ni escribe el ramo de la sesión, y
- *    /set-ramo ya no guarda nada.
+ *  - Filtro: solo acepta ramos activos, y las listas no traen pestañas de
+ *    ramo propias.
  *
  * Como CatalogosTest, las pruebas que cambian el catálogo trabajan sobre una
  * empresa propia para no afectar a la empresa 1 del bootstrap.
@@ -183,34 +184,73 @@ class RamoPorPaginaTest extends TestCase
         return $out;
     }
 
-    public function testNingunaPantallaLeeNiEscribeElRamoDeSesion(): void
+    /**
+     * El ramo se elige en un solo sitio, el menú lateral: las listas lo leen
+     * de FiltroRamo y ya no traen pestañas de ramo propias.
+     */
+    public function testElFiltroDeRamoEsUnicoYViveEnElMenu(): void
     {
-        $vistas = self::fuentes([
+        $listas = self::fuentes([
             'App/Views/clientes/index.php',
-            'App/Views/clientes/detalle.php',
+            'App/Views/cotizaciones/index.php',
             'App/Views/citas/index.php',
             'App/Views/dashboard/index.php',
-            'App/Views/dashboard/set_ramo.php',
             'App/Views/reportes/index.php',
-            'App/Views/partials/_navbar.php',
-            'App/Views/partials/_modales_clientes.php',
-            'public/js/clientes.js',
-            'public/js/calendario.js',
         ]);
 
-        foreach ($vistas as $ruta => $codigo) {
+        foreach ($listas as $ruta => $codigo) {
+            $this->assertStringContainsString('FiltroRamo::desdePeticion()', $codigo, "{$ruta} no usa el filtro común.");
+            $this->assertDoesNotMatchRegularExpression(
+                '/class="ramo-tab[ "]|data-ramo-tab|href="[^"]*\?ramo=/',
+                $codigo,
+                "{$ruta} sigue teniendo pestañas de ramo propias."
+            );
             $this->assertDoesNotMatchRegularExpression(
                 '/SessionManager::(getRamo|setRamo|clearRamo)\b|ramo_activo/',
                 $codigo,
-                "{$ruta} sigue usando el ramo guardado en la sesión."
+                "{$ruta} usa el ramo de sesión antiguo."
             );
         }
 
-        foreach ($vistas as $ruta => $codigo) {
-            if ($ruta === 'App/Views/dashboard/set_ramo.php') {
-                continue;
-            }
-            $this->assertStringNotContainsString('/set-ramo', $codigo, "{$ruta} sigue enlazando a /set-ramo.");
+        $menu = self::fuentes(['App/Views/partials/_navbar.php'])['App/Views/partials/_navbar.php'];
+        $this->assertStringContainsString('/set-ramo?', $menu, 'El menú lateral no ofrece el selector de ramo.');
+    }
+
+    public function testElFiltroSoloAceptaRamosActivosDeLaEmpresa(): void
+    {
+        $_SESSION = [];
+        Tenant::comoEmpresa($this->empresaId, function (): void {
+            FiltroRamo::fijar('vida');
+            $this->assertSame('vida', FiltroRamo::actual());
+
+            FiltroRamo::fijar('no_existe');
+            $this->assertNull(FiltroRamo::actual(), 'Un ramo desconocido no debe quedar como filtro.');
+
+            FiltroRamo::fijar('vida');
+            $this->desactivarRamo('vida');
+            $this->assertNull(FiltroRamo::actual(), 'Un ramo desactivado debe volver a "todos".');
+
+            FiltroRamo::fijar('todos');
+            $this->assertNull(FiltroRamo::actual());
+        });
+        $_SESSION = [];
+    }
+
+    public function testUnRamoEnLaUrlSeAdoptaComoFiltroComun(): void
+    {
+        $_SESSION = [];
+        $_GET['ramo'] = 'autos';
+        try {
+            Tenant::comoEmpresa($this->empresaId, function (): void {
+                $this->assertSame('autos', FiltroRamo::desdePeticion());
+            });
+            unset($_GET['ramo']);
+            Tenant::comoEmpresa($this->empresaId, function (): void {
+                $this->assertSame('autos', FiltroRamo::desdePeticion(), 'El filtro debe seguir en las demás páginas.');
+            });
+        } finally {
+            unset($_GET['ramo']);
+            $_SESSION = [];
         }
     }
 

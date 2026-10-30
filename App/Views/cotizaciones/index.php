@@ -15,11 +15,9 @@ $clienteModel    = new ClientModel();
 $historialModel  = new HistorialModel();
 $catalogo        = new CatalogoModel();
 
-// Filtro de ramo de ESTA pantalla: /cotizaciones?ramo=<clave>, sin parámetro
-// son todos. Solo vale un ramo activo del catálogo de la empresa, y no se
-// guarda en sesión: no filtra ninguna otra pantalla.
+// Filtro de ramo único del CRM, elegido en el menú lateral; null = todos.
 $ramosActivos = $catalogo->ramos();
-$ramoFiltro   = CotizacionModel::ramoDeParametro($_GET['ramo'] ?? null, $ramosActivos); // null = todos
+$ramoFiltro   = \App\Security\FiltroRamo::desdePeticion();
 
 // ── Helper: URL pre-firmada de iDrive/S3 ──────────────────────────────────────
 /**
@@ -566,20 +564,6 @@ $pageTitle = 'Cotizaciones';
                 </div>
             </div>
         </header>
-
-        <!-- ── Pestañas de ramo: filtran solo esta página (?ramo=) ── -->
-        <div class="ramo-tabs">
-            <a href="/cotizaciones" class="ramo-tab <?php echo !$ramoFiltro ? 'active' : ''; ?>">
-                <?= icono('clipboard') ?> Todos
-                <span class="tab-count"><?php echo array_sum(array_column($ramoStats, 'cotizaciones')); ?></span>
-            </a>
-            <?php foreach ($ramosActivos as $ramo => $etiquetaRamo): ?>
-            <a href="/cotizaciones?ramo=<?php echo urlencode($ramo); ?>" class="ramo-tab <?php echo $ramoFiltro === $ramo ? 'active' : ''; ?>">
-                <?php echo icono($ramos_info[$ramo]['icono'] ?? 'clipboard'); ?> <?php echo htmlspecialchars($etiquetaRamo); ?>
-                <span class="tab-count"><?php echo $ramoStats[$ramo]['cotizaciones'] ?? 0; ?></span>
-            </a>
-            <?php endforeach; ?>
-        </div>
 
         <!-- Stats -->
         <section class="stats-grid" style="grid-template-columns:repeat(5,1fr);">

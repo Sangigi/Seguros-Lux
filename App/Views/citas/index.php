@@ -73,9 +73,9 @@ $diaSemana = (int)$primerDia->format('w');
 $nombresMes  = [1=>'Enero',2=>'Febrero',3=>'Marzo',4=>'Abril',5=>'Mayo',6=>'Junio',7=>'Julio',8=>'Agosto',9=>'Septiembre',10=>'Octubre',11=>'Noviembre',12=>'Diciembre'];
 $mesesCortos = [1=>'Ene',2=>'Feb',3=>'Mar',4=>'Abr',5=>'May',6=>'Jun',7=>'Jul',8=>'Ago',9=>'Sep',10=>'Oct',11=>'Nov',12=>'Dic'];
 
-// ── Filtro de ramo de esta página (GET ?ramo=<clave>) — null = todos ──────
+// ── Ramos del catálogo (etiquetas, iconos y colores) ─────────────────────
 // Los ramos salen del catálogo de la empresa: las pestañas solo ofrecen los
-// activos. Es el único filtro de ramo de la pantalla; no se guarda en sesión.
+// activos. El filtro se elige en el menú lateral (App\Security\FiltroRamo).
 $coloresRamo = ['autos'=>'#0ea5e9', 'vida'=>'#c9a227', 'gastos_medicos'=>'#10b981', 'empresas'=>'#8b5cf6'];
 $ramoLabels  = [];
 foreach ((new CatalogoModel())->ramos() as $slug => $etiqueta) {
@@ -85,8 +85,8 @@ foreach ((new CatalogoModel())->ramos() as $slug => $etiqueta) {
         'color' => $coloresRamo[$slug] ?? '#64748b',
     ];
 }
-$ramoGet    = $_GET['ramo'] ?? '';
-$ramoFiltro = is_string($ramoGet) && isset($ramoLabels[$ramoGet]) ? $ramoGet : null;
+// Filtro de ramo único del CRM, elegido en el menú lateral; null = todos.
+$ramoFiltro = \App\Security\FiltroRamo::desdePeticion();
 
 $citas        = $citaModel->getByMesYRamo($agenteId, $fechaIni, $fechaFin, $ramoFiltro);
 $proximas     = $citaModel->getProximasYRamo($agenteId, $ramoFiltro);
@@ -177,23 +177,6 @@ if (isset($_GET['_ajax'])) {
                 </div>
             </div>
         </header>
-
-        <!-- ── Tabs de ramo ────────────────────────────────────────────────── -->
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
-            <?php
-            $qBase = http_build_query(array_filter(['anio'=>$anio,'mes'=>$mes]));
-            ?>
-            <a href="?<?php echo $qBase; ?>" data-ramo-tab=""
-               class="btn btn-sm <?php echo $ramoFiltro === null ? 'btn-primary' : 'btn-outline'; ?>"
-               style="border-radius:99px;"><?= icono('bar-chart') ?> Todos</a>
-            <?php foreach ($ramoLabels as $slug => $info): ?>
-            <a href="?<?php echo $qBase; ?>&ramo=<?php echo urlencode($slug); ?>" data-ramo-tab="<?php echo htmlspecialchars($slug); ?>"
-               class="btn btn-sm <?php echo $ramoFiltro === $slug ? 'btn-primary' : 'btn-outline'; ?>"
-               style="border-radius:99px;<?php echo $ramoFiltro === $slug ? 'background:'.$info['color'].';border-color:'.$info['color'].';' : ''; ?>">
-                <?php echo icono($info['icon']).' '.htmlspecialchars($info['label']); ?>
-            </a>
-            <?php endforeach; ?>
-        </div>
 
         <!-- Stats -->
         <section class="stats-grid" style="grid-template-columns:repeat(4,1fr);">
@@ -438,11 +421,10 @@ if (isset($_GET['_ajax'])) {
 let citasData  = <?php echo $citasJSON; ?>;
 const mesActual  = <?php echo $mes; ?>;
 const anioActual = <?php echo $anio; ?>;
-// Filtro de ramo de la página ('' = todos): viaja en la URL, nunca en la sesión.
-const RAMO_FILTRO = <?php echo json_encode((string) $ramoFiltro, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+// El ramo no viaja en la URL: es el filtro único del menú lateral y el
+// servidor lo lee de la sesión.
 function urlCitas(mes, anio, extra){
     const q = new URLSearchParams({mes: mes, anio: anio});
-    if (RAMO_FILTRO) q.set('ramo', RAMO_FILTRO);
     if (extra) Object.entries(extra).forEach(([k, v]) => q.set(k, v));
     return '/citas?' + q.toString();
 }
@@ -622,12 +604,6 @@ function navMes(dir) {
             document.getElementById('calGrid').style.opacity = '1';
             _calLoading = false;
             history.replaceState({}, '', urlCitas(_calMes, _calAnio));
-            // Las pestañas de ramo apuntan al mes que se está viendo.
-            document.querySelectorAll('[data-ramo-tab]').forEach(function(a) {
-                var q = new URLSearchParams({anio: _calAnio, mes: _calMes});
-                if (a.dataset.ramoTab) q.set('ramo', a.dataset.ramoTab);
-                a.setAttribute('href', '?' + q.toString());
-            });
         })
         .catch(function(e) {
             console.error('navMes error:', e);
