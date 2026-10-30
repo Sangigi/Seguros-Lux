@@ -393,8 +393,10 @@ button.sidebar-link {
 
         <?php
         // Filtro de ramo único: se elige aquí y lo aplican Clientes,
-        // Cotizaciones, Citas, Dashboard y Reportes.
-        $_ramosFiltro = ($_isAsesor || $_isCoord || $_isSuperadmin) ? \App\Security\FiltroRamo::activos() : [];
+        // Cotizaciones, Citas, Dashboard y Reportes. Solo aparece en esas
+        // páginas: en el panel de administración o en Equipo no filtraría nada.
+        $_paginasConRamo = ['/dashboard', '/clientes', '/cotizaciones', '/citas', '/reportes', '/crear-cotizacion'];
+        $_ramosFiltro = in_array($_uri, $_paginasConRamo, true) ? \App\Security\FiltroRamo::activos() : [];
         $_ramoFiltro  = \App\Security\FiltroRamo::actual();
         $_volverA     = $_SERVER['REQUEST_URI'] ?? '/dashboard';
         $_urlRamo     = static fn(string $r): string =>
@@ -578,6 +580,11 @@ button.sidebar-link {
 </aside>
 
 <script src="<?= asset_url('js/navbar.js') ?>" nonce="<?= $cspNonce ?? '' ?>"></script>
+<?php // Precarga la sección al pasar el mouse por el menú para que abra al instante.
+      // Solo enlaces del menú: nunca /set-ramo ni el logout, que cambian estado. ?>
+<script type="speculationrules" nonce="<?= $cspNonce ?? '' ?>">
+{"prefetch": [{"where": {"selector_matches": ".crm-sidebar a.sidebar-link"}, "eagerness": "moderate"}]}
+</script>
 <?php if ($_isAsesor || $_agenteRol === 'superadmin'): ?>
 <script src="<?= asset_url('js/notificaciones-navbar.js') ?>" nonce="<?= $cspNonce ?? '' ?>"></script>
 <?php endif; ?>

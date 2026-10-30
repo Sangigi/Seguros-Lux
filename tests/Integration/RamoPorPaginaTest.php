@@ -214,6 +214,13 @@ class RamoPorPaginaTest extends TestCase
 
         $menu = self::fuentes(['App/Views/partials/_navbar.php'])['App/Views/partials/_navbar.php'];
         $this->assertStringContainsString('/set-ramo?', $menu, 'El menú lateral no ofrece el selector de ramo.');
+
+        // Solo en las páginas que filtran, para todos los roles.
+        $this->assertMatchesRegularExpression(
+            "/\\\$_paginasConRamo = \\['\\/dashboard', '\\/clientes', '\\/cotizaciones', '\\/citas', '\\/reportes', '\\/crear-cotizacion'\\]/",
+            $menu
+        );
+        $this->assertStringContainsString('in_array($_uri, $_paginasConRamo, true)', $menu);
     }
 
     public function testElFiltroSoloAceptaRamosActivosDeLaEmpresa(): void

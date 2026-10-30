@@ -575,13 +575,11 @@ body::after {
 
 
 /* ════════════════════════════════════════════════
-   17. ANIMACIÓN DE ENTRADA DE PÁGINA
+   17. CAMBIO DE SECCIÓN
 ════════════════════════════════════════════════ */
-@keyframes fadeInContent {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-.main-content {
-    animation: fadeInContent 0.4s cubic-bezier(0.22, 1, 0.36, 1) !important;
-}
+/* Sin animación de entrada por página: al cambiar de sección el menú se
+   queda quieto y solo cambia el contenido, con un fundido corto. */
+@view-transition { navigation: auto; }
+.crm-sidebar { view-transition-name: crm-sidebar; }
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: .12s; }

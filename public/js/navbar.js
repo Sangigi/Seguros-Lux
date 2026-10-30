@@ -33,3 +33,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!confirm('¿Cerrar sesión?')) e.preventDefault();
         });
 });
+// Conserva el scroll del menú entre secciones (cada sección es una página).
+(() => {
+    const nav = document.querySelector('.crm-sidebar .sidebar-nav');
+    if (!nav) return;
+    try {
+        nav.scrollTop = Number(sessionStorage.getItem('crmSidebarScroll')) || 0;
+    } catch (e) { /* almacenamiento bloqueado: no pasa nada */ }
+    window.addEventListener('pagehide', () => {
+        try { sessionStorage.setItem('crmSidebarScroll', String(nav.scrollTop)); } catch (e) {}
+    });
+})();
