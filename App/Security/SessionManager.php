@@ -559,22 +559,6 @@ class SessionManager
         exit;
     }
 
-    // ── Ramo activo ───────────────────────────────────────────────────────────
-
-    public static function getRamo(): ?string
-    {
-        $ramo    = $_SESSION['ramo_activo'] ?? null;
-        $validos = ['autos', 'vida', 'gastos_medicos', 'empresas'];
-        return ($ramo && in_array($ramo, $validos, true)) ? $ramo : null;
-    }
-
-    public static function setRamo(string $ramo): void
-    {
-        $_SESSION['ramo_activo'] = $ramo;
-    }
-
-    public static function clearRamo(): void
-    {
-        unset($_SESSION['ramo_activo']);
-    }
+    // El ramo ya no vive en la sesión: cada pantalla lee su propio
+    // ?ramo=<clave> y lo valida contra CatalogoModel::ramos().
 }

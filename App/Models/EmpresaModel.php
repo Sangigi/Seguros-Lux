@@ -170,7 +170,8 @@ class EmpresaModel extends BaseModel
     }
 
     /**
-     * Da de alta una empresa. Devuelve su id, o 0 si el nombre está vacío.
+     * Da de alta una empresa con sus catálogos por defecto. Devuelve su id,
+     * o 0 si el nombre está vacío.
      *
      * @param array<string,mixed> $datos
      */
@@ -193,7 +194,7 @@ class EmpresaModel extends BaseModel
         // La tabla de empresas no está aislada, pero el insert de BaseModel
         // exige contexto. Aquí lo decimos explícitamente: es una operación
         // de plataforma.
-        return Tenant::sinRestriccion(fn() => $this->insert([
+        $id = Tenant::sinRestriccion(fn() => $this->insert([
             'nombre'          => $nombre,
             'slug'            => $this->generarSlug($nombre),
             'razon_social'    => (string) ($datos['razon_social']    ?? ''),
@@ -208,6 +209,20 @@ class EmpresaModel extends BaseModel
             'notas'           => (string) ($datos['notas'] ?? ''),
             'creada_por'      => $creadaPor ?? 0,
         ]));
+
+        if ($id > 0) {
+            // La empresa nace con los catálogos por defecto (ramos,
+            // aseguradoras, coberturas y documentos), sembrados dentro de ella
+            // misma. Si la siembra fallara, la empresa ya existe y no se
+            // deshace por esto: CatalogoModel la siembra en su primera lectura.
+            try {
+                Tenant::comoEmpresa($id, fn() => (new CatalogoModel())->sembrar($id));
+            } catch (\Throwable $e) {
+                error_log('[empresas] No se sembraron los catálogos de la empresa ' . $id . ': ' . $e->getMessage());
+            }
+        }
+
+        return $id;
     }
 
     public function actualizar(int $id, array $datos): bool

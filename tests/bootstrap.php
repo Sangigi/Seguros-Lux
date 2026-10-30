@@ -231,7 +231,7 @@ function createTestPdo(): PDO
     // una copia a mano del esquema multiempresa. Si se escribieran aparte,
     // acabarían divergiendo, y las pruebas pasarían sobre un esquema que no
     // es el que se despliega —que es la clase de fallo que no avisa.
-    foreach (['005_multiempresa.php', '006_canales_empresa.php'] as $archivo) {
+    foreach (['005_multiempresa.php', '006_canales_empresa.php', '007_catalogos.php'] as $archivo) {
         $migracion = require dirname(__DIR__) . '/Database/migrations/' . $archivo;
         ($migracion['up'])($pdo, new \Database\SchemaHelper($pdo));
     }

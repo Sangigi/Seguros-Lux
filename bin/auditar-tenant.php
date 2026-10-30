@@ -36,7 +36,7 @@ if (PHP_SAPI !== 'cli') {
 
 $raiz = dirname(__DIR__);
 
-/** Tablas aisladas por empresa (las mismas de la migración 005). */
+/** Tablas aisladas por empresa (las de la migración 005, más las que llegaron después). */
 const TABLAS_TENANT = [
     'clientes', 'citas', 'cotizaciones', 'polizas', 'cotizacion_archivos',
     'cotizacion_pagos', 'cotizacion_comprobantes_pago', 'cotizacion_detalles',
@@ -44,6 +44,7 @@ const TABLAS_TENANT = [
     'notificaciones', 'notas', 'mail_queue',
     'renovacion_notificaciones_programadas', 'meta_leads', 'vida_solicitudes',
     'agentes', 'invitaciones', 'configuracion',
+    'catalogos',
 ];
 
 /** Rutas que no se auditan. */

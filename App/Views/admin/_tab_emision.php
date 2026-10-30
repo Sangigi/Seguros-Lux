@@ -29,20 +29,11 @@ $emiSearch  = trim($_GET['emi_q'] ?? '');
 $emiEstado  = trim($_GET['emi_estado'] ?? '');
 $emiEstatoPago = trim($_GET['emi_pago'] ?? '');
 
-// Ramones disponibles + estados de póliza
-$RAMOS_LABEL = ['autos'=>'Autos','vida'=>'Vida','gastos_medicos'=>'Gastos Médicos'];
-$REQS = [
-    'autos'         => ['ine', 'comprobante_dom', 'tarjeta_circulacion', 'foto_coche_1', 'foto_coche_2'],
-    'vida'          => ['ine', 'comprobante_dom'],
-    'gastos_medicos'=> ['ine', 'comprobante_dom'],
-];
-$TIPO_LABEL = [
-    'ine'=>'INE','comprobante_dom'=>'Comp. domicilio','tarjeta_circulacion'=>'T. circulación',
-    'foto_coche_1'=>'Foto vehículo 1','foto_coche_2'=>'Foto vehículo 2','foto_coche_3'=>'Foto vehículo 3',
-    'foto_coche_4'=>'Foto vehículo 4','foto_coche_5'=>'Foto vehículo 5',
-    'comprobante_pago'=>'Comprobante de pago','constancia_fiscal'=>'Constancia fiscal',
-    'poliza'=>'Póliza (documento)',
-];
+// Nombre de cada ramo, del catálogo de la empresa (también los apagados: una
+// cotización vieja de ese ramo se sigue mostrando con su nombre). Los nombres
+// de los documentos del expediente los manda _ajax_emision.php (emi_get_docs),
+// según el ramo de cada cotización.
+$RAMOS_LABEL = \App\Models\CotizacionModel::etiquetasRamo();
 $METODOS_PAGO = [
     'efectivo'        => 'Efectivo',
     'tarjeta_credito' => 'Tarjeta de crédito',
@@ -626,15 +617,16 @@ try {
                     document.getElementById('emiDetalleBody').innerHTML = '<p style="color:var(--danger-color);text-align:center;padding:24px;">Error al cargar documentos.</p>';
                     return;
                 }
-                const tipoLabel = <?= json_encode($TIPO_LABEL) ?>;
+                // Nombres del catálogo de la empresa: se escapan antes de pintarlos.
+                const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                 let html = `<div style="margin-bottom:16px;">
                     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
-                        <span class="badge badge-info">Ramo: ${d.ramo || '—'}</span>
-                        <span class="badge badge-neutral">Compañía: ${d.compania || '—'}</span>
-                        <span class="badge badge-neutral">Cobertura: ${d.tipo_cobertura || '—'}</span>
+                        <span class="badge badge-info">Ramo: ${esc(d.ramo_label || d.ramo) || '—'}</span>
+                        <span class="badge badge-neutral">Compañía: ${esc(d.compania) || '—'}</span>
+                        <span class="badge badge-neutral">Cobertura: ${esc(d.tipo_cobertura) || '—'}</span>
                     </div>
                     <div style="font-size:13px;color:var(--text-secondary);">
-                        ${iconoSvg('person')} <strong>${d.cliente_nombre}</strong> &nbsp;·&nbsp; Asesor: ${d.asesor_nombre}
+                        ${iconoSvg('person')} <strong>${esc(d.cliente_nombre)}</strong> &nbsp;·&nbsp; Asesor: ${esc(d.asesor_nombre)}
                     </div>
                 </div>`;
                 if (!d.docs || !d.docs.length) {
@@ -643,15 +635,15 @@ try {
                     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">';
                     d.docs.forEach(doc => {
                         const thumb = doc.es_imagen && doc.url_local
-                            ? `<div style="height:90px;border-radius:6px;overflow:hidden;margin-bottom:8px;cursor:pointer;" data-action="emi-openImg"><img src="${doc.url_local}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`
+                            ? `<div style="height:90px;border-radius:6px;overflow:hidden;margin-bottom:8px;cursor:pointer;" data-action="emi-openImg"><img src="${esc(doc.url_local)}" style="width:100%;height:100%;object-fit:cover;" loading="lazy"></div>`
                             : `<div style="height:90px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;">${doc.es_pdf ? iconoSvg('file-earmark-text') : iconoSvg('paperclip')}</div>`;
                         const dl = doc.url_local
-                            ? `<a href="${doc.url_local}" download="${doc.nombre_orig}" class="btn btn-sm btn-outline" style="width:100%;text-align:center;font-size:11px;">⬇ Descargar</a>`
+                            ? `<a href="${esc(doc.url_local)}" download="${esc(doc.nombre_orig)}" class="btn btn-sm btn-outline" style="width:100%;text-align:center;font-size:11px;">⬇ Descargar</a>`
                             : `<span style="font-size:11px;color:var(--text-muted);">No disponible</span>`;
                         html += `<div style="background:var(--bg-secondary);border-radius:8px;padding:12px;">
                             ${thumb}
-                            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;margin-bottom:3px;">${tipoLabel[doc.tipo] || doc.tipo}</div>
-                            <div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px;" title="${doc.nombre_orig}">${doc.nombre_orig}</div>
+                            <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;margin-bottom:3px;">${esc(doc.tipo_label || doc.tipo)}</div>
+                            <div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px;" title="${esc(doc.nombre_orig)}">${esc(doc.nombre_orig)}</div>
                             ${dl}
                         </div>`;
                     });

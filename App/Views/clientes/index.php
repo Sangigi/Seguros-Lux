@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 use App\Security\SessionManager;
-use App\Models\{ClientModel, CitaModel, HistorialModel};
+use App\Models\{CatalogoModel, ClientModel, CitaModel, HistorialModel};
 
 SessionManager::requireAuth('/login');
 
@@ -18,18 +18,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $agenteId      = SessionManager::getAgentId();
 $empresaId     = \App\Security\Tenant::requireId();
-$ramo          = SessionManager::getRamo(); // null = todos los ramos
 $clienteModel  = new ClientModel();
 $citaModel     = new CitaModel();
 $historialModel= new HistorialModel();
 
-// ── Info de ramos ─────────────────────────────────────────────────────────────
-$ramos_info = [
-    'autos'          => ['icono'=>'car-front','label'=>'Vehicular'],
-    'vida'           => ['icono'=>'heart-fill','label'=>'Vida'],
-    'gastos_medicos' => ['icono'=>'hospital','label'=>'GMM'],
-    'empresas'       => ['icono'=>'building','label'=>'Empresas'],
-];
+// ── Info de ramos (catálogo de la empresa) ────────────────────────────────────
+// Las pestañas y el alta ofrecen solo los ramos activos; un cliente de un ramo
+// desactivado se sigue mostrando con su nombre.
+$catalogo     = new CatalogoModel();
+$ramosActivos = $catalogo->ramos();
+$ramos_info   = [];
+foreach ($catalogo->ramos(false) + CatalogoModel::RAMOS as $rk => $rLabel) {
+    $ramos_info[$rk] = ['icono' => CatalogoModel::ICONOS_RAMO[$rk] ?? 'clipboard', 'label' => $rLabel];
+}
+
+// Filtro de ramo de ESTA página (?ramo=<clave>); sin parámetro, todos.
+// No se guarda en la sesión: no afecta a ninguna otra pantalla.
+$ramoGet = $_GET['ramo'] ?? '';
+$ramo    = is_string($ramoGet) && isset($ramosActivos[$ramoGet]) ? $ramoGet : null;
 
 // ── AJAX ──────────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
@@ -51,8 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $fecha       = trim($_POST['fecha']        ?? '');
         $hora        = trim($_POST['hora']         ?? '');
         $comentarios = trim($_POST['comentarios']  ?? '');
-        $ramoActual  = trim($_POST['ramo']         ?? $ramo ?? 'autos');
         if (!$clienteId || !$fecha || !$hora) { echo json_encode(['ok'=>false,'msg'=>'Faltan campos.']); exit; }
+        // La cita va en el ramo del cliente, no en el filtro de la página.
+        $clienteCita = $clienteModel->find($clienteId);
+        if (!$clienteCita) { echo json_encode(['ok'=>false,'msg'=>'Cliente no encontrado.']); exit; }
+        $ramoActual  = (string) (($clienteCita['ramo'] ?? '') ?: array_key_first($ramosActivos));
         // Límite: máx 20 citas por cliente (anti-spam)
         $db_citas = \Database\Connection::getConnection();
         $stCount = $db_citas->prepare('SELECT COUNT(*) FROM citas WHERE cliente_id = ? AND empresa_id = ?');
@@ -76,9 +85,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 
 // ── Guardar nuevo cliente (POST form) ─────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['accion'])) {
-    $ramoNuevo = in_array($_POST['ramo'] ?? '', ['autos','vida','gastos_medicos','empresas'], true)
-        ? $_POST['ramo']
-        : ($ramo ?? 'autos');
+    // El formulario manda el ramo de la pestaña desde la que se abrió. Solo se
+    // admite un ramo activo; si no viene (pestaña "Todos"), autos si la
+    // empresa lo trabaja y, si no, su primer ramo activo.
+    $ramoPost        = $_POST['ramo'] ?? '';
+    $ramoPostValido  = is_string($ramoPost) && isset($ramosActivos[$ramoPost]);
+    $ramoNuevo       = $ramoPostValido
+        ? $ramoPost
+        : ($ramo ?? (isset($ramosActivos['autos']) ? 'autos' : (string) array_key_first($ramosActivos)));
 
     $input = [
         'nombre'           => trim($_POST['nombre']            ?? ''),
@@ -155,7 +169,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['accion'])) {
             $historialModel->registrar($nuevoId, $agenteId, 'registro', 'Cliente registrado',
                 "{$input['nombre']} {$input['apellido_paterno']} — Ramo: ".($ramos_info[$ramoNuevo]['label'] ?? $ramoNuevo));
         }
-        header('Location: /clientes?ok=1');
+        // De vuelta a la misma pestaña desde la que se dio de alta.
+        header('Location: /clientes?' . ($ramoPostValido ? 'ramo=' . rawurlencode($ramoNuevo) . '&' : '') . 'ok=1');
         exit;
     }
 }
@@ -317,7 +332,7 @@ $pageTitle = 'Clientes';
                         <?php echo $esCoordinador ? 'Todos los Clientes' : 'Gestión de Clientes'; ?>
                         <?php if ($ramo): ?>
                         <span style="font-size:14px;font-weight:400;color:var(--text-muted);margin-left:8px;">
-                            — <?php echo (isset($ramos_info[$ramo]) ? icono($ramos_info[$ramo]['icono']) : '').' '.($ramos_info[$ramo]['label']??$ramo); ?>
+                            — <?php echo (isset($ramos_info[$ramo]) ? icono($ramos_info[$ramo]['icono']) : '').' '.htmlspecialchars($ramos_info[$ramo]['label']??$ramo); ?>
                         </span>
                         <?php endif; ?>
                     </h1>
@@ -336,15 +351,22 @@ $pageTitle = 'Clientes';
             </div>
         </header>
 
-        <!-- ── Pestañas de ramo ── -->
+        <!-- ── Pestañas de ramo (filtro de esta página: ?ramo=<clave>) ── -->
+        <?php
+        // Cada pestaña conserva el filtro de asesor que ya hubiera en la URL.
+        $urlRamo = static function (?string $rk) use ($filtroAsesorId): string {
+            $q = array_filter(['ramo' => $rk, 'asesor_id' => $filtroAsesorId]);
+            return '/clientes' . ($q ? '?' . http_build_query($q) : '');
+        };
+        ?>
         <div class="ramo-tabs">
-            <a href="/set-ramo?ramo=todos&redirect=/clientes" class="ramo-tab <?php echo !$ramo ? 'active' : ''; ?>">
+            <a href="<?php echo htmlspecialchars($urlRamo(null)); ?>" class="ramo-tab <?php echo !$ramo ? 'active' : ''; ?>">
                 <?= icono('people') ?> Todos
                 <span class="tab-count"><?php echo array_sum($ramoConteos); ?></span>
             </a>
-            <?php foreach ($ramos_info as $rk => $rv): ?>
-            <a href="/set-ramo?ramo=<?php echo $rk; ?>&redirect=/clientes" class="ramo-tab <?php echo $ramo === $rk ? 'active' : ''; ?>">
-                <?php echo icono($rv['icono']).' '.$rv['label']; ?>
+            <?php foreach ($ramosActivos as $rk => $rLabel): ?>
+            <a href="<?php echo htmlspecialchars($urlRamo($rk)); ?>" class="ramo-tab <?php echo $ramo === $rk ? 'active' : ''; ?>">
+                <?php echo icono($ramos_info[$rk]['icono']).' '.htmlspecialchars($rLabel); ?>
                 <span class="tab-count"><?php echo $ramoConteos[$rk] ?? 0; ?></span>
             </a>
             <?php endforeach; ?>
@@ -452,6 +474,7 @@ $pageTitle = 'Clientes';
                                 data-ciudad="<?php echo htmlspecialchars(strtolower($cliente['ciudad'] ?? '')); ?>"
                                 data-fecha="<?php echo $fechaISO; ?>"
                                 data-asesor="<?php echo $cliente['agente_id']; ?>"
+                                data-ramo="<?php echo htmlspecialchars($ramoCliente); ?>"
                                 data-id="<?php echo $cliente['id']; ?>">
                                 <td style="text-align:center;font-size:12px;color:var(--text-muted);font-weight:600;"><?php echo $i+1; ?></td>
                                 <td>
@@ -474,7 +497,7 @@ $pageTitle = 'Clientes';
                                     <div class="action-buttons">
                                         <a href="/cliente/<?php echo $cliente['id']; ?>" class="btn btn-sm btn-outline" title="Ver detalle"><?= icono('eye') ?></a>
                                         <button class="btn btn-sm btn-outline" data-action="nota" data-id="<?php echo $cliente['id']; ?>" title="Nota"><?= icono('pencil-square') ?></button>
-                                        <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="btn btn-sm btn-primary" title="Cotización"><?= icono('clipboard') ?></a>
+                                        <a href="/crear-cotizacion?<?php echo htmlspecialchars(http_build_query(['cliente_id' => (int) $cliente['id'], 'ramo' => $ramoCliente])); ?>" class="btn btn-sm btn-primary" title="Cotización"><?= icono('clipboard') ?></a>
                                         <button class="btn btn-sm btn-success" data-action="cita" data-id="<?php echo $cliente['id']; ?>" title="Cita"><?= icono('calendar-event') ?></button>
                                         <?php if ($esCoordinador): ?>
                                         <button class="btn btn-sm btn-danger" data-action="eliminar" data-id="<?php echo $cliente['id']; ?>" title="Eliminar"><?= icono('trash') ?></button>
@@ -496,13 +519,23 @@ $pageTitle = 'Clientes';
 
 <?php
 $csrfToken = SessionManager::getCsrfToken();
+$ramoAlta  = $ramo ?? ''; // el cliente nuevo se da de alta en el ramo de la pestaña
 require __DIR__ . '/../partials/_modales_clientes.php';
+
+// Nombre e ícono de cada ramo para clientes.js (incluye los inactivos: un
+// cliente de un ramo desactivado sigue mostrando el suyo).
+$ramosCatalogoJs = [];
+foreach ($ramos_info as $rk => $rv) {
+    $ramosCatalogoJs[$rk] = ['etiqueta' => $rv['label'], 'icono' => $rv['icono']];
+}
+$jsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE;
 ?>
 
 <div class="toast-container" id="toastContainer"></div>
 <script src="/js/clientes.js"   nonce="<?= $cspNonce ?>"></script>
 <script nonce="<?= $cspNonce ?>">
-    window.ramoActivo = <?php echo json_encode($ramo ?? 'autos'); ?>;
+    window.ramoActivo    = <?php echo json_encode($ramo ?? '', $jsonFlags); ?>;
+    window.ramosCatalogo = <?php echo json_encode($ramosCatalogoJs, $jsonFlags); ?>;
 </script>
 <script src="/js/crm-events.js" nonce="<?= $cspNonce ?>"></script>
 <script src="/js/modales.js"    nonce="<?= $cspNonce ?>"></script>

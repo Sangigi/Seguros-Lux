@@ -203,28 +203,17 @@
                         '<div style="color:var(--danger-color);text-align:center;padding:32px;">Error al cargar</div>';
                     return;
                 }
-                renderChecklist(d.docs, d.checklist, d.ramo, cotId);
+                renderChecklist(d.docs, d.checklist, d.ramo_label || d.ramo, cotId, d.requeridos, d.etiquetas);
             });
     }
 
-    function renderChecklist(docs, checklist, ramo, cotId) {
+    function renderChecklist(docs, checklist, ramo, cotId, requeridosSrv, etiquetasSrv) {
         // docs: archivos subidos por el asesor + comprobante virtual del coordinador
         // checklist: estado marcado por el coordinador (puede estar vacío)
-        const tipoLabel = {
-            ine: 'INE', comprobante_dom: 'Comp. domicilio',
-            tarjeta_circulacion: 'T. circulación', factura_auto: 'Factura auto',
-            foto_coche_1: 'Foto 1', foto_coche_2: 'Foto 2', foto_coche_3: 'Foto 3',
-            foto_coche_4: 'Foto 4', foto_coche_5: 'Foto 5',
-            comprobante_pago: 'Comp. pago (Coordinador)', constancia_fiscal: 'Const. fiscal',
-            poliza: 'Póliza actual', doc_cotizacion: 'Doc. cotización',
-        };
-
-        const REQS = {
-            autos:          ['ine', 'comprobante_dom', 'tarjeta_circulacion', 'foto_coche_1', 'foto_coche_2', 'comprobante_pago'],
-            vida:           ['ine', 'comprobante_dom', 'comprobante_pago'],
-            gastos_medicos: ['ine', 'comprobante_dom', 'comprobante_pago'],
-        };
-        const requeridos = REQS[ramo] || REQS['autos'];
+        // requeridosSrv / etiquetasSrv: del catálogo de la empresa, según el
+        // ramo de la cotización (los manda emi_get_checklist).
+        const tipoLabel  = etiquetasSrv || {};
+        const requeridos = Array.isArray(requeridosSrv) ? requeridosSrv : ['comprobante_pago'];
 
         // Docs que el ASESOR sube (no el coordinador)
         const DOCS_ASESOR = requeridos.filter(t => t !== 'comprobante_pago');
@@ -241,7 +230,7 @@
         let completados = 0;
         let html = `
             <div style="margin-bottom:16px;padding:12px 16px;background:var(--bg-secondary);border-radius:8px;font-size:13px;">
-                <strong>Ramo:</strong> ${ramo} &nbsp;|&nbsp;
+                <strong>Ramo:</strong> ${esc(ramo)} &nbsp;|&nbsp;
                 <strong>Docs subidos:</strong> ${docs.length} &nbsp;|&nbsp;
                 <strong>Progreso:</strong> <span id="eckProgress">calculando…</span>
             </div>
@@ -253,7 +242,7 @@
             const requerido= requeridos.includes(tipo);
             const tieneDoc = !!doc;
             const ckEstado = ck?.estado || 'pendiente';
-            const label    = tipoLabel[tipo] || tipo;
+            const label    = esc(tipoLabel[tipo] || tipo);
             const ext      = tieneDoc && doc.nombre_archivo ? String(doc.nombre_archivo).split('.').pop().toLowerCase() : '';
             const esImg    = ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
 
@@ -430,6 +419,12 @@
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+    // Los nombres del catálogo los edita la empresa: se escapan antes de pintarlos.
+    function esc(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                              .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     function postAdmin(data) {
         const fd = new FormData();
         Object.entries(data).forEach(([k, v]) => fd.append(k, v));

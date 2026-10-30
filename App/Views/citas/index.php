@@ -2,12 +2,11 @@
 declare(strict_types=1);
 
 use App\Security\SessionManager;
-use App\Models\{CitaModel, ClientModel, HistorialModel};
+use App\Models\{CatalogoModel, CitaModel, ClientModel, HistorialModel};
 
 SessionManager::requireAuth('/login');
 
 $agenteId     = SessionManager::getAgentId();
-$ramo         = SessionManager::getRamo();
 $empresaId    = \App\Security\Tenant::requireId();
 $citaModel    = new CitaModel();
 $clienteModel = new ClientModel();
@@ -32,8 +31,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         }
 
         $pMeetLink = trim($_POST['meet_link'] ?? '');
-        // FIX ramo: usar el ramo enviado por el formulario; cae al ramo de sesión si no viene
-        $pRamo = trim($_POST['ramo'] ?? '') ?: $ramo;
+        // La cita va en el ramo del cliente, no en el filtro de la página.
+        $pClienteRow = $clienteModel->find($pCliente);
+        $pRamo = (string) (($pClienteRow['ramo'] ?? '') ?: array_key_first((new CatalogoModel())->ramos()));
         $nuevaId = $citaModel->crear($pCliente, $agenteId, $pTipo, $pFecha, $pHora, $pComentarios, $pRamo);
         if ($pMeetLink && $nuevaId) {
             \Database\Connection::getConnection()
@@ -73,15 +73,20 @@ $diaSemana = (int)$primerDia->format('w');
 $nombresMes  = [1=>'Enero',2=>'Febrero',3=>'Marzo',4=>'Abril',5=>'Mayo',6=>'Junio',7=>'Julio',8=>'Agosto',9=>'Septiembre',10=>'Octubre',11=>'Noviembre',12=>'Diciembre'];
 $mesesCortos = [1=>'Ene',2=>'Feb',3=>'Mar',4=>'Abr',5=>'May',6=>'Jun',7=>'Jul',8=>'Ago',9=>'Sep',10=>'Oct',11=>'Nov',12=>'Dic'];
 
-// ── Filtro de ramo opcional (GET ?ramo=) — null = todos ───────────────────
-$ramosValidos   = ['autos','vida','gastos_medicos','empresas'];
-$ramoFiltro     = in_array($_GET['ramo'] ?? '', $ramosValidos, true) ? $_GET['ramo'] : null;
-$ramoLabels = [
-    'autos'          => ['icon'=>'car-front',  'label'=>'Autos',       'color'=>'#0ea5e9'],
-    'vida'           => ['icon'=>'heart-fill', 'label'=>'Vida',        'color'=>'#c9a227'],
-    'gastos_medicos' => ['icon'=>'hospital',   'label'=>'GMM',         'color'=>'#10b981'],
-    'empresas'       => ['icon'=>'building',   'label'=>'Empresas',    'color'=>'#8b5cf6'],
-];
+// ── Filtro de ramo de esta página (GET ?ramo=<clave>) — null = todos ──────
+// Los ramos salen del catálogo de la empresa: las pestañas solo ofrecen los
+// activos. Es el único filtro de ramo de la pantalla; no se guarda en sesión.
+$coloresRamo = ['autos'=>'#0ea5e9', 'vida'=>'#c9a227', 'gastos_medicos'=>'#10b981', 'empresas'=>'#8b5cf6'];
+$ramoLabels  = [];
+foreach ((new CatalogoModel())->ramos() as $slug => $etiqueta) {
+    $ramoLabels[$slug] = [
+        'icon'  => CatalogoModel::ICONOS_RAMO[$slug] ?? 'clipboard',
+        'label' => $etiqueta,
+        'color' => $coloresRamo[$slug] ?? '#64748b',
+    ];
+}
+$ramoGet    = $_GET['ramo'] ?? '';
+$ramoFiltro = is_string($ramoGet) && isset($ramoLabels[$ramoGet]) ? $ramoGet : null;
 
 $citas        = $citaModel->getByMesYRamo($agenteId, $fechaIni, $fechaFin, $ramoFiltro);
 $proximas     = $citaModel->getProximasYRamo($agenteId, $ramoFiltro);
@@ -178,14 +183,14 @@ if (isset($_GET['_ajax'])) {
             <?php
             $qBase = http_build_query(array_filter(['anio'=>$anio,'mes'=>$mes]));
             ?>
-            <a href="?<?php echo $qBase; ?>"
+            <a href="?<?php echo $qBase; ?>" data-ramo-tab=""
                class="btn btn-sm <?php echo $ramoFiltro === null ? 'btn-primary' : 'btn-outline'; ?>"
                style="border-radius:99px;"><?= icono('bar-chart') ?> Todos</a>
             <?php foreach ($ramoLabels as $slug => $info): ?>
-            <a href="?<?php echo $qBase; ?>&ramo=<?php echo $slug; ?>"
+            <a href="?<?php echo $qBase; ?>&ramo=<?php echo urlencode($slug); ?>" data-ramo-tab="<?php echo htmlspecialchars($slug); ?>"
                class="btn btn-sm <?php echo $ramoFiltro === $slug ? 'btn-primary' : 'btn-outline'; ?>"
                style="border-radius:99px;<?php echo $ramoFiltro === $slug ? 'background:'.$info['color'].';border-color:'.$info['color'].';' : ''; ?>">
-                <?php echo icono($info['icon']).' '.$info['label']; ?>
+                <?php echo icono($info['icon']).' '.htmlspecialchars($info['label']); ?>
             </a>
             <?php endforeach; ?>
         </div>
@@ -341,7 +346,7 @@ if (isset($_GET['_ajax'])) {
                     <select class="form-select" id="ncCliente">
                         <option value="">Selecciona...</option>
                         <?php foreach ($clientesList as $cl): ?>
-                        <option value="<?php echo $cl['id']; ?>"><?php echo htmlspecialchars($cl['nombre'].' '.$cl['apellido_paterno'].' '.$cl['apellido_materno']); ?></option>
+                        <option value="<?php echo $cl['id']; ?>" data-ramo="<?php echo htmlspecialchars((string) ($cl['ramo'] ?? '')); ?>"><?php echo htmlspecialchars($cl['nombre'].' '.$cl['apellido_paterno'].' '.$cl['apellido_materno']); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -379,9 +384,8 @@ if (isset($_GET['_ajax'])) {
                 <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">Máximo 15 caracteres</div>
             </div>
 
-            <!-- Campos extra si el ramo es Autos -->
-            <?php if (($ramoFiltro ?? $ramo) === 'autos'): ?>
-            <div id="grupoAutos" style="border-top:1px solid var(--border-color);padding-top:14px;margin-top:4px;">
+            <!-- Campos extra si el cliente elegido es de Autos (los muestra el cambio de #ncCliente) -->
+            <div id="grupoAutos" style="display:none;border-top:1px solid var(--border-color);padding-top:14px;margin-top:4px;">
                 <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;"><?= icono('car-front') ?> Datos del vehículo</div>
                 <div class="form-row">
                     <div class="form-group">
@@ -419,10 +423,7 @@ if (isset($_GET['_ajax'])) {
                     </div>
                 </div>
             </div>
-            <?php endif; ?>
-
-            <!-- Ramo activo en sesión — se envía siempre en el POST -->
-            <input type="hidden" id="ncRamo" value="<?php echo htmlspecialchars((string) ($ramoFiltro ?? $ramo)); ?>">
+            <!-- El ramo de la cita no se elige aquí: el servidor usa el del cliente. -->
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" data-close="modalNuevaCita">Cancelar</button>
@@ -437,6 +438,14 @@ if (isset($_GET['_ajax'])) {
 let citasData  = <?php echo $citasJSON; ?>;
 const mesActual  = <?php echo $mes; ?>;
 const anioActual = <?php echo $anio; ?>;
+// Filtro de ramo de la página ('' = todos): viaja en la URL, nunca en la sesión.
+const RAMO_FILTRO = <?php echo json_encode((string) $ramoFiltro, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+function urlCitas(mes, anio, extra){
+    const q = new URLSearchParams({mes: mes, anio: anio});
+    if (RAMO_FILTRO) q.set('ramo', RAMO_FILTRO);
+    if (extra) Object.entries(extra).forEach(([k, v]) => q.set(k, v));
+    return '/citas?' + q.toString();
+}
 const MESES_NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 function openModal(id){const m=document.getElementById(id);if(m){m.classList.add('active');document.body.style.overflow='hidden';}}
@@ -508,7 +517,6 @@ function guardarCita(){
     const fecha=document.getElementById('ncFecha').value;
     const hora=document.getElementById('ncHora').value;
     const comentarios=document.getElementById('ncComentarios').value;
-    const ramo=document.getElementById('ncRamo')?.value||'autos';
     if(!clienteId){showToast('Selecciona un cliente','error');return;}
     if(!fecha||!hora){showToast('Indica la fecha y la hora','error');return;}
     if(new Date(fecha+'T'+hora)<new Date()){showToast('La fecha no puede ser en el pasado','error');return;}
@@ -522,18 +530,19 @@ function guardarCita(){
     fd.append('fecha',fecha);
     fd.append('hora',hora);
     fd.append('comentarios',comentarios);
-    fd.append('ramo',ramo);
     if(meetLink) fd.append('meet_link',meetLink);
     // Teléfono de contacto rápido
     const tel=document.getElementById('ncTelefono')?.value?.trim();
     if(tel) fd.append('telefono_cliente',tel);
-    // Campos extra de autos
-    const tipoAuto=document.getElementById('ncTipoAuto')?.value;
-    const marcaAuto=document.getElementById('ncMarcaAuto')?.value;
-    const estadoAuto=document.getElementById('ncEstadoAuto')?.value;
-    if(tipoAuto)  fd.append('tipo_auto',tipoAuto);
-    if(marcaAuto) fd.append('marca_auto',marcaAuto);
-    if(estadoAuto)fd.append('estado_auto',estadoAuto);
+    // Campos extra de autos (solo si el cliente elegido es de autos)
+    if(document.getElementById('grupoAutos')?.style.display!=='none'){
+        const tipoAuto=document.getElementById('ncTipoAuto')?.value;
+        const marcaAuto=document.getElementById('ncMarcaAuto')?.value;
+        const estadoAuto=document.getElementById('ncEstadoAuto')?.value;
+        if(tipoAuto)  fd.append('tipo_auto',tipoAuto);
+        if(marcaAuto) fd.append('marca_auto',marcaAuto);
+        if(estadoAuto)fd.append('estado_auto',estadoAuto);
+    }
     fetch('/citas',{method:'POST',body:fd}).then(r=>r.json()).then(data=>{
         btn.disabled=false;btn.textContent='Guardar Cita';
         if(data.ok){
@@ -542,7 +551,7 @@ function guardarCita(){
             setTimeout(()=>{
                 const m=(typeof _calMes!=='undefined')?_calMes:mesActual;
                 const a=(typeof _calAnio!=='undefined')?_calAnio:anioActual;
-                location.href='/citas?mes='+m+'&anio='+a;
+                location.href=urlCitas(m,a);
             },1200);
         } else {
             showToast(data.msg||'Error al guardar','error');
@@ -555,6 +564,13 @@ function guardarCita(){
 }
 
 function onTipoChange(tipo){const g=document.getElementById('meetGroup');if(g)g.style.display=tipo==='videollamada'?'':'none';}
+
+// Los datos del vehículo solo aplican si el cliente elegido es de autos.
+document.getElementById('ncCliente')?.addEventListener('change',function(){
+    const g=document.getElementById('grupoAutos');
+    const opt=this.options[this.selectedIndex];
+    if(g)g.style.display=(opt&&opt.dataset.ramo==='autos')?'':'none';
+});
 
 function showToast(msg,type='success'){
     const c=document.getElementById('toastContainer');if(!c)return;
@@ -595,7 +611,7 @@ function navMes(dir) {
     document.getElementById('pageSubtitle').textContent = titleLabel;
     document.getElementById('calGrid').style.opacity   = '0.4';
 
-    fetch('/citas?mes=' + _calMes + '&anio=' + _calAnio + '&_ajax=1')
+    fetch(urlCitas(_calMes, _calAnio, {_ajax: 1}))
         .then(function(r){ return r.json(); })
         .then(function(data) {
             // ── FIX #1 aplicado: citasData es "let", esta asignación ya no explota ──
@@ -605,7 +621,13 @@ function navMes(dir) {
             renderStats(data.stats);
             document.getElementById('calGrid').style.opacity = '1';
             _calLoading = false;
-            history.replaceState({}, '', '/citas?mes=' + _calMes + '&anio=' + _calAnio);
+            history.replaceState({}, '', urlCitas(_calMes, _calAnio));
+            // Las pestañas de ramo apuntan al mes que se está viendo.
+            document.querySelectorAll('[data-ramo-tab]').forEach(function(a) {
+                var q = new URLSearchParams({anio: _calAnio, mes: _calMes});
+                if (a.dataset.ramoTab) q.set('ramo', a.dataset.ramoTab);
+                a.setAttribute('href', '?' + q.toString());
+            });
         })
         .catch(function(e) {
             console.error('navMes error:', e);

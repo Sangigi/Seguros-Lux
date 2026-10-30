@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 use App\Security\SessionManager;
-use App\Models\{ClientModel, CitaModel, CotizacionModel, HistorialModel};
+use App\Models\{CatalogoModel, ClientModel, CitaModel, CotizacionModel, HistorialModel};
 
 SessionManager::requireAuth('/login');
 
@@ -44,6 +44,7 @@ $clienteModel    = new ClientModel();
 $citaModel       = new CitaModel();
 $cotizacionModel = new CotizacionModel();
 $historialModel  = new HistorialModel();
+$catalogo        = new CatalogoModel();
 
 $MARCAS_VEHICULO = [
     'ACURA','ALFA ROMEO','AUDI','BMW','BUICK','CADILLAC','CHEVROLET','CHRYSLER',
@@ -74,6 +75,21 @@ if (!function_exists('idriveUpload')) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     header('Content-Type: application/json');
 
+    // Ramo del cliente de esta ficha. $cliente se carga más abajo, solo para
+    // pintar la página, así que las acciones que dependen del ramo lo leen
+    // aquí, con el mismo alcance que la ficha: un asesor solo ve sus clientes.
+    // null = el cliente no existe o no es visible para quien pide.
+    $dbRamoCli = \Database\Connection::getConnection();
+    if ($esCoordinadorVista) {
+        $stRamoCli = $dbRamoCli->prepare('SELECT ramo FROM clientes WHERE id = ? AND empresa_id = ?');
+        $stRamoCli->execute([$clienteId, $empresaId]);
+    } else {
+        $stRamoCli = $dbRamoCli->prepare('SELECT ramo FROM clientes WHERE id = ? AND empresa_id = ? AND agente_id = ?');
+        $stRamoCli->execute([$clienteId, $empresaId, $agenteId]);
+    }
+    $ramoCliPost     = $stRamoCli->fetchColumn();
+    $ramoClientePost = $ramoCliPost === false ? null : ((string) $ramoCliPost ?: 'autos');
+
     if ($_POST['accion'] === 'nota') {
         $texto = trim($_POST['texto'] ?? '');
         if (!$texto) { echo json_encode(['ok'=>false,'msg'=>'Texto vacío.']); exit; }
@@ -86,6 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $tipo=$_POST['tipo']??'llamada'; $fecha=$_POST['fecha']??''; $hora=$_POST['hora']??'';
         $com=$_POST['comentarios']??''; $enlace=$_POST['enlace_meet']??'';
         if (!$fecha||!$hora) { echo json_encode(['ok'=>false,'msg'=>'Indica fecha y hora.']); exit; }
+        if ($ramoClientePost === null) { echo json_encode(['ok'=>false,'msg'=>'Cliente no encontrado.']); exit; }
         // Límite: máx 20 citas por cliente (anti-spam)
         $dbCitaChk = \Database\Connection::getConnection();
         $stCitaCount = $dbCitaChk->prepare('SELECT COUNT(*) FROM citas WHERE cliente_id = ? AND empresa_id = ?');
@@ -94,7 +111,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene 20 citas registradas (límite máximo).']); exit;
         }
         if ($tipo==='videollamada'&&$enlace) $com=($com?$com."\n":'').'Enlace: '.$enlace;
-        $citaModel->crear($clienteId,$agenteId,$tipo,$fecha,$hora,$com,SessionManager::getRamo());
+        // La cita va en el ramo del cliente (antes tomaba el de la sesión).
+        $citaModel->crear($clienteId,$agenteId,$tipo,$fecha,$hora,$com,$ramoClientePost);
         $historialModel->registrar($clienteId,$agenteId,'cita','Cita programada — '.ucfirst($tipo),"$fecha a las $hora");
         echo json_encode(['ok'=>true]); exit;
     }
@@ -466,7 +484,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 
         if ($soloVehiculo) {
             // ── Guardar solo campos de vehículo ───────────────────────────────
-            $ramo = $cliente['ramo'] ?? 'autos';
+            $ramo = $ramoClientePost ?? 'autos';
             if ($ramo !== 'autos') {
                 echo json_encode(['ok'=>false,'msg'=>'Solo disponible para ramo autos.']); exit;
             }
@@ -547,7 +565,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         }
 
         // Campos extra según ramo
-        $ramo = $cliente['ramo'] ?? 'autos';
+        $ramo = $ramoClientePost ?? 'autos';
         if ($ramo === 'autos') {
             $campos['marca']         = trim($_POST['marca']        ?? '');
             $campos['modelo']        = trim($_POST['modelo']       ?? '');
@@ -707,7 +725,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                   emision_estado, empresa_id)
                  VALUES (?,?,?,?,?,?,?,?,'enviada','pendiente','en_proceso',?)"
             );
-            $ramo = $cliente['ramo'] ?? 'autos';
+            $ramo = $ramoClientePost ?? 'autos';
             $ins->execute([
                 $clienteId,
                 $agenteId,
@@ -841,30 +859,57 @@ foreach ($cotizaciones as $cot) {
     if (!empty($arch)) $archivosPorCot[$cot['id']]=$arch;
 }
 
+// ── Catálogo de la empresa (ramos, aseguradoras y documentos) ──────────────
+// Ramo de la ficha: el del cliente. Las cotizaciones usan el suyo propio y,
+// si no lo traen, el del cliente.
+$ramoFicha    = (string) (($cliente['ramo'] ?? '') ?: 'autos');
+$ramoDeCot    = static fn(array $c): string => (string) (($c['ramo'] ?? '') ?: $ramoFicha);
+// Nombre de un ramo: el de la empresa aunque esté desactivado (los registros
+// viejos lo siguen mostrando); RAMOS cubre claves que el catálogo no tenga.
+$ramosNombres = $catalogo->ramos(false) + CatalogoModel::RAMOS;
+
+// Documentos exigidos para una póliza NUEVA de cada ramo, y el nombre de cada
+// documento según el catálogo (el del ramo; si no lo tiene, el de la empresa).
+$requeridosPorRamo = [];
+$requeridos = static function (string $ramo) use ($catalogo, &$requeridosPorRamo): array {
+    return $requeridosPorRamo[$ramo] ??= $catalogo->requeridos($ramo);
+};
+$docsEmpresa   = $catalogo->etiquetas(CatalogoModel::DOCUMENTO, '', false);
+$docsPorRamo   = [];
+$etiquetaDoc = static function (string $ramo, string $clave) use ($catalogo, &$docsPorRamo, $docsEmpresa): string {
+    $docsPorRamo[$ramo] ??= $catalogo->etiquetas(CatalogoModel::DOCUMENTO, $ramo, false);
+    return $docsPorRamo[$ramo][$clave] ?? $docsEmpresa[$clave] ?? CatalogoModel::DOCUMENTOS[$clave] ?? $clave;
+};
+
+// Aseguradoras activas por ramo para los <select> de póliza: las del ramo del
+// cliente y las de los ramos de sus cotizaciones (el modal se abre desde cada
+// una). Un valor guardado que ya no esté en la lista lo añade el JS al abrir.
+$aseguradorasPorRamo = [];
+$ramoPorCot          = [];
+foreach ($cotizaciones as $cot) {
+    $ramoPorCot[(int) $cot['id']] = $ramoDeCot($cot);
+}
+foreach (array_unique(array_merge([$ramoFicha], array_values($ramoPorCot))) as $r) {
+    $aseguradorasPorRamo[$r] = array_values($catalogo->etiquetas(CatalogoModel::ASEGURADORA, $r));
+}
+
+// Enlaces a nueva cotización: llevan el cliente y su ramo.
+$urlNuevaCot = '/crear-cotizacion?' . http_build_query(['cliente_id' => (int) $cliente['id'], 'ramo' => $ramoFicha]);
+$urlEditarCot = static fn(array $c): string =>
+    '/crear-cotizacion?' . http_build_query(['cotizacion_id' => (int) $c['id'], 'ramo' => $ramoDeCot($c)]);
+
 // ── Checklist del asesor por cotización (documentos subidos vs requeridos) ──
-$checklistReqs = [
-    'autos'          => ['doc_cotizacion','ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2', 'poliza'],
-    'vida'           => ['doc_cotizacion','ine','comprobante_dom', 'poliza'],
-    'gastos_medicos' => ['doc_cotizacion','ine','comprobante_dom', 'poliza'],
-];
-$checklistLabelMap = [
-    'doc_cotizacion'     => 'Cotización PDF','ine'=>'INE',
-    'comprobante_dom'    => 'Comp. domicilio','tarjeta_circulacion'=>'Tarjeta circulación',
-    'foto_coche_1'       => 'Foto 1','foto_coche_2'=>'Foto 2','foto_coche_3'=>'Foto 3',
-    'foto_coche_4'       => 'Foto 4','foto_coche_5'=>'Foto 5',
-    'factura_auto'       => 'Factura auto','constancia_fiscal'=>'Constancia fiscal',
-    'comprobante_pago'   => 'Comprobante de pago',
-    'poliza'             => 'Póliza',
-];
+// Requeridos: los que el catálogo exige para el ramo de la cotización, más la
+// póliza emitida.
 $checklistPorCot = [];
 foreach ($cotizaciones as $cot) {
-    $ramo = $cot['ramo'] ?? 'autos';
-    $reqs = $checklistReqs[$ramo] ?? $checklistReqs['autos'];
+    $ramo = $ramoDeCot($cot);
+    $reqs = array_merge($requeridos($ramo), ['poliza']);
     $docsTipos = array_column($archivosPorCot[$cot['id']] ?? [], 'tipo_documento');
     $items = [];
     foreach ($reqs as $tipo) {
         $items[$tipo] = [
-            'label'    => $checklistLabelMap[$tipo] ?? $tipo,
+            'label'    => $etiquetaDoc($ramo, $tipo),
             'subido'   => in_array($tipo, $docsTipos, true),
             'required' => true,
         ];
@@ -1045,7 +1090,7 @@ $pageTitle=$nombreCompleto;
                         </select>
                     </div>
                 </div>
-                <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>"
+                <a href="<?php echo htmlspecialchars($urlNuevaCot); ?>"
                    class="btn" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);white-space:nowrap;"><?= icono('clipboard') ?> Nueva Cotización</a>
             </div>
         </div>
@@ -1272,7 +1317,7 @@ $pageTitle=$nombreCompleto;
                         <?php endif; ?>
 
                         <?php if (in_array($ramoCliente, ['vida','gastos_medicos'], true)): ?>
-                        <div class="section-subtitle"><?php echo $ramoCliente==='vida'?icono('heart-fill').' Seguro de Vida':icono('hospital').' Gastos Médicos'; ?></div>
+                        <div class="section-subtitle"><?php echo icono(CatalogoModel::ICONOS_RAMO[$ramoCliente]).' '.htmlspecialchars($ramosNombres[$ramoCliente] ?? $ramoCliente); ?></div>
                         <div class="info-grid">
                             <div class="info-item"><span class="info-label">Sexo</span><span class="info-value"><?php echo ucfirst($cliente['sexo']??'—'); ?></span></div>
                             <div class="info-item"><span class="info-label">Fecha Nacimiento</span><span class="info-value"><?php echo $cliente['fecha_nacimiento']?date('d/m/Y',strtotime($cliente['fecha_nacimiento'])):'—'; ?></span></div>
@@ -1539,7 +1584,7 @@ $pageTitle=$nombreCompleto;
                         <a href="tel:<?php echo htmlspecialchars($cliente['telefono']); ?>" class="quick-action-btn"><?= icono('telephone') ?> Llamar al Cliente</a>
                         <a href="https://wa.me/<?php echo preg_replace('/\D/','',$cliente['telefono']); ?>" target="_blank" class="quick-action-btn"><?= icono('whatsapp') ?> WhatsApp</a>
                         <?php endif; ?>
-                        <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="quick-action-btn"><?= icono('clipboard') ?> Nueva Cotización</a>
+                        <a href="<?php echo htmlspecialchars($urlNuevaCot); ?>" class="quick-action-btn"><?= icono('clipboard') ?> Nueva Cotización</a>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalCita"><?= icono('calendar-event') ?> Programar Cita</button>
                         <button class="quick-action-btn" data-action="det-open" data-modal="modalNota"><?= icono('pencil-square') ?> Agregar Nota</button>
                         <!-- <?php if ($puedeGestionarPolizas): ?>
@@ -1551,12 +1596,12 @@ $pageTitle=$nombreCompleto;
                 <!-- Cotizaciones -->
                 <div class="card">
                     <div class="card-header"><h3 class="card-title">Cotizaciones <span class="badge badge-neutral"><?php echo count($cotizaciones); ?></span></h3>
-                        <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="btn btn-sm btn-primary">+ Nueva</a></div>
+                        <a href="<?php echo htmlspecialchars($urlNuevaCot); ?>" class="btn btn-sm btn-primary">+ Nueva</a></div>
                     <div class="card-body" style="padding:0 20px;">
                         <?php if (empty($cotizaciones)): ?>
                         <div style="text-align:center;padding:24px 0;">
                             <p style="color:var(--text-muted);font-size:13px;margin-bottom:10px;">Sin cotizaciones.</p>
-                            <a href="/crear-cotizacion?cliente_id=<?php echo $cliente['id']; ?>" class="btn btn-primary btn-sm">Crear Cotización</a>
+                            <a href="<?php echo htmlspecialchars($urlNuevaCot); ?>" class="btn btn-primary btn-sm">Crear Cotización</a>
                         </div>
                         <?php else: ?>
                         <!-- Navegador numerado -->
@@ -1635,43 +1680,32 @@ $BADGE_PAGO_CL = [
 
     // 1. Definir los documentos estrictamente obligatorios del ASESOR
     $docs_obligatorios_asesor = [];
-    $ramo_cot = $cot['ramo'] ?? 'autos';
+    $ramo_cot = $ramoDeCot($cot);
     // Si es renovación (tipo_cobertura empieza con "Renovación"), solo se requiere
     // la nueva póliza; los documentos del cliente ya existen de la emisión anterior.
+    // Esa regla es fija; el catálogo solo decide los de una póliza nueva.
     $es_renovacion_cot = (strpos($cot['tipo_cobertura'] ?? '', 'Renovación') === 0);
     if ($es_renovacion_cot) {
         $docs_obligatorios_asesor = ['poliza']; // Solo la póliza renovada
-    } elseif ($ramo_cot === 'autos') {
-        $docs_obligatorios_asesor = ['doc_cotizacion', 'ine', 'comprobante_dom', 'tarjeta_circulacion', 'foto_coche_1', 'foto_coche_2'];
     } else {
-        $docs_obligatorios_asesor = ['doc_cotizacion', 'ine', 'comprobante_dom'];
+        $docs_obligatorios_asesor = $requeridos($ramo_cot);
     }
 
-    // 2. Mapeo de nombres limpios para la interfaz
-    $nombres_documentos = [
-        'doc_cotizacion'      => 'Cotización',
-        'ine'                 => 'INE',
-        'comprobante_dom'     => 'Comprobante de Domicilio',
-        'tarjeta_circulacion' => 'Tarjeta de Circulación',
-        'foto_coche_1'        => 'Foto de Coche 1',
-        'foto_coche_2'        => 'Foto de Coche 2',
-        'poliza'              => 'Póliza renovada',
-    ];
-
-    // 3. Obtener los documentos que el asesor ya subió en esta cotización
+    // 2. Obtener los documentos que el asesor ya subió en esta cotización
     $tipos_subidos = array_column($archs, 'tipo_documento');
 
-    // 4. Calcular cuáles le faltan
+    // 3. Calcular cuáles le faltan, con el nombre que les da el catálogo
     $documentos_faltantes = [];
     foreach ($docs_obligatorios_asesor as $doc_req) {
         if (!in_array($doc_req, $tipos_subidos)) {
-            $documentos_faltantes[] = $nombres_documentos[$doc_req] ?? $doc_req;
+            $documentos_faltantes[] = $etiquetaDoc($ramo_cot, $doc_req)
+                . ($es_renovacion_cot && $doc_req === 'poliza' ? ' renovada' : '');
         }
     }
     $bloquear_boton_emision = !empty($documentos_faltantes);
     ?>
 
-    <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
+    <a href="<?php echo htmlspecialchars($urlEditarCot($cot)); ?>"
        class="btn btn-sm btn-outline" style="font-size:11px;padding:3px 10px;" title="Editar cotizacion"><?= icono('pencil') ?> Editar</a>
     
     <?php if ($yaPagada): ?>
@@ -1689,7 +1723,7 @@ $BADGE_PAGO_CL = [
     data-es-renovacion="<?php echo $es_renovacion_cot ? '1' : '0'; ?>"
     data-cot-num-poliza="<?php echo htmlspecialchars(str_replace('Renovación - ', '', $cot['tipo_cobertura'] ?? ''), ENT_QUOTES); ?>"
     data-action="abrir-emision">
-    <?= icono('pencil-square') ?> Emitir y Subir Póliza
+    <?= icono('upload') ?> Subir póliza
 </button>
     <?php endif; ?>
 
@@ -1749,7 +1783,7 @@ $BADGE_PAGO_CL = [
                                 </div>
                                 <?php if (!$cl['listo']): ?>
                                 <div style="margin-top:8px;">
-                                    <a href="/crear-cotizacion?cotizacion_id=<?php echo (int)$cot['id']; ?>"
+                                    <a href="<?php echo htmlspecialchars($urlEditarCot($cot)); ?>"
                                        class="btn btn-sm btn-outline" style="font-size:11px;width:100%;text-align:center;padding:5px 10px;">
                                         <?= icono('paperclip') ?> Subir documentos faltantes
                                     </a>
@@ -1820,10 +1854,11 @@ $BADGE_PAGO_CL = [
         <div class="modal-body">
             <div class="form-row">
                 <div class="form-group"><label class="form-label">Compañía</label>
+                    <!-- Aseguradoras activas del ramo; al abrir desde una cotización, el JS las cambia por las de su ramo -->
                     <select class="form-select" id="polizaCompania">
                         <option value="">— Selecciona —</option>
-                        <?php foreach(['GNP','Qualitas','Chubb','Inbursa'] as $c): ?>
-                        <option><?php echo $c; ?></option><?php endforeach; ?>
+                        <?php foreach($aseguradorasPorRamo[$ramoFicha] ?? [] as $c): ?>
+                        <option value="<?php echo htmlspecialchars($c); ?>"><?php echo htmlspecialchars($c); ?></option><?php endforeach; ?>
                     </select>
                 </div>
                 <div class="form-group"><label class="form-label">Número de Póliza</label><input type="text" class="form-input" id="polizaNumero" placeholder="Ej. 01234567"></div>
@@ -1882,9 +1917,10 @@ $BADGE_PAGO_CL = [
             <input type="hidden" id="editPolizaId">
             <div class="form-row">
                 <div class="form-group"><label class="form-label">Compañía</label>
+                    <!-- editarPoliza() rellena la lista del ramo de la póliza e incluye su compañía actual -->
                     <select class="form-select" id="editPolizaCompania">
-                        <?php foreach(['GNP','Qualitas','Chubb','Inbursa'] as $c): ?>
-                        <option><?php echo $c; ?></option><?php endforeach; ?>
+                        <?php foreach($aseguradorasPorRamo[$ramoFicha] ?? [] as $c): ?>
+                        <option value="<?php echo htmlspecialchars($c); ?>"><?php echo htmlspecialchars($c); ?></option><?php endforeach; ?>
                     </select>
                 </div>
                 <div class="form-group"><label class="form-label">Número de Póliza</label><input type="text" class="form-input" id="editPolizaNumero"></div>
@@ -1960,6 +1996,25 @@ $BADGE_PAGO_CL = [
 <div class="toast-container" id="toastContainer"></div>
 <script nonce="<?= $cspNonce ?>">
 const clienteId = <?php echo $cliente['id']; ?>;
+<?php $jsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE; ?>
+// Aseguradoras activas del catálogo por ramo, ramo del cliente y ramo de cada cotización.
+const ASEGURADORAS_POR_RAMO = <?php echo json_encode($aseguradorasPorRamo, $jsonFlags | JSON_FORCE_OBJECT); ?>;
+const RAMO_CLIENTE          = <?php echo json_encode($ramoFicha, $jsonFlags); ?>;
+const RAMO_POR_COT          = <?php echo json_encode($ramoPorCot, $jsonFlags | JSON_FORCE_OBJECT); ?>;
+/**
+ * Llena un <select> de compañía con las aseguradoras activas del ramo. Si el
+ * registro ya trae una que no está en esa lista (desactivada o renombrada en
+ * el catálogo), se añade igualmente: abrir y guardar no debe cambiarla.
+ */
+function llenarCompanias(sel, ramo, actual, conVacia) {
+    if (!sel) return;
+    const lista = Object.values(ASEGURADORAS_POR_RAMO[ramo] || ASEGURADORAS_POR_RAMO[RAMO_CLIENTE] || {});
+    if (actual && !lista.includes(actual)) lista.push(actual);
+    sel.innerHTML = '';
+    if (conVacia) sel.add(new Option('— Selecciona —', ''));
+    lista.forEach(n => sel.add(new Option(n, n)));
+    sel.value = actual || '';
+}
 document.getElementById('citaTipo')?.addEventListener('change', function(ev){ toggleEnlaceMeet(ev.target.value); });
 document.getElementById('polizaFile')?.addEventListener('change', function(){ onPolizaFile(this); });
 function openModal(id){const m=document.getElementById(id);if(m){m.classList.add('active');document.body.style.overflow='hidden';}}
@@ -1975,7 +2030,7 @@ function cambiarEstadoCliente(estado){if(!estado)return;postJSON({accion:'cambia
 function onPolizaFile(input){const file=input.files[0];if(!file)return;if(file.size>20*1024*1024){showToast('El archivo supera 20MB','error');input.value='';return;}document.getElementById('polizaFileName').textContent=file.name;document.getElementById('polizaFileInfo').style.display='flex';document.getElementById('polizaDropZone').style.borderColor='var(--success-color,#22c55e)';}
 function quitarPolizaFile(){document.getElementById('polizaFile').value='';document.getElementById('polizaFileInfo').style.display='none';document.getElementById('polizaDropZone').style.borderColor='var(--border-color,#e5e7eb)';}
 function guardarPoliza(){const file=document.getElementById('polizaFile').files[0];if(!file){showToast('Selecciona un archivo','error');return;}const btn=document.getElementById('btnGuardarPoliza');btn.disabled=true;btn.textContent='Subiendo...';const fd=new FormData();fd.append('accion','subir_poliza');fd.append('archivo_poliza',file);fd.append('compania',document.getElementById('polizaCompania').value);fd.append('numero_poliza',document.getElementById('polizaNumero').value);fd.append('fecha_inicio',document.getElementById('polizaFechaInicio').value);fd.append('fecha_fin',document.getElementById('polizaFechaFin').value);fd.append('frecuencia_renovacion',document.getElementById('polizaFrecuencia').value);fd.append('cotizacion_id',document.getElementById('polizaCotizacion').value);fd.append('notas',document.getElementById('polizaNotas').value);fetch(`/cliente/${clienteId}`,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{btn.disabled=false;btn.innerHTML=iconoSvg('floppy')+' Guardar Póliza';if(d.ok){showToast('Póliza guardada'+(d.en_idrive?' · '+iconoSvg('cloud')+' iDrive':''),'success');closeModal('modalSubirPoliza');setTimeout(()=>location.reload(),900);}else showToast(d.msg||'Error al guardar','error');}).catch(()=>{btn.disabled=false;btn.innerHTML=iconoSvg('floppy')+' Guardar Póliza';showToast('Error de conexión','error');});}
-function editarPoliza(pol){document.getElementById('editPolizaId').value=pol.id;document.getElementById('editPolizaCompania').value=pol.compania||'';document.getElementById('editPolizaNumero').value=pol.numero_poliza||'';document.getElementById('editPolizaInicio').value=pol.fecha_inicio||'';document.getElementById('editPolizaFin').value=pol.fecha_fin||'';document.getElementById('editPolizaFrecuencia').value=pol.frecuencia_renovacion||'anual';document.getElementById('editPolizaEstado').value=pol.estado||'vigente';document.getElementById('editPolizaNotas').value=pol.notas||'';openModal('modalEditarPoliza');}
+function editarPoliza(pol){document.getElementById('editPolizaId').value=pol.id;llenarCompanias(document.getElementById('editPolizaCompania'),RAMO_POR_COT[pol.cotizacion_id]||RAMO_CLIENTE,pol.compania||'',false);document.getElementById('editPolizaNumero').value=pol.numero_poliza||'';document.getElementById('editPolizaInicio').value=pol.fecha_inicio||'';document.getElementById('editPolizaFin').value=pol.fecha_fin||'';document.getElementById('editPolizaFrecuencia').value=pol.frecuencia_renovacion||'anual';document.getElementById('editPolizaEstado').value=pol.estado||'vigente';document.getElementById('editPolizaNotas').value=pol.notas||'';openModal('modalEditarPoliza');}
 function guardarEdicionPoliza(){const id=document.getElementById('editPolizaId').value;const fd=new FormData();fd.append('accion','editar_poliza');fd.append('poliza_id',id);fd.append('compania',document.getElementById('editPolizaCompania').value);fd.append('numero_poliza',document.getElementById('editPolizaNumero').value);fd.append('fecha_inicio',document.getElementById('editPolizaInicio').value);fd.append('fecha_fin',document.getElementById('editPolizaFin').value);fd.append('frecuencia_renovacion',document.getElementById('editPolizaFrecuencia').value);fd.append('estado',document.getElementById('editPolizaEstado').value);fd.append('notas',document.getElementById('editPolizaNotas').value);fetch(`/cliente/${clienteId}`,{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.ok){showToast('Póliza actualizada','success');closeModal('modalEditarPoliza');setTimeout(()=>location.reload(),900);}else showToast(d.msg||'Error','error');}).catch(()=>showToast('Error de conexión','error'));}
 function eliminarPoliza(id) {
     const confirmText = prompt('Escribe ELIMINAR para confirmar:');
@@ -2019,13 +2074,14 @@ function showToast(msg,type='success'){const c=document.getElementById('toastCon
         if (rowCot) rowCot.style.display = esRenovacion ? 'none' : '';
     }
 
+    // Compañías: las del ramo de esta cotización. En una renovación se
+    // preselecciona la de la cotización (aunque ya no esté en el catálogo).
+    llenarCompanias(document.getElementById('polizaCompania'),
+                    RAMO_POR_COT[cotId] || RAMO_CLIENTE,
+                    esRenovacion ? compania : '', true);
+
     // Pre-llenar campos si es renovación
     if (esRenovacion) {
-        const selComp = document.getElementById('polizaCompania');
-        if (selComp && compania) {
-            const opt = [...selComp.options].find(o => o.value === compania || o.text === compania);
-            if (opt) selComp.value = opt.value;
-        }
         const inpNum = document.getElementById('polizaNumero');
         if (inpNum && numPoliza && numPoliza !== 'undefined') inpNum.value = numPoliza;
         const inpInicio = document.getElementById('polizaFechaInicio');
@@ -2602,7 +2658,7 @@ document.addEventListener('click', function(e) {
                 .then(r => r.json())
                 .then(d => {
                     el.disabled = false;
-                    el.innerHTML = iconoSvg('pencil-square') + ' Emitir y Subir Póliza';
+                    el.innerHTML = iconoSvg('upload') + ' Subir póliza';
                     if (d.ok) {
                         showToast(d.msg || 'Expediente enviado a Emisión', 'success');
                         setTimeout(() => location.reload(), 1500);
@@ -2612,7 +2668,7 @@ document.addEventListener('click', function(e) {
                 })
                 .catch(() => {
                     el.disabled = false;
-                    el.innerHTML = iconoSvg('pencil-square') + ' Emitir y Subir Póliza';
+                    el.innerHTML = iconoSvg('upload') + ' Subir póliza';
                     showToast('Error de conexión', 'error');
                 });
             break;

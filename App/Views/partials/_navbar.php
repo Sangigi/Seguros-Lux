@@ -438,16 +438,6 @@ button.sidebar-link {
             Todos los Clientes
         </a>
 
-        <div class="sidebar-section-label" style="margin-top:8px;">Acciones rápidas</div>
-        <a href="/admin?tab=emision" class="sidebar-link">
-            <i class="bi bi-upload"></i>
-            Subir comprobante
-        </a>
-        <a href="/admin?tab=renovaciones" class="sidebar-link">
-            <i class="bi bi-arrow-clockwise"></i>
-            Gestionar renovaciones
-        </a>
-
         <?php elseif ($_isSuperadmin): ?>
         <!-- ══════════════════════════════════════════════
              MENÚ SUPERADMIN

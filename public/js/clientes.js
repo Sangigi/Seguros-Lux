@@ -4,8 +4,8 @@
  */
 
 // ── Configuración de campos dinámicos por ramo ────────────────────────────────
-// Estos campos se muestran/ocultan en el formulario de nueva cita/cliente
-// dependiendo del ramo activo en sesión.
+// Estos campos se muestran/ocultan en el formulario de nueva cita
+// dependiendo del ramo del cliente (data-ramo de su fila en la tabla).
 /**
  * Obtiene el token CSRF del meta tag inyectado por PHP.
  * El meta tag debe estar en _head.php:
@@ -67,12 +67,26 @@ const CAMPOS_RAMO = {
     ],
 };
 
-const RAMO_LABEL = {
-    autos:          ['car-front',  'Autos'],
-    vida:           ['heart-fill', 'Vida'],
-    gastos_medicos: ['hospital',   'Gastos Médicos Mayores'],
-    empresas:       ['building',   'Empresas'],
-};
+// Nombre e ícono de cada ramo: salen del catálogo de la empresa y los inyecta
+// la vista como window.ramosCatalogo = { clave: { etiqueta, icono } }.
+function _infoRamo(ramo) {
+    const cat = window.ramosCatalogo || {};
+    return Object.prototype.hasOwnProperty.call(cat, ramo) ? cat[ramo] : null;
+}
+
+// Ramo del cliente sobre el que se abre la cita. Si su fila no lo trae, el de
+// la pestaña de la página; si tampoco hay, ninguno (sin campos extra).
+function _ramoDeCliente(clienteId) {
+    const tr = document.querySelector(`#clientesTableBody tr[data-id="${parseInt(clienteId, 10)}"]`);
+    return (tr && tr.dataset.ramo) || window.ramoActivo || '';
+}
+
+function _escHtml(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+let _ramoCita = '';
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
@@ -153,21 +167,20 @@ function openModalCita(clienteId) {
     if (document.getElementById('citaHora'))        document.getElementById('citaHora').value = '10:00';
     if (document.getElementById('citaComentarios')) document.getElementById('citaComentarios').value = '';
 
-    // Renderizar campos dinámicos del ramo activo
-    _renderCamposRamo();
+    // Renderizar campos dinámicos del ramo del cliente
+    _ramoCita = _ramoDeCliente(clienteId);
+    _renderCamposRamo(_ramoCita);
 
     openModal('modalCita');
 }
 
 /**
  * Renderiza los campos extra del ramo dentro del contenedor #citaCamposRamo.
- * El ramo activo lo lee de window.ramoActivo (inyectado por PHP en la vista).
  */
-function _renderCamposRamo() {
+function _renderCamposRamo(ramo) {
     const contenedor = document.getElementById('citaCamposRamo');
     if (!contenedor) return;
 
-    const ramo   = window.ramoActivo || 'autos';
     const campos = CAMPOS_RAMO[ramo] || [];
 
     if (campos.length === 0) {
@@ -175,8 +188,8 @@ function _renderCamposRamo() {
         return;
     }
 
-    const ramoInfo  = RAMO_LABEL[ramo];
-    const ramoLabel = ramoInfo ? iconoSvg(ramoInfo[0]) + ' ' + ramoInfo[1] : ramo;
+    const ramoInfo  = _infoRamo(ramo);
+    const ramoLabel = ramoInfo ? iconoSvg(ramoInfo.icono) + ' ' + _escHtml(ramoInfo.etiqueta) : _escHtml(ramo);
     let html = `<div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;
                             letter-spacing:.5px;margin-bottom:10px;padding-top:4px;">
                     Datos de ${ramoLabel}
@@ -237,11 +250,11 @@ function guardarCita() {
     const hora  = document.getElementById('citaHora')?.value;
     const tipo  = document.getElementById('citaTipo')?.value || 'llamada';
     const com   = document.getElementById('citaComentarios')?.value || '';
-    const ramo  = window.ramoActivo || 'autos';
 
     if (!fecha || !hora) { showToast('Selecciona fecha y hora', 'error'); return; }
     if (new Date(fecha + 'T' + hora) < new Date()) { showToast('La fecha no puede ser pasada', 'error'); return; }
 
+    // El ramo de la cita no se envía: el servidor usa el del cliente.
     const fd = new FormData();
     fd.append('accion',     'cita');
     fd.append('cliente_id', id);
@@ -249,10 +262,9 @@ function guardarCita() {
     fd.append('fecha',      fecha);
     fd.append('hora',       hora);
     fd.append('comentarios',com);
-    fd.append('ramo',       ramo); // ← siempre enviar el ramo activo
 
     // Agregar campos dinámicos del ramo si existen
-    const campos = CAMPOS_RAMO[ramo] || [];
+    const campos = CAMPOS_RAMO[_ramoCita] || [];
     campos.forEach(campo => {
         const el = document.getElementById(campo.id);
         if (el && el.value) fd.append(campo.id, el.value);

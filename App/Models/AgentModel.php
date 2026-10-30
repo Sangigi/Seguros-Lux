@@ -306,9 +306,9 @@ class AgentModel extends BaseModel
         $stmt->execute($bind);
         $porRamoRaw = $stmt->fetchAll();
 
-        $porRamo = ['autos' => ['cotizaciones'=>0,'ventas'=>0],
-                    'vida'  => ['cotizaciones'=>0,'ventas'=>0],
-                    'gastos_medicos' => ['cotizaciones'=>0,'ventas'=>0]];
+        // Todos los ramos que existen, también Empresas: antes faltaba y la
+        // gráfica de distribución lo omitía.
+        $porRamo = array_fill_keys(array_keys(CatalogoModel::RAMOS), ['cotizaciones'=>0,'ventas'=>0]);
 
         foreach ($porRamoRaw as $row) {
             if (isset($porRamo[$row['ramo']])) {

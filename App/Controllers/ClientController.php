@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
-use App\Models\{ClientModel, CitaModel};
+use App\Models\{CatalogoModel, ClientModel, CitaModel};
 use App\Security\EmpresaPublica;
 use App\Security\RateLimiter;
 use App\Security\Roles;
@@ -32,6 +32,19 @@ class ClientController
 
     private const EMPRESA_EMAIL  = 'noreply@seguroslux.mx';
     private const ASESOR_EMAIL   = 'contacto@seguroslux.mx';
+
+    /**
+     * Valores de ramo que han mandado formularios viejos y su clave real.
+     * Los tipos de vehículo eran "ramos" sueltos (moto, camioneta…) que no
+     * existen en el catálogo: todos son autos.
+     */
+    private const ALIAS_RAMO = [
+        'gmm'       => 'gastos_medicos',
+        'auto'      => 'autos',
+        'moto'      => 'autos',
+        'camioneta' => 'autos',
+        'pickup'    => 'autos',
+    ];
 
     public static function handle(): void
     {
@@ -178,12 +191,7 @@ class ClientController
             $horaCita          = $input['horaCita']              ?? null;
             $canalNotificacion = trim((string)($input['canalNotificacion'] ?? 'email'));
 
-            if (($input['ramo'] ?? '') === '' && !empty($input['tipoVehiculo'])) {
-                $mapTipoARamo = [
-                    'auto' => 'autos', 'moto' => 'moto', 'camioneta' => 'camioneta', 'pickup' => 'pickup',
-                ];
-                $input['ramo'] = $mapTipoARamo[$input['tipoVehiculo']] ?? 'autos';
-            }
+            $input['ramo'] = self::resolverRamo($input);
 
             $botUsername = getenv('TELEGRAM_BOT_USERNAME')    ?: ($_ENV['TELEGRAM_BOT_USERNAME'] ?? 'Lux_Prueba_Bot');
             $waNumero    = getenv('WHATSAPP_BUSINESS_NUMBER') ?: ($_ENV['WHATSAPP_BUSINESS_NUMBER'] ?? '');
@@ -212,6 +220,36 @@ class ClientController
             http_response_code(500);
             echo json_encode(['success' => false, 'message' => $msg]);
         }
+    }
+
+    /**
+     * Ramo del lead, validado contra el catálogo de la empresa (registrar()
+     * ya corre dentro de ella).
+     *
+     *  - Un ramo activo del catálogo se acepta tal cual.
+     *  - Un ramo que el código conoce pero la empresa tiene desactivado
+     *    también se respeta: el lead pidió ese seguro y se ve con su nombre en
+     *    "Todos"; reetiquetarlo con otro ramo sería registrar algo falso.
+     *  - Sin ramo, el formulario de autos manda tipoVehiculo: es autos.
+     *  - Cualquier otra cosa cae en autos si la empresa lo trabaja y, si no,
+     *    en su primer ramo activo.
+     */
+    private static function resolverRamo(array $input): string
+    {
+        $ramo = is_string($input['ramo'] ?? null) ? strtolower(trim($input['ramo'])) : '';
+        $ramo = self::ALIAS_RAMO[$ramo] ?? $ramo;
+
+        if ($ramo === '' && !empty($input['tipoVehiculo'])) {
+            $ramo = 'autos';
+        }
+
+        $activos = (new CatalogoModel())->ramos();
+
+        if (isset($activos[$ramo]) || isset(CatalogoModel::RAMOS[$ramo])) {
+            return $ramo;
+        }
+
+        return isset($activos['autos']) ? 'autos' : (string) array_key_first($activos);
     }
 
     private static function handleExistingClient(
@@ -377,15 +415,10 @@ class ClientController
             $fechaFmt  = self::formatFecha($fecha);
             $tipoLabel = $tipoCita === 'videollamada' ? '💻 Videollamada' : '📞 Llamada telefónica';
 
-            $ramoLabels = [
-                'autos'    => '🚗 Seguro de Auto',
-                'vida'     => '❤️ Seguro de Vida',
-                'gmm'      => '🏥 Gastos Médicos Mayores',
-                'camioneta'=> '🚙 Seguro de SUV/Camioneta',
-                'moto'     => '🏍️ Seguro de Moto',
-                'pickup'   => '🛻 Seguro de Pickup',
-            ];
-            $ramoLabel  = $ramoLabels[$ramo] ?? ucfirst($ramo);
+            // Nombre del ramo según el catálogo de la empresa (también si está
+            // desactivado: el lead lo pidió así).
+            $ramosNombres = (new CatalogoModel())->ramos(false) + CatalogoModel::RAMOS;
+            $ramoLabel  = htmlspecialchars($ramosNombres[$ramo] ?? ucfirst($ramo), ENT_QUOTES, 'UTF-8');
             $nombreHtml = htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8');
             $canalesTxt = self::canalesToLabelString($canalesElegidos);
             $asunto     = '✅ Confirmación de cita — ' . self::EMPRESA_NOMBRE;

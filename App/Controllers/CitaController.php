@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
-use App\Models\CitaModel;
+use App\Models\{CatalogoModel, CitaModel, ClientModel};
 use App\Security\SessionManager;
 use App\Security\Tenant;
 
@@ -75,7 +75,7 @@ class CitaController
                 fecha:       $fecha,
                 hora:        $hora,
                 comentarios: $comentarios,
-                ramo:        $_POST['ramo'] ?? 'autos'
+                ramo:        self::ramoDeCita($clienteId, $_POST['ramo'] ?? '')
             );
 
             if ($meetLink && $citaId) {
@@ -119,6 +119,25 @@ class CitaController
 
         http_response_code(400);
         echo json_encode(['ok' => false, 'msg' => 'Acción desconocida']);
+    }
+
+    /**
+     * Ramo de la cita: el que pida el POST si es un ramo activo del catálogo
+     * de la empresa; si no, el del cliente; y si tampoco, el primer ramo
+     * activo. Nunca un valor que el catálogo no conozca.
+     */
+    private static function ramoDeCita(int $clienteId, mixed $pedido): string
+    {
+        $activos = (new CatalogoModel())->ramos();
+
+        if (is_string($pedido) && isset($activos[$pedido])) {
+            return $pedido;
+        }
+
+        // find() ya acota a la empresa activa.
+        $ramoCliente = (string) ((new ClientModel())->find($clienteId)['ramo'] ?? '');
+
+        return $ramoCliente !== '' ? $ramoCliente : (string) array_key_first($activos);
     }
 
     private static function notificarWhatsApp(array $data, string $fecha, string $hora): void

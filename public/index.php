@@ -58,7 +58,8 @@ use App\Controllers\{
     ActivityController,
     HealthController,
     EmpresaController,
-    InvitacionController
+    InvitacionController,
+    CatalogoController
 };
 use App\Controllers\FileController;
 use App\Controllers\VidaSolicitudController;
@@ -156,6 +157,8 @@ $router->add('GET',  '/api/empresas',       EmpresaController::class);
 $router->add('POST', '/api/empresas',       EmpresaController::class);
 $router->add('GET',  '/api/invitaciones',   InvitacionController::class);
 $router->add('POST', '/api/invitaciones',   InvitacionController::class);
+$router->add('GET',  '/api/catalogos',      CatalogoController::class);
+$router->add('POST', '/api/catalogos',      CatalogoController::class);
 $router->add('GET',  '/api/ping',           ActivityController::class);
 $router->add('GET',  '/api/health',         HealthController::class);
 $router->add('GET',  '/exportar',           ExportController::class);

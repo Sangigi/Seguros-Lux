@@ -46,13 +46,18 @@ switch ($accion) {
         $stDocs->execute([$cotId, $empresaId]);
         $archivos = $stDocs->fetchAll(\PDO::FETCH_ASSOC);
 
-        $docs = array_map(function ($a) use ($cotId) {
+        // Nombres del catálogo de la empresa, según el ramo de la cotización.
+        $tipoLabel         = \App\Models\CotizacionModel::etiquetasDocumento((string)($cot['ramo'] ?? ''));
+        $cot['ramo_label'] = \App\Models\CotizacionModel::etiquetasRamo()[$cot['ramo'] ?? ''] ?? ($cot['ramo'] ?? '');
+
+        $docs = array_map(function ($a) use ($cotId, $tipoLabel) {
             $ext       = strtolower(pathinfo($a['nombre_archivo'], PATHINFO_EXTENSION));
             $esImg     = in_array($ext, ['jpg','jpeg','png','webp'], true);
             $rutaFis   = dirname(__DIR__, 3) . '/uploads/cotizaciones/' . $cotId . '/' . $a['nombre_archivo'];
             $dispLocal = ($a['idrive_borrado'] === null) && file_exists($rutaFis);
             return [
                 'tipo'        => $a['tipo_documento'],
+                'tipo_label'  => $tipoLabel[$a['tipo_documento']] ?? $a['tipo_documento'],
                 'nombre_orig' => $a['nombre_original'],
                 'url_local'   => $dispLocal ? '/archivo?file=cotizaciones/'.$cotId.'/'.$a['nombre_archivo'] : null,
                 'en_idrive'   => !empty($a['idrive_subido']),
@@ -68,8 +73,15 @@ switch ($accion) {
     // ── Obtener checklist de documentos ──────────────────────────────────────
     case 'emi_get_checklist': {
         $cotId = (int)($_POST['cotizacion_id'] ?? 0);
-        $ramo  = trim($_POST['ramo'] ?? 'autos');
         if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+
+        // El ramo sale de la cotización guardada, no del navegador: de él
+        // dependen los documentos que se exigen.
+        $stRamo = $db->prepare("SELECT ramo FROM cotizaciones WHERE id = ? AND empresa_id = ?");
+        $stRamo->execute([$cotId, $empresaId]);
+        $ramo = $stRamo->fetchColumn();
+        if ($ramo === false) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
+        $ramo = (string)$ramo ?: 'autos';
 
         // Documentos subidos por el asesor
         $stDocs = $db->prepare(
@@ -144,7 +156,17 @@ switch ($accion) {
             }
         }
 
-        echo json_encode(['ok'=>true, 'docs'=>$docs, 'checklist'=>$checklist, 'ramo'=>$ramo]);
+        // Checklist del coordinador: lo que el catálogo exige en el ramo más el
+        // comprobante de pago, con los nombres del catálogo.
+        echo json_encode([
+            'ok'         => true,
+            'docs'       => $docs,
+            'checklist'  => $checklist,
+            'ramo'       => $ramo,
+            'ramo_label' => \App\Models\CotizacionModel::etiquetasRamo()[$ramo] ?? $ramo,
+            'requeridos' => \App\Models\CotizacionModel::documentosEmision($ramo),
+            'etiquetas'  => \App\Models\CotizacionModel::etiquetasDocumento($ramo),
+        ]);
         exit;
     }
 

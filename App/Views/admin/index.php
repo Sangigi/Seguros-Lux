@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 use App\Security\SessionManager;
-use App\Models\{AgentModel, CotizacionModel};
+use App\Models\{AgentModel, CatalogoModel, CotizacionModel};
 use Database\Connection;
 
 // Capturar cualquier excepción PHP en peticiones AJAX y devolver JSON legible
@@ -121,25 +121,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
     $numPolizaAnterior = $cot['num_poliza_anterior'] ?? '';
     // Si es renovación, el cliente ya tiene sus documentos personales de la emisión anterior
     // Solo se requiere la póliza nueva y el comprobante de pago
-    $REQS_NUEVA = [
-        'autos'          => ['ine','comprobante_dom','tarjeta_circulacion','foto_coche_1','foto_coche_2','comprobante_pago'],
-        'vida'           => ['ine','comprobante_dom','comprobante_pago'],
-        'gastos_medicos' => ['ine','comprobante_dom','comprobante_pago'],
-    ];
     $REQS_RENOVACION = [
         'autos'          => ['comprobante_pago'],
         'vida'           => ['comprobante_pago'],
         'gastos_medicos' => ['comprobante_pago'],
     ];
-    $REQS = $esRenovacion ? $REQS_RENOVACION : $REQS_NUEVA;
-    $tipoLabel = [
-        'ine'=>'INE','comprobante_dom'=>'Comprobante de domicilio','tarjeta_circulacion'=>'Tarjeta de circulación',
-        'foto_coche_1'=>'Foto vehículo 1','foto_coche_2'=>'Foto vehículo 2','foto_coche_3'=>'Foto vehículo 3',
-        'foto_coche_4'=>'Foto vehículo 4','foto_coche_5'=>'Foto vehículo 5',
-        'comprobante_pago'=>'Comprobante de pago','constancia_fiscal'=>'Constancia fiscal',
-    ];
     $ramo = $cot['ramo'] ?: 'autos';
-    $requeridos = $REQS[$ramo] ?? $REQS['autos'];
+    // Póliza nueva: los documentos que el catálogo de la empresa exige en el
+    // ramo, más el comprobante de pago. Los nombres, también del catálogo.
+    $requeridos = $esRenovacion
+        ? ($REQS_RENOVACION[$ramo] ?? $REQS_RENOVACION['autos'])
+        : CotizacionModel::documentosEmision($ramo);
+    $tipoLabel  = CotizacionModel::etiquetasDocumento($ramo);
     $all = array_values(array_unique(array_merge($requeridos, array_keys($docsMap))));
 
     header('Content-Type: text/html; charset=utf-8');
@@ -237,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['accion'] ?? '') === 'emi_pdf
 <div class="info-strip">
     <div class="item"><span class="label">Cliente</span><span class="value"><?= htmlspecialchars($cot['cliente_nombre']) ?></span></div>
     <div class="item"><span class="label">Asesor</span><span class="value"><?= htmlspecialchars($cot['asesor_nombre']) ?></span></div>
-    <div class="item"><span class="label">Ramo</span><span class="value"><?= ucfirst(str_replace('_',' ', htmlspecialchars($ramo))) ?></span></div>
+    <div class="item"><span class="label">Ramo</span><span class="value"><?= htmlspecialchars(CotizacionModel::etiquetasRamo()[$ramo] ?? ucfirst(str_replace('_',' ', $ramo))) ?></span></div>
     <div class="item"><span class="label">Compañía</span><span class="value"><?= htmlspecialchars($cot['compania'] ?? '—') ?></span></div>
     <div class="item">
         <span class="label"><?= $esRenovacion ? 'Tipo' : 'Tipo de cobertura' ?></span>
@@ -560,20 +553,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
     } elseif ($a === 'get_documentos_admin') {
         $cotId=(int)($_POST['cotizacion_id']??0);
         if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
-        $cot=$cotModel->getById($cotId);
+        // find() filtra por la empresa activa (CotizacionModel no tiene getById()).
+        $cot=$cotModel->find($cotId, ['id','folio','ramo']);
         if (!$cot) { echo json_encode(['ok'=>false,'msg'=>'Cotización no encontrada.']); exit; }
-        $tipoLabel=['poliza'=>'Póliza','ine'=>'INE','comprobante_dom'=>'Comp. domicilio',
-            'tarjeta_circulacion'=>'Tarjeta circulación','constancia_fiscal'=>'Constancia fiscal',
-            'foto_coche_1'=>'Foto 1','foto_coche_2'=>'Foto 2','foto_coche_3'=>'Foto 3',
-            'foto_coche_4'=>'Foto 4','foto_coche_5'=>'Foto 5','comprobante_pago'=>'Comp. pago',
-        ];
+        $tipoLabel=CotizacionModel::etiquetasDocumento((string)($cot['ramo'] ?? ''));
         $docs=array_map(function($a) use($tipoLabel,$cotId){
             $ext=strtolower(pathinfo($a['nombre_original']??'',PATHINFO_EXTENSION));
             $esImg=in_array($ext,['jpg','jpeg','png','gif','webp'],true);
             $ruta=dirname(__DIR__,3).'/'.$a['ruta'];
             return [
                 'id'          => (int)$a['id'],
-                'tipo_label'  => $tipoLabel[$a['tipo_documento']] ?? ucfirst(str_replace('_',' ',$a['tipo_documento'])),
+                // Escapado aquí: el JS lo pinta tal cual con innerHTML, y el nombre lo edita la empresa.
+                'tipo_label'  => htmlspecialchars($tipoLabel[$a['tipo_documento']] ?? ucfirst(str_replace('_',' ',$a['tipo_documento']))),
                 'nombre_orig' => $a['nombre_original'],
                 'url_local'   => file_exists($ruta) ? '/archivo?file='.preg_replace('#^uploads/#','',$a['ruta']) : null,
                 'en_idrive'   => !empty($a['idrive_key']),
@@ -984,19 +975,26 @@ $arrow = static function (int $ahora, int $antes): string {
     <div class="card">
         <div class="card-header"><h3 class="card-title">Distribución por Ramo</h3></div>
         <div class="card-body">
-            <?php $ramosInfo = [
-                'autos'          => ['bi-car-front-fill','Autos','#0ea5e9','#e0f2fe'],
-                'vida'           => ['bi-heart-fill','Vida','#10b981','#d1fae5'],
-                'gastos_medicos' => ['bi-hospital-fill','Gastos Médicos','#8b5cf6','#ede9fe'],
+            <?php
+            // Ramos activos del catálogo de la empresa, con su nombre. Solo los
+            // que trae la estadística ($stats['por_ramo']): uno que no viene ahí
+            // saldría siempre en cero.
+            $coloresRamo = [
+                'autos'          => ['#0ea5e9','#e0f2fe'],
+                'vida'           => ['#10b981','#d1fae5'],
+                'gastos_medicos' => ['#8b5cf6','#ede9fe'],
+                'empresas'       => ['#f59e0b','#fef3c7'],
             ];
-            foreach ($ramosInfo as $key=>[$icon,$nombre,$color,$light]):
+            $ramosInfo = array_intersect_key((new CatalogoModel())->ramos(), $stats['por_ramo'] ?? []);
+            foreach ($ramosInfo as $key=>$nombre):
+                [$color,$light] = $coloresRamo[$key] ?? ['#64748b','#f1f5f9'];
                 $d=$stats['por_ramo'][$key]??['cotizaciones'=>0,'ventas'=>0];
                 $pct=$d['cotizaciones']>0?min(100,round($d['ventas']/$d['cotizaciones']*100)):0;
             ?>
             <div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border-color);">
-                <div class="ramo-icon" style="background:<?php echo $light; ?>;color:<?php echo $color; ?>;"><i class="bi <?php echo $icon; ?>"></i></div>
+                <div class="ramo-icon" style="background:<?php echo $light; ?>;color:<?php echo $color; ?>;"><?php echo icono(CatalogoModel::ICONOS_RAMO[$key] ?? 'clipboard'); ?></div>
                 <div style="flex:1;">
-                    <div style="font-weight:600;font-size:13px;margin-bottom:4px;"><?php echo $nombre; ?></div>
+                    <div style="font-weight:600;font-size:13px;margin-bottom:4px;"><?php echo htmlspecialchars($nombre); ?></div>
                     <div class="cbar"><div class="cfill" style="width:<?php echo $pct; ?>%;background:<?php echo $color; ?>;"></div></div>
                 </div>
                 <div style="text-align:right;">
@@ -1839,6 +1837,377 @@ $urgentes   = count(array_filter($renovacionesPendientes, fn($r) => isset($r['di
         </div>
     </div>
 </div>
+
+<?php
+// ── Catálogos de la empresa ───────────────────────────────────────────────────
+// Los edita quien tiene CONFIG_EMPRESA, el mismo permiso que exige
+// /api/catalogos. El propietario de la plataforma ve esta pestaña cuando entra
+// a una empresa, pero sus listas son decisión de la propia empresa.
+//
+// El catálogo llega pintado desde el servidor (sin una petición extra al
+// cargar) y cada cambio va a la API; la lista se repinta con lo que esta
+// devuelve, no con lo que se escribió.
+$puedeCatalogos = SessionManager::puede(\App\Security\Roles::CONFIG_EMPRESA);
+$catalogo       = null;
+if ($puedeCatalogos) {
+    try {
+        $catalogo = (new \App\Models\CatalogoModel())->agrupado();
+    } catch (\Throwable $e) {
+        // Sin la migración 007 aplicada no hay tabla: el resto de la pestaña
+        // tiene que seguir funcionando.
+        error_log('[admin catálogos] ' . $e->getMessage());
+    }
+}
+?>
+<style>
+    .cat-intro{font-size:13px;color:var(--text-secondary);margin-bottom:18px;}
+    .cat-nota{font-size:12px;color:var(--text-muted);font-weight:400;}
+    .cat-bloque{background:var(--bg-secondary);border-radius:var(--border-radius-sm);padding:14px;}
+    .cat-bloque-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+    .cat-bloque h4{font-size:13px;font-weight:700;margin:0;display:flex;align-items:center;gap:6px;}
+    .cat-bloque > .cat-nota{margin:0 0 10px;}
+    .cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+    @media(max-width:1100px){.cat-grid{grid-template-columns:1fr;}}
+    .cat-lista{display:flex;flex-direction:column;gap:4px;}
+    .cat-lista.cat-ramos{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px;}
+    .cat-item{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:6px;min-height:38px;}
+    .cat-item.apagado .cat-texto{color:var(--text-muted);}
+    .cat-texto{flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .cat-acciones{display:flex;gap:2px;flex-shrink:0;}
+    .cat-btn{background:none;border:none;cursor:pointer;padding:5px 6px;border-radius:5px;color:var(--text-secondary);font-size:13px;line-height:1;}
+    .cat-btn:hover{background:var(--bg-secondary);color:var(--accent-color);}
+    .cat-btn.peligro:hover{color:var(--danger-color);}
+    .cat-btn:disabled{opacity:.5;cursor:wait;}
+    .cat-switch{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);cursor:pointer;flex-shrink:0;user-select:none;}
+    .cat-switch input{appearance:none;-webkit-appearance:none;width:30px;height:17px;border-radius:99px;background:var(--border-color);position:relative;cursor:pointer;transition:background .15s;margin:0;flex-shrink:0;}
+    .cat-switch input::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:transform .15s;}
+    .cat-switch input:checked{background:var(--success-color);}
+    .cat-switch input:checked::after{transform:translateX(13px);}
+    .cat-switch input:disabled{opacity:.5;cursor:wait;}
+    .cat-chip{font-size:10px;padding:2px 8px;border-radius:99px;background:var(--info-light);color:var(--accent-color);font-weight:600;white-space:nowrap;flex-shrink:0;}
+    .cat-selector{display:flex;gap:6px;flex-wrap:wrap;margin:22px 0 14px;align-items:center;}
+    .cat-ramo-btn{border:1px solid var(--border-color);background:var(--bg-card);border-radius:99px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text-secondary);display:inline-flex;align-items:center;gap:6px;}
+    .cat-ramo-btn:hover{border-color:var(--accent-color);}
+    .cat-ramo-btn.sel{border-color:var(--accent-color);background:var(--info-light);color:var(--accent-color);}
+    .cat-ramo-btn.apagado{opacity:.6;}
+    .cat-agregar{display:flex;gap:6px;margin-top:10px;}
+    .cat-agregar .form-input{flex:1;min-width:0;}
+    .cat-editar{flex:1;min-width:0;padding:4px 8px !important;font-size:13px !important;}
+    .cat-vacio{font-size:12px;color:var(--text-muted);padding:8px;}
+</style>
+<div class="card" id="catalogos" style="margin-top:24px;">
+    <div class="card-header"><h3 class="card-title"><?= icono('clipboard-check') ?> Catálogos de la empresa</h3></div>
+    <div class="card-body">
+    <?php if (!$puedeCatalogos): ?>
+        <p class="cat-intro" style="margin:0;">Los ramos, aseguradoras, coberturas y documentos requeridos los administra el administrador de la empresa.</p>
+    <?php elseif ($catalogo === null): ?>
+        <p class="cat-intro" style="margin:0;"><?= icono('exclamation-triangle-fill') ?> Los catálogos no están disponibles todavía. Si acabas de actualizar el sistema, falta aplicar las migraciones (<code>php bin/migrate.php up</code>).</p>
+    <?php else: ?>
+        <p class="cat-intro">
+            Las listas que se ofrecen al cotizar en tu empresa. Los cambios valen para los registros nuevos:
+            lo ya guardado conserva el nombre con el que se guardó.
+        </p>
+
+        <section class="cat-bloque">
+            <div class="cat-bloque-head">
+                <h4><?= icono('umbrella') ?> Ramos</h4>
+                <span class="cat-nota">Son fijos: puedes desactivarlos o cambiarles el nombre. Siempre queda al menos uno activo.</span>
+            </div>
+            <div class="cat-lista cat-ramos" id="catRamos"></div>
+        </section>
+
+        <div class="cat-selector" id="catSelectorRamo" role="tablist" aria-label="Ramo a configurar"></div>
+
+        <div class="cat-grid">
+            <section class="cat-bloque">
+                <div class="cat-bloque-head"><h4><?= icono('shield-check') ?> Aseguradoras</h4></div>
+                <div class="cat-lista" id="catAseguradoras"></div>
+                <form class="cat-agregar" data-tipo="aseguradora" autocomplete="off">
+                    <input type="text" class="form-input" maxlength="120" placeholder="Nueva aseguradora" aria-label="Nueva aseguradora">
+                    <button type="submit" class="btn btn-primary btn-sm"><?= icono('plus-circle') ?> Añadir</button>
+                </form>
+            </section>
+
+            <section class="cat-bloque">
+                <div class="cat-bloque-head"><h4><?= icono('clipboard') ?> Coberturas</h4></div>
+                <div class="cat-lista" id="catCoberturas"></div>
+                <form class="cat-agregar" data-tipo="cobertura" autocomplete="off">
+                    <input type="text" class="form-input" maxlength="120" placeholder="Nueva cobertura" aria-label="Nueva cobertura">
+                    <button type="submit" class="btn btn-primary btn-sm"><?= icono('plus-circle') ?> Añadir</button>
+                </form>
+            </section>
+
+            <section class="cat-bloque">
+                <div class="cat-bloque-head"><h4><?= icono('files') ?> Documentos requeridos</h4></div>
+                <p class="cat-nota">
+                    Marca los que se exigen para emitir una póliza nueva de este ramo. Cada documento
+                    corresponde a un espacio de carga del expediente, así que no se pueden añadir tipos
+                    nuevos; sí cambiarles el nombre. Las renovaciones siguen pidiendo solo la póliza
+                    renovada y el comprobante de pago.
+                </p>
+                <div class="cat-lista" id="catDocumentos"></div>
+            </section>
+        </div>
+    <?php endif; ?>
+    </div>
+</div>
+
+<?php if ($catalogo !== null): ?>
+<script nonce="<?= $cspNonce ?>">
+(function () {
+    'use strict';
+
+    const CSRF   = <?= json_encode(SessionManager::getCsrfToken()) ?>;
+    const ICONOS = <?= json_encode(\App\Models\CatalogoModel::ICONOS_RAMO) ?>;
+    const estado = <?= json_encode($catalogo, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+    const raiz = document.getElementById('catalogos');
+    const el = {
+        ramos:      document.getElementById('catRamos'),
+        selector:   document.getElementById('catSelectorRamo'),
+        aseg:       document.getElementById('catAseguradoras'),
+        cob:        document.getElementById('catCoberturas'),
+        docs:       document.getElementById('catDocumentos'),
+    };
+    if (!raiz || !el.ramos) { return; }
+
+    const PLURAL = { aseguradora: 'aseguradoras', cobertura: 'coberturas', documento: 'documentos' };
+
+    let ramoSel  = ((estado.ramos.find(r => r.activo) || estado.ramos[0]) || {}).clave || '';
+    let editando = null;   // id del elemento que se está renombrando
+
+    // Las etiquetas las escriben personas: todo lo que va a innerHTML se escapa.
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    // toast() pinta con innerHTML y los mensajes del servidor pueden citar un
+    // nombre escrito por alguien: se escapan antes.
+    function avisar(msg, tipo) {
+        if (typeof toast === 'function') { toast(esc(msg), tipo); } else { alert(msg); }
+    }
+
+    async function llamar(cuerpo) {
+        try {
+            const r = await fetch('/api/catalogos', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.assign({ csrf: CSRF }, cuerpo))
+            });
+            const data = await r.json().catch(() => ({}));
+            return { ok: r.ok && data.ok !== false, data: data };
+        } catch (e) {
+            return { ok: false, data: { msg: 'Error de conexión. Inténtalo de nuevo.' } };
+        }
+    }
+
+    const mensaje = (data, porDefecto) => data.msg || data.error || porDefecto;
+
+    // ── Estado ────────────────────────────────────────────────────────────────
+    function listaDe(tipo, ramo) {
+        if (tipo === 'ramo') { return estado.ramos; }
+        const grupo = estado.por_ramo[ramo];
+        return grupo ? grupo[PLURAL[tipo]] : [];
+    }
+
+    function buscar(id) {
+        const listas = [estado.ramos];
+        Object.values(estado.por_ramo).forEach(g => listas.push(g.aseguradoras, g.coberturas, g.documentos));
+        for (const lista of listas) {
+            const i = lista.findIndex(x => x.id === id);
+            if (i >= 0) { return { lista: lista, i: i, item: lista[i] }; }
+        }
+        return null;
+    }
+
+    function guardarEnEstado(item) {
+        const lista = listaDe(item.tipo, item.ramo);
+        const i = lista.findIndex(x => x.id === item.id);
+        if (i >= 0) { lista[i] = item; } else { lista.push(item); }
+    }
+
+    // ── Pintado ───────────────────────────────────────────────────────────────
+    function filaHtml(it) {
+        const esDoc = it.tipo === 'documento';
+
+        if (editando === it.id) {
+            return '<div class="cat-item" data-id="' + it.id + '">'
+                + '<input type="text" class="form-input cat-editar" maxlength="120" value="' + esc(it.etiqueta) + '" aria-label="Nuevo nombre">'
+                + '<div class="cat-acciones">'
+                + '<button type="button" class="cat-btn" data-cat="guardar" title="Guardar">' + iconoSvg('floppy') + '</button>'
+                + '<button type="button" class="cat-btn" data-cat="cancelar" title="Cancelar">' + iconoSvg('x-circle-fill') + '</button>'
+                + '</div></div>';
+        }
+
+        const interruptor = it.conmutable
+            ? '<label class="cat-switch" title="' + (esDoc ? 'Se exige para emitir una póliza nueva' : 'Se ofrece en los registros nuevos') + '">'
+                + '<input type="checkbox" data-cat="activo"' + (it.activo ? ' checked' : '') + '>'
+                + '<span>' + (esDoc ? 'Requerido' : 'Activo') + '</span></label>'
+            : '<span class="cat-chip" title="Lo pide el propio flujo en su etapa (pago o emisión)">Lo pide el flujo</span>';
+
+        return '<div class="cat-item' + (!esDoc && !it.activo ? ' apagado' : '') + '" data-id="' + it.id + '">'
+            + '<span class="cat-texto" title="' + esc(it.etiqueta) + '">' + esc(it.etiqueta) + '</span>'
+            + interruptor
+            + '<div class="cat-acciones">'
+            + '<button type="button" class="cat-btn" data-cat="renombrar" title="Cambiar nombre">' + iconoSvg('pencil') + '</button>'
+            + (it.eliminable ? '<button type="button" class="cat-btn peligro" data-cat="eliminar" title="Eliminar">' + iconoSvg('trash') + '</button>' : '')
+            + '</div></div>';
+    }
+
+    function pintarLista(contenedor, items, vacio) {
+        contenedor.innerHTML = items.length
+            ? items.map(filaHtml).join('')
+            : '<div class="cat-vacio">' + esc(vacio) + '</div>';
+    }
+
+    function pintar() {
+        pintarLista(el.ramos, estado.ramos, 'Sin ramos.');
+
+        el.selector.innerHTML = '<span class="cat-nota">Configurar ramo:</span>' + estado.ramos.map(r =>
+            '<button type="button" role="tab" class="cat-ramo-btn' + (r.clave === ramoSel ? ' sel' : '') + (r.activo ? '' : ' apagado') + '"'
+            + ' aria-selected="' + (r.clave === ramoSel) + '" data-cat-ramo="' + esc(r.clave) + '">'
+            + iconoSvg(ICONOS[r.clave] || 'circle-fill') + ' ' + esc(r.etiqueta)
+            + (r.activo ? '' : ' <span class="cat-nota">(inactivo)</span>')
+            + '</button>'
+        ).join('');
+
+        const grupo = estado.por_ramo[ramoSel] || { aseguradoras: [], coberturas: [], documentos: [] };
+        pintarLista(el.aseg, grupo.aseguradoras, 'Sin aseguradoras en este ramo.');
+        pintarLista(el.cob,  grupo.coberturas,   'Sin coberturas en este ramo.');
+        pintarLista(el.docs, grupo.documentos,   'Sin documentos en este ramo.');
+
+        const campo = raiz.querySelector('.cat-editar');
+        if (campo) { campo.focus(); campo.select(); }
+    }
+
+    // ── Acciones ──────────────────────────────────────────────────────────────
+    async function cambiarActivo(id, casilla) {
+        casilla.disabled = true;
+        const { ok, data } = await llamar({ accion: 'actualizar', id: id, activo: casilla.checked });
+
+        if (!ok) {
+            casilla.checked  = !casilla.checked;
+            casilla.disabled = false;
+            avisar(mensaje(data, 'No se pudo guardar el cambio.'), 'error');
+            return;
+        }
+
+        guardarEnEstado(data.item);
+        pintar();
+    }
+
+    async function renombrar(id, boton) {
+        const fila  = boton.closest('.cat-item');
+        const campo = fila ? fila.querySelector('.cat-editar') : null;
+        const hit   = buscar(id);
+        if (!campo || !hit) { return; }
+
+        const nombre = campo.value.trim();
+        if (nombre === hit.item.etiqueta) { editando = null; pintar(); return; }
+
+        fila.querySelectorAll('button,input').forEach(x => { x.disabled = true; });
+        const { ok, data } = await llamar({ accion: 'actualizar', id: id, etiqueta: nombre });
+
+        if (!ok) {
+            fila.querySelectorAll('button,input').forEach(x => { x.disabled = false; });
+            campo.focus();
+            avisar(mensaje(data, 'No se pudo cambiar el nombre.'), 'error');
+            return;
+        }
+
+        editando = null;
+        guardarEnEstado(data.item);
+        pintar();
+        avisar(mensaje(data, 'Nombre actualizado.'), 'success');
+    }
+
+    async function eliminar(id, boton) {
+        const hit = buscar(id);
+        if (!hit) { return; }
+        if (!confirm('¿Eliminar «' + hit.item.etiqueta + '» de la lista? Las cotizaciones que ya lo usan conservan el nombre.')) { return; }
+
+        boton.disabled = true;
+        const { ok, data } = await llamar({ accion: 'eliminar', id: id });
+
+        if (!ok) {
+            boton.disabled = false;
+            avisar(mensaje(data, 'No se pudo eliminar.'), 'error');
+            return;
+        }
+
+        const actual = buscar(id);
+        if (actual) { actual.lista.splice(actual.i, 1); }
+        pintar();
+        avisar(mensaje(data, 'Eliminado.'), 'success');
+    }
+
+    async function agregar(form) {
+        const campo  = form.querySelector('input');
+        const boton  = form.querySelector('button');
+        const nombre = campo.value.trim();
+        if (nombre === '') { campo.focus(); return; }
+
+        boton.disabled = true;
+        const { ok, data } = await llamar({ accion: 'agregar', tipo: form.dataset.tipo, ramo: ramoSel, etiqueta: nombre });
+        boton.disabled = false;
+
+        if (!ok) {
+            avisar(mensaje(data, 'No se pudo añadir.'), 'error');
+            campo.focus();
+            return;
+        }
+
+        campo.value = '';
+        guardarEnEstado(data.item);
+        pintar();
+        avisar(mensaje(data, 'Añadido.'), 'success');
+        form.querySelector('input').focus();
+    }
+
+    // ── Eventos ───────────────────────────────────────────────────────────────
+    raiz.addEventListener('click', function (e) {
+        const botonRamo = e.target.closest('[data-cat-ramo]');
+        if (botonRamo) {
+            ramoSel  = botonRamo.dataset.catRamo;
+            editando = null;
+            pintar();
+            return;
+        }
+
+        const boton = e.target.closest('button[data-cat]');
+        if (!boton) { return; }
+
+        const id = Number(boton.closest('.cat-item')?.dataset.id || 0);
+        switch (boton.dataset.cat) {
+            case 'renombrar': editando = id; pintar(); break;
+            case 'cancelar':  editando = null; pintar(); break;
+            case 'guardar':   renombrar(id, boton); break;
+            case 'eliminar':  eliminar(id, boton); break;
+        }
+    });
+
+    raiz.addEventListener('change', function (e) {
+        const casilla = e.target.closest('input[data-cat="activo"]');
+        if (!casilla) { return; }
+        cambiarActivo(Number(casilla.closest('.cat-item').dataset.id), casilla);
+    });
+
+    raiz.addEventListener('keydown', function (e) {
+        if (!e.target.classList.contains('cat-editar')) { return; }
+        if (e.key === 'Enter')  { e.preventDefault(); e.target.closest('.cat-item').querySelector('[data-cat="guardar"]').click(); }
+        if (e.key === 'Escape') { e.preventDefault(); editando = null; pintar(); }
+    });
+
+    raiz.addEventListener('submit', function (e) {
+        const form = e.target.closest('form.cat-agregar');
+        if (!form) { return; }
+        e.preventDefault();
+        agregar(form);
+    });
+
+    pintar();
+})();
+</script>
+<?php endif; ?>
 <?php endif; ?>
 </main>
 </div>
@@ -2201,7 +2570,11 @@ function abrirDetalleClientes(accion, params, titulo){
         const body = document.getElementById('detalleClientesBody');
         if (!d.ok) { body.innerHTML = '<p style="color:var(--danger-color);text-align:center;padding:24px;">Error al cargar.</p>'; return; }
         if (!d.detalle.length) { body.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px;">Sin clientes en este periodo.</p>'; return; }
-        const ramoLabels = {autos:iconoSvg('car-front')+' Autos', vida:iconoSvg('heart-fill')+' Vida', gastos_medicos:iconoSvg('hospital')+' GMM', empresas:iconoSvg('building')+' Empresas'};
+        // Ícono y nombre de cada ramo, del catálogo de la empresa (HTML ya escapado).
+        const ramoLabels = <?php echo json_encode(array_map(
+            static fn(array $r): string => icono($r['icono']) . ' ' . htmlspecialchars($r['label']),
+            CotizacionModel::infoRamos()
+        ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
         const rows = d.detalle.map(c => {
             const nombreCliente = [c.nombre, c.apellido_paterno, c.apellido_materno].filter(Boolean).join(' ');
             const agente = (c.agente_nombre || c.agente_apellido) ? `${c.agente_nombre||''} ${c.agente_apellido||''}`.trim() : '<span style="color:var(--text-muted);">Sin asesor</span>';

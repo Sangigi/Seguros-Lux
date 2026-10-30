@@ -5,6 +5,9 @@
  * Variables esperadas del scope padre:
  *   $csrfToken  — string con el token CSRF
  *   $cspNonce   — string con el nonce CSP
+ *   $ramoAlta   — clave del ramo en que se da de alta el cliente nuevo (la
+ *                 pestaña de ramo de la página), o '' para que el servidor
+ *                 elija. El servidor la valida contra los ramos activos.
  *
  * Los botones de guardar usan data-action en lugar de IDs para que
  * la delegación global de crm-events.js sea el ÚNICO listener.
@@ -13,6 +16,7 @@
 
 $csrfToken ??= '';
 $cspNonce  ??= '';
+$ramoAlta  ??= '';
 ?>
 
 <!-- Modal: Nota -->
@@ -89,6 +93,7 @@ $cspNonce  ??= '';
         <div class="modal-body">
             <form id="formNuevoCliente" method="POST" action="/clientes">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES) ?>">
+                <input type="hidden" name="ramo" value="<?= htmlspecialchars((string) $ramoAlta, ENT_QUOTES) ?>">
                 <p style="font-size:13px;font-weight:700;color:var(--accent-color);text-transform:uppercase;margin-bottom:14px;">Información Personal</p>
                 <div class="form-row">
                     <div class="form-group"><label class="form-label required">Nombre</label><input type="text" class="form-input" name="nombre" required></div>

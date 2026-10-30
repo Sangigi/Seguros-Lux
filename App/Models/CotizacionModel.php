@@ -187,30 +187,151 @@ class CotizacionModel extends BaseModel
         ];
     }
 
+    // ── Catálogos de la empresa ───────────────────────────────────────────────
+    // Las listas de ramos, aseguradoras, coberturas y documentos ya no viven
+    // aquí: son de cada empresa (CatalogoModel). Estos atajos las dan con la
+    // forma que esperan las pantallas de cotización y emisión. Todos leen el
+    // catálogo de la empresa activa, así que necesitan empresa en contexto.
+
     /**
-     * Coberturas disponibles por ramo, para el selector en formularios.
+     * Coberturas que se ofrecen en cada ramo, para el selector en formularios.
+     * Incluye los ramos apagados: un registro viejo de ese ramo sigue
+     * necesitando su lista al editarse.
+     *
+     * @return array<string,list<string>> ramo => etiquetas activas, en orden
      */
     public static function coberturasPorRamo(): array
     {
-        return [
-            'autos'          => ['Básico','Amplio','Amplio Total','Premium'],
-            'vida'           => ['Temporal','Entera','Dotal'],
-            'gastos_medicos' => ['Individual','Familiar','Empresarial'],
-            'empresas'       => ['Responsabilidad Civil','Daños','Vida en Grupo','GMM Colectivo'],
-        ];
+        return self::etiquetasPorRamo(CatalogoModel::COBERTURA);
     }
 
     /**
-     * Compañías disponibles por ramo.
+     * Compañías que se ofrecen en cada ramo (misma forma que coberturasPorRamo()).
+     *
+     * @return array<string,list<string>> ramo => etiquetas activas, en orden
      */
     public static function companiasPorRamo(): array
     {
-        return [
-            'autos'          => ['GNP','Qualitas','Chubb','Inbursa'],
-            'vida'           => ['GNP','MetLife','Seguros Monterrey','Banamex Seguros','BBVA Seguros','Inbursa'],
-            'gastos_medicos' => ['GNP','AXA','Qualitas','Mapfre','Chubb','BUPA','Allianz'],
-            'empresas'       => ['GNP','AXA','Mapfre','Chubb','HDI','Zurich','Allianz'],
-        ];
+        return self::etiquetasPorRamo(CatalogoModel::ASEGURADORA);
+    }
+
+    /**
+     * Nombre de cada ramo para mostrar registros, también de los ramos que la
+     * empresa ya apagó. Si el catálogo no tuviera alguno, queda el nombre por
+     * defecto.
+     *
+     * @return array<string,string> clave => etiqueta
+     */
+    public static function etiquetasRamo(): array
+    {
+        return (new CatalogoModel())->ramos(false) + CatalogoModel::RAMOS;
+    }
+
+    /**
+     * Nombre e ícono de cada ramo, listos para pasarlos al JS de una pantalla.
+     *
+     * @return array<string,array{label:string,icono:string}>
+     */
+    public static function infoRamos(): array
+    {
+        $info = [];
+        foreach (self::etiquetasRamo() as $clave => $etiqueta) {
+            $info[$clave] = [
+                'label' => $etiqueta,
+                'icono' => CatalogoModel::ICONOS_RAMO[$clave] ?? 'clipboard',
+            ];
+        }
+
+        return $info;
+    }
+
+    /**
+     * Nombre de cada tipo de documento. Gana el nombre que el ramo le da;
+     * después, el de cualquier otro ramo; por último, el nombre por defecto.
+     *
+     * @return array<string,string> tipo_documento => etiqueta
+     */
+    public static function etiquetasDocumento(string $ramo = ''): array
+    {
+        $catalogo = new CatalogoModel();
+        $delRamo  = $ramo !== '' ? $catalogo->etiquetas(CatalogoModel::DOCUMENTO, $ramo, false) : [];
+
+        return $delRamo
+            + $catalogo->etiquetas(CatalogoModel::DOCUMENTO, '', false)
+            + CatalogoModel::DOCUMENTOS;
+    }
+
+    /**
+     * Documentos que el coordinador revisa para emitir una póliza NUEVA del
+     * ramo: los que el catálogo marca como requeridos más el comprobante de
+     * pago, que lo pide el propio flujo. Las renovaciones tienen su regla
+     * aparte (solo el comprobante) y no pasan por aquí.
+     *
+     * @return list<string>
+     */
+    public static function documentosEmision(string $ramo): array
+    {
+        $docs   = (new CatalogoModel())->requeridos($ramo);
+        $docs[] = 'comprobante_pago';
+
+        return array_values(array_unique($docs));
+    }
+
+    /**
+     * Valida un ramo que llega por la URL o por un formulario: devuelve la
+     * clave si está entre $ramos (clave => etiqueta), o null si no.
+     */
+    public static function ramoDeParametro(mixed $valor, array $ramos): ?string
+    {
+        return is_string($valor) && $valor !== '' && array_key_exists($valor, $ramos) ? $valor : null;
+    }
+
+    /**
+     * Opciones de un <select> o de un filtro de aseguradora o cobertura.
+     *
+     * Primero las del catálogo, en su orden; después, ordenados, los valores
+     * ya guardados que no estén entre ellas. Las cotizaciones guardan el
+     * texto, no una referencia al catálogo: si una aseguradora se renombró,
+     * se apagó o se borró, el registro conserva el nombre de antes, y al
+     * editarlo o al filtrar por él tiene que seguir apareciendo.
+     *
+     * @param  iterable<string>      $etiquetas Las del catálogo.
+     * @param  iterable<string|null> $valores   Los guardados en los registros.
+     * @return list<string>
+     */
+    public static function opcionesConValores(iterable $etiquetas, iterable $valores): array
+    {
+        $opciones = [];
+        foreach ($etiquetas as $etiqueta) {
+            $etiqueta = (string) $etiqueta;
+            if ($etiqueta !== '' && !in_array($etiqueta, $opciones, true)) {
+                $opciones[] = $etiqueta;
+            }
+        }
+
+        $extra = [];
+        foreach ($valores as $valor) {
+            $valor = (string) $valor;
+            if (trim($valor) !== '' && !in_array($valor, $opciones, true) && !in_array($valor, $extra, true)) {
+                $extra[] = $valor;
+            }
+        }
+        sort($extra, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return array_merge($opciones, $extra);
+    }
+
+    /** @return array<string,list<string>> */
+    private static function etiquetasPorRamo(string $tipo): array
+    {
+        $catalogo = new CatalogoModel();
+        $porRamo  = [];
+
+        foreach (array_keys($catalogo->ramos(false)) as $ramo) {
+            $porRamo[$ramo] = array_values($catalogo->etiquetas($tipo, $ramo));
+        }
+
+        return $porRamo;
     }
 
     // ── Lectura ───────────────────────────────────────────────────────────────
@@ -439,12 +560,12 @@ class CotizacionModel extends BaseModel
                      GROUP BY ramo"
                 );
                 $stmt->execute($this->bindEmpresa(['agente_id' => $agenteId]));
-                $ramos = [
-                    'autos'          => ['cotizaciones'=>0,'ventas'=>0],
-                    'vida'           => ['cotizaciones'=>0,'ventas'=>0],
-                    'gastos_medicos' => ['cotizaciones'=>0,'ventas'=>0],
-                    'empresas'       => ['cotizaciones'=>0,'ventas'=>0],
-                ];
+                // Todos los ramos que conoce el código, activos o no: los
+                // registros de un ramo apagado se siguen contando.
+                $ramos = array_fill_keys(
+                    array_keys(CatalogoModel::RAMOS),
+                    ['cotizaciones'=>0,'ventas'=>0]
+                );
                 foreach ($stmt->fetchAll() as $row) {
                     if (isset($ramos[$row['ramo']])) {
                         $ramos[$row['ramo']] = [
@@ -793,8 +914,11 @@ class CotizacionModel extends BaseModel
             default          => 'AUT',
         };
         $cobPrefix = match($cobertura) {
-            'Básica'                 => 'BAS', 'Limitada'    => 'LIM',
-            'Amplia'                 => 'AMP', 'Amplia Plus' => 'APL',
+            // Los nombres del catálogo ('Básico', 'Amplio'…) y los históricos
+            // ('Básica', 'Amplia'…) dan el mismo prefijo.
+            'Básica', 'Básico'       => 'BAS', 'Limitada'    => 'LIM',
+            'Amplia', 'Amplio'       => 'AMP', 'Amplia Plus' => 'APL',
+            'Amplio Total'           => 'AMT',
             'Premium'                => 'PRM', 'Temporal'    => 'TEM',
             'Entera'                 => 'ENT', 'Dotal'       => 'DOT',
             'Individual'             => 'IND', 'Familiar'    => 'FAM',

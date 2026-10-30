@@ -1,18 +1,72 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * Nueva cotización / editar cotización — /crear-cotizacion
+ *
+ * PARÁMETROS GET QUE ACEPTA
+ *
+ *   ramo=<clave>        Ramo de la cotización nueva (autos, vida, gastos_medicos,
+ *                       empresas). Tiene que ser un ramo ACTIVO del catálogo de la
+ *                       empresa. Si falta o no es válido, la pantalla muestra un
+ *                       selector de ramo en vez de suponer uno.
+ *   cliente_id=<id>     Cliente ya elegido (tiene que ser del asesor; si no, se
+ *                       ignora y se muestra el selector de cliente). El selector
+ *                       de ramo lo conserva en sus enlaces.
+ *   cotizacion_id=<id>  Modo edición. El ramo sale de la cotización guardada y
+ *                       `ramo` se ignora; también fija el cliente.
+ *
+ *   Ejemplo desde la ficha del cliente:
+ *     /crear-cotizacion?ramo=vida&cliente_id=42
+ *
+ * El ramo NO se lee ni se guarda en sesión: cada enlace dice el suyo.
+ * (`ajax=limite&cliente_id=` es la consulta interna de la barra de límite.)
+ */
+
 use App\Security\SessionManager;
-use App\Models\{ClientModel, CotizacionModel, HistorialModel};
+use App\Models\{CatalogoModel, ClientModel, CotizacionModel, HistorialModel};
 
 SessionManager::requireAuth('/login');
 
 $agenteId       = SessionManager::getAgentId();
 $agente         = SessionManager::getAgentData();
-$ramoActivo     = SessionManager::getRamo();
 $empresaId      = \App\Security\Tenant::requireId();
 $clienteModel   = new ClientModel();
 $cotizacionModel= new CotizacionModel();
 $historialModel = new HistorialModel();
+$catalogo       = new CatalogoModel();
+
+// Ramos que se ofrecen para cotizaciones nuevas (los activos de la empresa).
+$ramosActivos   = $catalogo->ramos();
+
+// Extensiones admitidas en cada espacio de carga. Qué espacios hay en cada
+// ramo y cómo se llaman lo dice el catálogo; esto solo fija el formato.
+$extensionesDoc = [
+    'doc_cotizacion'      => ['pdf','jpg','jpeg','png'],
+    'foto_coche_1'        => ['jpg','jpeg','png'],
+    'foto_coche_2'        => ['jpg','jpeg','png'],
+    'foto_coche_3'        => ['jpg','jpeg','png'],
+    'foto_coche_4'        => ['jpg','jpeg','png'],
+    'foto_coche_5'        => ['jpg','jpeg','png'],
+    'ine'                 => ['pdf','jpg','jpeg','png'],
+    'comprobante_dom'     => ['pdf','jpg','jpeg','png'],
+    'tarjeta_circulacion' => ['pdf','jpg','jpeg','png'],
+    'factura_auto'        => ['pdf','jpg','jpeg','png'],
+    'constancia_fiscal'   => ['pdf','jpg','jpeg','png'],
+];
+
+// Espacios de carga de un ramo: tipo_documento => [etiqueta, extensiones].
+// Solo los que el catálogo tiene en ese ramo y que se suben desde aquí (el
+// comprobante de pago y la póliza los pide el flujo en su etapa).
+$tiposDocDe = static function (string $ramo) use ($catalogo, $extensionesDoc): array {
+    $tipos = [];
+    foreach ($catalogo->etiquetas(CatalogoModel::DOCUMENTO, $ramo, false) as $tipo => $etiqueta) {
+        if (isset($extensionesDoc[$tipo])) {
+            $tipos[$tipo] = [$etiqueta, $extensionesDoc[$tipo]];
+        }
+    }
+    return $tipos;
+};
 
 // $_autoloader = dirname(__DIR__, 3) . '/vendor/autoload.php';
 // if (file_exists($_autoloader)) require_once $_autoloader;
@@ -44,7 +98,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 
     if ($_POST['accion'] === 'crear') {
         $pCliente    = (int)($_POST['cliente_id']    ?? 0);
-        $pRamo       = $ramoActivo;
+        // El ramo viene del formulario y solo se acepta uno activo del catálogo.
+        $pRamo       = CotizacionModel::ramoDeParametro(trim((string)($_POST['ramo'] ?? '')), $ramosActivos);
         $pCompania   = trim($_POST['compania']        ?? '');
         $pCobertura  = trim($_POST['tipo_cobertura']  ?? '');
         $pPrecio     = $_POST['precio'] !== '' ? (float)$_POST['precio'] : 0.0;
@@ -56,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 
         $errores = [];
         if (!$pCliente)   $errores[] = 'Selecciona un cliente.';
+        if (!$pRamo)      $errores[] = 'Elige un ramo que tu empresa tenga activo.';
         if (!$pCompania)  $errores[] = 'La compañía es requerida.';
         if (!$pCobertura) $errores[] = 'El tipo de cobertura es requerido.';
         if (!$pFecha)     $errores[] = 'La fecha es requerida.';
@@ -68,19 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             echo json_encode(['ok'=>false,'msg'=>'Este cliente ya tiene el máximo de 10 cotizaciones.']); exit;
         }
 
-        $tiposDoc = [
-            'doc_cotizacion'      => ['Documento de cotización', ['pdf','jpg','jpeg','png']],
-            'foto_coche_1'        => ['Foto 1',                  ['jpg','jpeg','png']],
-            'foto_coche_2'        => ['Foto 2',                  ['jpg','jpeg','png']],
-            'foto_coche_3'        => ['Foto 3',                  ['jpg','jpeg','png']],
-            'foto_coche_4'        => ['Foto 4',                  ['jpg','jpeg','png']],
-            'foto_coche_5'        => ['Foto 5',                  ['jpg','jpeg','png']],
-            'ine'                 => ['INE',                     ['pdf','jpg','jpeg','png']],
-            'comprobante_dom'     => ['Comprobante domicilio',   ['pdf','jpg','jpeg','png']],
-            'tarjeta_circulacion' => ['Tarjeta circulación',     ['pdf','jpg','jpeg','png']],
-            'factura_auto'        => ['Factura del auto',        ['pdf','jpg','jpeg','png']],
-            'constancia_fiscal'   => ['Constancia fiscal',       ['pdf','jpg','jpeg','png']],
-        ];
+        $tiposDoc = $tiposDocDe($pRamo);
 
         try {
             $cotId = $cotizacionModel->transaction(function () use (
@@ -184,7 +228,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             echo json_encode(['ok'=>false,'msg'=>'Error: '.$e->getMessage(),'_line'=>$e->getLine()]); exit;
         }
 
-        $tiposDoc = ['doc_cotizacion'=>['Doc',['pdf','jpg','jpeg','png']],'foto_coche_1'=>['F1',['jpg','jpeg','png']],'foto_coche_2'=>['F2',['jpg','jpeg','png']],'foto_coche_3'=>['F3',['jpg','jpeg','png']],'foto_coche_4'=>['F4',['jpg','jpeg','png']],'foto_coche_5'=>['F5',['jpg','jpeg','png']],'ine'=>['INE',['pdf','jpg','jpeg','png']],'comprobante_dom'=>['CD',['pdf','jpg','jpeg','png']],'tarjeta_circulacion'=>['TC',['pdf','jpg','jpeg','png']],'factura_auto'=>['FA',['pdf','jpg','jpeg','png']],'constancia_fiscal'=>['CF',['pdf','jpg','jpeg','png']]];
+        // Al editar, los espacios de carga son los del ramo de la cotización
+        // guardada (aunque ese ramo ya no esté activo).
+        $tiposDoc = $tiposDocDe((string)($cotExist['ramo'] ?? '') ?: 'autos');
         $uploadDir = dirname(__DIR__,3)."/uploads/cotizaciones/{$pCotId}/";
         $baseDir   = dirname(__DIR__,3)."/";
         if (!is_dir($uploadDir)) mkdir($uploadDir,0755,true);
@@ -230,23 +276,52 @@ $clientes     = $clienteModel->getParaSelector($agenteId);
 $clienteIdPre = isset($_GET['cliente_id']) ? (int)$_GET['cliente_id'] : null;
 $clienteSel   = $clienteIdPre ? $clienteModel->getSeleccionado($clienteIdPre, $agenteId) : null;
 
-$ramoLabel = match($ramoActivo) {
-    'vida'           => ['icono'=>'heart-fill','nombre'=>'Vida'],
-    'gastos_medicos' => ['icono'=>'hospital','nombre'=>'Gastos Médicos'],
-    'empresas'       => ['icono'=>'building','nombre'=>'Empresas'],
-    default          => ['icono'=>'car-front','nombre'=>'Vehicular'],
-};
+// ── Ramo de la cotización ─────────────────────────────────────────────────
+// Al editar, el de la cotización guardada (aunque hoy esté apagado). Si es
+// nueva, el de ?ramo=, y solo si es un ramo activo; si no, $ramoCot queda en
+// null y la pantalla pide elegirlo.
+$ramoCot = $modoEdicion
+    ? ((string)($cotizacionEdit['ramo'] ?? '') ?: 'autos')
+    : CotizacionModel::ramoDeParametro($_GET['ramo'] ?? null, $ramosActivos);
 
-$coberturasPorRamo = [
-    'autos'          => ['Básico','Amplio','Amplio Total','Premium'],
-    'vida'           => ['Temporal','Entera','Dotal','Entera con Ahorro'],
-    'gastos_medicos' => ['Individual','Familiar','Empresarial','PyME'],
-    'empresas'       => ['Responsabilidad Civil','Daños','Flotillas','Colectivo de Vida','GMM Colectivo','Multirriesgo','Fianzas'],
+// Parámetros que conservan los enlaces del selector de ramo.
+$paramsSinRamo = array_filter(['cliente_id' => $clienteIdPre ?: null]);
+$urlCambiarRamo = '/crear-cotizacion' . ($paramsSinRamo ? '?' . http_build_query($paramsSinRamo) : '');
+
+$ramoLabel = null;
+$coberturas = $companias = $docsRamo = $requeridos = $fotosRamo = $docEmision = [];
+if ($ramoCot !== null) {
+    $ramoLabel = [
+        'icono'  => CatalogoModel::ICONOS_RAMO[$ramoCot] ?? 'clipboard',
+        'nombre' => CotizacionModel::etiquetasRamo()[$ramoCot] ?? $ramoCot,
+    ];
+
+    // Aseguradoras y coberturas activas del ramo. Al editar se añade el valor
+    // guardado si ya no está en el catálogo, para no perderlo al guardar.
+    $coberturas = CotizacionModel::opcionesConValores(
+        $catalogo->etiquetas(CatalogoModel::COBERTURA, $ramoCot),
+        [$modoEdicion ? ($cotizacionEdit['tipo_cobertura'] ?? '') : '']
+    );
+    $companias = CotizacionModel::opcionesConValores(
+        $catalogo->etiquetas(CatalogoModel::ASEGURADORA, $ramoCot),
+        [$modoEdicion ? ($cotizacionEdit['compania'] ?? '') : '']
+    );
+
+    // Espacios de carga del ramo, repartidos como los pinta la sección 5.
+    $docsRamo   = $tiposDocDe($ramoCot);
+    $requeridos = $catalogo->requeridos($ramoCot);
+    $fotosRamo  = array_filter($docsRamo, static fn(string $t): bool => str_starts_with($t, 'foto_coche_'), ARRAY_FILTER_USE_KEY);
+    $docEmision = array_diff_key($docsRamo, $fotosRamo, ['doc_cotizacion' => true]);
+}
+$iconosDocEmision = [
+    'ine'                 => 'person-vcard',
+    'comprobante_dom'     => 'house',
+    'tarjeta_circulacion' => 'car-front',
+    'factura_auto'        => 'receipt',
+    'constancia_fiscal'   => 'files',
 ];
-$companias = ['GNP','Qualitas','Chubb','Inbursa'];
 $estadosF  = ['N'=>'Nueva','R'=>'Renovación'];
 
-$coberturasPorRamoJSON = json_encode($coberturasPorRamo);
 $pageTitle = $modoEdicion
     ? 'Editar Cotización — ' . ($cotizacionEdit['folio'] ?? '#'.$cotizacionId)
     : 'Nueva Cotización';
@@ -336,7 +411,7 @@ $pageTitle = $modoEdicion
                         </div>
                         <input type="hidden" id="cotizacionIdHidden" value="<?php echo $cotizacionId; ?>">
                     </div>
-                    <?php else: ?>
+                    <?php elseif ($ramoCot !== null): ?>
                     <div class="folio-card">
                         <div class="folio-icon">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -370,6 +445,8 @@ $pageTitle = $modoEdicion
                         </div>
                         <input type="hidden" id="clienteIdHidden" value="<?php echo $clienteSel['id']; ?>">
                     </div>
+                    <?php elseif ($ramoCot === null): ?>
+                    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Primero elige el ramo; después, el cliente.</p>
                     <?php else: ?>
                     <div class="form-group">
                         <label class="form-label required">Cliente</label>
@@ -394,14 +471,40 @@ $pageTitle = $modoEdicion
 
                     <!-- ═══ SECCIÓN 2: RAMO ═══ -->
                     <span class="section-label">2 · Ramo del Seguro</span>
+                    <?php if ($ramoCot === null): ?>
+                    <!-- Sin ramo válido en la URL: se elige aquí, sin suponer ninguno. -->
+                    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
+                        <?php if (isset($_GET['ramo']) && $_GET['ramo'] !== ''): ?>
+                        Ese ramo no está disponible en tu empresa.
+                        <?php endif; ?>
+                        ¿De qué ramo es la cotización?
+                    </p>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:20px;">
+                        <?php foreach ($ramosActivos as $rk => $rNombre): ?>
+                        <a class="metodo-card" style="display:block;text-decoration:none;color:inherit;"
+                           href="/crear-cotizacion?<?php echo htmlspecialchars(http_build_query($paramsSinRamo + ['ramo' => $rk])); ?>">
+                            <div style="font-size:20px;margin-bottom:4px;"><?php echo icono(CatalogoModel::ICONOS_RAMO[$rk] ?? 'clipboard'); ?></div>
+                            <div style="font-size:12px;font-weight:600;"><?php echo htmlspecialchars($rNombre); ?></div>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:24px;padding-top:20px;border-top:1px solid var(--border-color);">
+                        <a href="<?php echo $clienteSel ? '/cliente/' . (int)$clienteSel['id'] : '/cotizaciones'; ?>" class="btn btn-outline">Cancelar</a>
+                    </div>
+                    <?php else: ?>
                     <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--info-light);border:1px solid var(--accent-color);border-radius:var(--border-radius);margin-bottom:16px;">
                         <span style="font-size:26px;"><?php echo icono($ramoLabel['icono']); ?></span>
                         <div style="flex:1;">
-                            <div style="font-weight:700;color:var(--accent-color);font-size:14px;"><?php echo $ramoLabel['nombre']; ?></div>
-                            <div style="font-size:11px;color:var(--text-secondary);">Ramo activo en tu sesión. <a href="/dashboard" style="color:var(--accent-color);">Cambiar ramo</a></div>
+                            <div style="font-weight:700;color:var(--accent-color);font-size:14px;"><?php echo htmlspecialchars($ramoLabel['nombre']); ?></div>
+                            <?php if ($modoEdicion): ?>
+                            <div style="font-size:11px;color:var(--text-secondary);">Ramo de la cotización. No cambia al editar.</div>
+                            <?php else: ?>
+                            <div style="font-size:11px;color:var(--text-secondary);">Ramo de esta cotización. <a href="<?php echo htmlspecialchars($urlCambiarRamo); ?>" style="color:var(--accent-color);">Cambiar ramo</a></div>
+                            <?php endif; ?>
                         </div>
                     </div>
-                    <input type="hidden" id="ramoHidden" value="<?php echo htmlspecialchars($ramoActivo ?? 'autos'); ?>">
+                    <input type="hidden" id="ramoHidden" value="<?php echo htmlspecialchars($ramoCot); ?>">
 
                     <!-- ═══ SECCIÓN 3: DATOS DEL SEGURO ═══ -->
                     <span class="section-label">3 · Datos del Seguro</span>
@@ -411,8 +514,8 @@ $pageTitle = $modoEdicion
                             <label class="form-label required">Tipo de Cobertura</label>
                             <select class="form-select" id="coberturaSelect">
                                 <option value="">Selecciona…</option>
-                                <?php foreach($coberturasPorRamo[$ramoActivo] ?? [] as $cob): ?>
-                                <option value="<?php echo $cob; ?>" <?php echo ($modoEdicion && ($cotizacionEdit['tipo_cobertura']??'')===$cob)?'selected':''; ?>><?php echo $cob; ?></option>
+                                <?php foreach($coberturas as $cob): ?>
+                                <option value="<?php echo htmlspecialchars($cob); ?>" <?php echo ($modoEdicion && ($cotizacionEdit['tipo_cobertura']??'')===$cob)?'selected':''; ?>><?php echo htmlspecialchars($cob); ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -432,7 +535,7 @@ $pageTitle = $modoEdicion
                             <select class="form-select" id="companiaSelect">
                                 <option value="">Selecciona…</option>
                                 <?php foreach($companias as $c): ?>
-                                <option value="<?php echo $c; ?>" <?php echo ($modoEdicion && ($cotizacionEdit['compania']??'')===$c)?'selected':''; ?>><?php echo $c; ?></option>
+                                <option value="<?php echo htmlspecialchars($c); ?>" <?php echo ($modoEdicion && ($cotizacionEdit['compania']??'')===$c)?'selected':''; ?>><?php echo htmlspecialchars($c); ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -482,10 +585,14 @@ $pageTitle = $modoEdicion
 
                     <!-- ═══ SECCIÓN 5: DOCUMENTOS ═══ -->
                     <span class="section-label">5 · Documentos</span>
+                    <?php if ($requeridos): ?>
+                    <p style="font-size:11px;color:var(--text-muted);margin:-8px 0 12px;"><span style="color:var(--danger-color);font-weight:700;">*</span> Requerido para emitir la póliza.</p>
+                    <?php endif; ?>
 
+                    <?php if (isset($docsRamo['doc_cotizacion'])): ?>
                     <div style="margin-bottom:20px;">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                            <span style="font-size:13px;font-weight:700;"><?= icono('clipboard') ?> Documento de cotización</span>
+                            <span style="font-size:13px;font-weight:700;"><?= icono('clipboard') ?> <?php echo htmlspecialchars($docsRamo['doc_cotizacion'][0]); ?><?php if (in_array('doc_cotizacion', $requeridos, true)): ?><span style="color:var(--danger-color);"> *</span><?php endif; ?></span>
                             <span class="tag-info">Principal</span>
                         </div>
                         <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">
@@ -500,34 +607,36 @@ $pageTitle = $modoEdicion
                             <div class="doc-preview" id="prev_doc_cotizacion" style="display:none;"></div>
                         </div>
                     </div>
+                    <?php endif; ?>
 
-                    <?php if ($ramoActivo === 'autos'): ?>
+                    <?php if ($fotosRamo): ?>
                     <div style="margin-bottom:20px;">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                             <span style="font-size:13px;font-weight:700;"><?= icono('camera') ?> Fotos del vehículo</span>
-                            <span style="font-size:10px;color:var(--text-muted);">hasta 5 · JPG/PNG</span>
+                            <span style="font-size:10px;color:var(--text-muted);">hasta <?php echo count($fotosRamo); ?> · JPG/PNG</span>
                         </div>
                         <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
-                            <?php for ($i=1;$i<=5;$i++): $tipo="foto_coche_{$i}"; ?>
+                            <?php foreach ($fotosRamo as $tipo => [$labelFoto]): $i = (int)substr($tipo, strlen('foto_coche_')); ?>
                             <div>
                                 <div class="doc-drop-zone" id="zone_<?php echo $tipo; ?>" data-action="openFile" data-target="file_foto_<?php echo $i; ?>"
                                      style="aspect-ratio:1;flex-direction:column;padding:10px;justify-content:center;">
                                     <input type="file" id="file_foto_<?php echo $i; ?>" name="<?php echo $tipo; ?>" accept=".jpg,.jpeg,.png" data-handler="docSelected" data-tipo="<?php echo $tipo; ?>" style="display:none;">
                                     <span style="font-size:20px;"><?= icono('camera') ?></span>
-                                    <span style="font-size:10px;margin-top:3px;">Foto <?php echo $i; ?></span>
+                                    <span style="font-size:10px;margin-top:3px;text-align:center;"><?php echo htmlspecialchars($labelFoto); ?><?php if (in_array($tipo, $requeridos, true)): ?><span style="color:var(--danger-color);"> *</span><?php endif; ?></span>
                                 </div>
                                 <div class="doc-preview" id="prev_<?php echo $tipo; ?>" style="display:none;margin-top:4px;"></div>
                             </div>
-                            <?php endfor; ?>
+                            <?php endforeach; ?>
                         </div>
                     </div>
                     <?php endif; ?>
 
+                    <?php if ($docEmision): ?>
                     <div>
                         <div class="emit-docs-toggle" id="toggleEmitBtn">
                             <span><?= icono('folder') ?></span>
                             <span style="flex:1;">Documentos para emisión</span>
-                            <span style="font-size:11px;color:var(--text-muted);">INE, comprobante, tarjeta de circulación, etc.</span>
+                            <span style="font-size:11px;color:var(--text-muted);"><?php echo htmlspecialchars(implode(', ', array_column(array_slice($docEmision, 0, 3), 0)) . (count($docEmision) > 3 ? ', etc.' : '')); ?></span>
                             <span id="emitArrow" style="font-size:12px;transition:transform .2s;">▼</span>
                         </div>
                         <div id="emitDocsPanel" style="display:none;">
@@ -535,19 +644,11 @@ $pageTitle = $modoEdicion
                                 <?= icono('exclamation-triangle-fill') ?> Estos documentos son necesarios para <strong>emitir la póliza</strong>, no para cotizar. Súbelos solo si el cliente ya los compartió.
                             </p>
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                                <?php
-                                $docEmision = [
-                                    'ine'                 => ['person-vcard','INE / Identificación oficial'],
-                                    'comprobante_dom'     => ['house','Comprobante de domicilio'],
-                                    'tarjeta_circulacion' => ['car-front','Tarjeta de circulación'],
-                                    'factura_auto'        => ['receipt','Factura del auto'],
-                                    'constancia_fiscal'   => ['files','Constancia de situación fiscal'],
-                                ];
-                                foreach ($docEmision as $tipo => [$icon, $label]): ?>
+                                <?php foreach ($docEmision as $tipo => [$label]): ?>
                                 <div style="display:flex;flex-direction:column;gap:5px;">
                                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text-secondary);">
-                                        <span><?php echo icono($icon); ?></span>
-                                        <span><?php echo $label; ?></span>
+                                        <span><?php echo icono($iconosDocEmision[$tipo] ?? 'file-earmark-text'); ?></span>
+                                        <span><?php echo htmlspecialchars($label); ?><?php if (in_array($tipo, $requeridos, true)): ?><span style="color:var(--danger-color);"> *</span><?php endif; ?></span>
                                     </label>
                                     <div class="doc-drop-zone" id="zone_<?php echo $tipo; ?>" data-action="openFile" data-target="file_<?php echo $tipo; ?>">
                                         <input type="file" id="file_<?php echo $tipo; ?>" name="<?php echo $tipo; ?>" accept=".pdf,.jpg,.jpeg,.png" data-handler="docSelected" data-tipo="<?php echo $tipo; ?>" style="display:none;">
@@ -560,6 +661,7 @@ $pageTitle = $modoEdicion
                             </div>
                         </div>
                     </div>
+                    <?php endif; ?>
 
                     <div id="docCounter" style="font-size:12px;color:var(--text-secondary);margin:12px 0 4px;text-align:right;">0 documentos seleccionados</div>
 
@@ -574,6 +676,7 @@ $pageTitle = $modoEdicion
                             <?php echo $modoEdicion ? icono('floppy') . ' Guardar Cambios' : icono('check-circle-fill') . ' Crear Cotización'; ?>
                         </button>
                     </div>
+                    <?php endif; /* $ramoCot */ ?>
 
                 </div>
             </div>
@@ -582,8 +685,8 @@ $pageTitle = $modoEdicion
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
+<?php if ($ramoCot !== null): ?>
 <script nonce="<?= $cspNonce ?>">
-const coberturasPorRamo = <?php echo $coberturasPorRamoJSON; ?>;
 const clientePreId      = <?php echo $clienteIdPre ?? 'null'; ?>;
 const modoEdicion       = <?php echo $modoEdicion ? 'true' : 'false'; ?>;
 const cotizacionEditId  = <?php echo $cotizacionId ?? 'null'; ?>;
@@ -812,6 +915,7 @@ function showToast(msg, type='success') {
     setTimeout(() => { t.classList.add('hiding'); setTimeout(() => t.remove(), 300); }, 5000);
 }
 </script>
+<?php endif; ?>
 
 <script src="/js/crm-events.js" nonce="<?= $cspNonce ?>"></script>
 <script src="/js/modales.js"    nonce="<?= $cspNonce ?>"></script>

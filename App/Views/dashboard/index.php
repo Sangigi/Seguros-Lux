@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 use App\Security\SessionManager;
-use App\Models\{ClientModel, CotizacionModel, CitaModel, HistorialModel};
+use App\Models\{CatalogoModel, ClientModel, CotizacionModel, CitaModel, HistorialModel};
 use Database\Connection;
 
 SessionManager::requireAuth('/login');
@@ -15,8 +15,15 @@ if (SessionManager::isAdmin()) {
 
 $agenteId  = SessionManager::getAgentId();
 $agente    = SessionManager::getAgentData();
-$ramo      = SessionManager::getRamo();
 $empresaId = \App\Security\Tenant::requireId();
+
+// ── Ramos (catálogo de la empresa) y filtro de esta página ────────────────
+// Las tarjetas de ramo filtran los KPIs y la gráfica de cotizaciones de ESTA
+// pantalla con ?ramo=<clave>; sin parámetro se ve todo. No se guarda en la
+// sesión, así que no filtra ninguna otra pantalla.
+$ramosActivos = (new CatalogoModel())->ramos();
+$ramoGet      = $_GET['ramo'] ?? '';
+$ramo         = is_string($ramoGet) && isset($ramosActivos[$ramoGet]) ? $ramoGet : null;
 
 $clienteModel    = new ClientModel();
 $cotizacionModel = new CotizacionModel();
@@ -53,13 +60,26 @@ if ($stmtAtc && $stmtAtc->execute([$empresaId])) {
 }
 
 // ── Config ramos ──────────────────────────────────────────────────────────
-$ramos_info = [
-    'autos'          => ['icon' => 'bi-car-front-fill',  'nombre' => 'Vehicular',      'desc' => 'Seguro vehicular',     'color' => '#0ea5e9', 'color_light' => '#e0f2fe'],
-    'vida'           => ['icon' => 'bi-heart-fill',       'nombre' => 'Vida',           'desc' => 'Seguro de vida',       'color' => '#10b981', 'color_light' => '#d1fae5'],
-    'gastos_medicos' => ['icon' => 'bi-hospital-fill',    'nombre' => 'Gastos Médicos', 'desc' => 'Cobertura médica',     'color' => '#8b5cf6', 'color_light' => '#ede9fe'],
-    'empresas'       => ['icon' => 'bi-buildings-fill',   'nombre' => 'Empresas',       'desc' => 'Seguros corporativos', 'color' => '#f59e0b', 'color_light' => '#fef3c7'],
+// Qué ramos se muestran y su nombre salen del catálogo; aquí solo queda la
+// presentación de cada clave fija (descripción y colores).
+$estiloRamo = [
+    'autos'          => ['desc' => 'Seguro vehicular',     'color' => '#0ea5e9', 'color_light' => '#e0f2fe'],
+    'vida'           => ['desc' => 'Seguro de vida',       'color' => '#10b981', 'color_light' => '#d1fae5'],
+    'gastos_medicos' => ['desc' => 'Cobertura médica',     'color' => '#8b5cf6', 'color_light' => '#ede9fe'],
+    'empresas'       => ['desc' => 'Seguros corporativos', 'color' => '#f59e0b', 'color_light' => '#fef3c7'],
 ];
-$ramo_actual = $ramos_info[$ramo] ?? $ramos_info['autos'];
+$ramos_info = [];
+foreach ($ramosActivos as $clave => $etiqueta) {
+    $ramos_info[$clave] = ['icon' => CatalogoModel::ICONOS_RAMO[$clave] ?? 'clipboard', 'nombre' => $etiqueta]
+        + ($estiloRamo[$clave] ?? ['desc' => '', 'color' => '#64748b', 'color_light' => '#f1f5f9']);
+}
+// Sin filtro, el banner habla de todos los ramos (los KPIs no están filtrados).
+$ramo_actual = $ramo !== null
+    ? $ramos_info[$ramo]
+    : ['icon' => 'bar-chart', 'nombre' => 'Todos los ramos', 'desc' => '', 'color' => '#0284c7', 'color_light' => '#e0f2fe'];
+
+// Los atajos del banner llevan el ramo filtrado a la pantalla de destino.
+$qRamo = $ramo !== null ? '?' . http_build_query(['ramo' => $ramo]) : '';
 
 // JSON para charts
 $clientesPorDiaJSON       = json_encode($clientes_por_dia);
@@ -76,13 +96,13 @@ $pageTitle = 'Dashboard';
     <style>
         :root { --success-color:#31e04e; --warning-color:#e0ce31; }
         .ramo-selector{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;}
-        .ramo-card{position:relative;border-radius:var(--border-radius-lg);padding:0;cursor:pointer;overflow:hidden;border:3px solid transparent;transition:all .25s;text-decoration:none;background:none;}
+        .ramo-card{position:relative;display:block;border-radius:var(--border-radius-lg);padding:0;cursor:pointer;overflow:hidden;border:3px solid transparent;transition:all .25s;text-decoration:none;background:none;text-align:center;color:inherit;}
         .ramo-card:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.12);}
         .ramo-card.active{border-color:var(--ramo-color);box-shadow:0 8px 24px rgba(0,0,0,.15);}
         .ramo-card-inner{padding:22px 20px;background:var(--bg-card);}
         .ramo-card.active .ramo-card-inner{background:var(--ramo-light);}
         .ramo-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
-        .ramo-emoji i{font-size:32px;color:var(--ramo-color);}
+        .ramo-emoji{font-size:32px;line-height:1;color:var(--ramo-color);}
         .ramo-badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--ramo-light);color:var(--ramo-color);}
         .ramo-card.active .ramo-badge{background:var(--ramo-color);color:#fff;}
         .ramo-nombre{font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:3px;}
@@ -95,7 +115,7 @@ $pageTitle = 'Dashboard';
         .ramo-active-indicator{position:absolute;top:0;left:0;right:0;height:4px;background:var(--ramo-color);display:none;}
         .ramo-card.active .ramo-active-indicator{display:block;}
         .ramo-banner{background:linear-gradient(135deg,var(--primary-color),var(--primary-light));border-radius:var(--border-radius-lg);padding:20px 28px;color:#fff;display:flex;align-items:center;gap:16px;margin-bottom:24px;}
-        .ramo-banner-emoji i{font-size:40px;color:#fff;}
+        .ramo-banner-emoji{font-size:40px;line-height:1;color:#fff;}
         .ramo-banner-info{flex:1;}
         .ramo-banner-title{font-size:22px;font-weight:700;}
         .ramo-banner-sub{font-size:13px;opacity:.8;margin-top:3px;}
@@ -148,25 +168,26 @@ $pageTitle = 'Dashboard';
             </div>
         </header>
 
-        <!-- Selector de ramo -->
+        <!-- Selector de ramo: filtra esta página (?ramo=<clave>); la tarjeta
+             activa vuelve a mostrar todos los ramos. -->
         <div class="ramo-selector">
             <?php foreach ($ramos_info as $ramo_key => $info):
                 $es_activo = ($ramo_key === $ramo);
                 $total_cot = $conteos_ramo[$ramo_key]['cotizaciones'] ?? 0;
                 $total_ven = $conteos_ramo[$ramo_key]['ventas']       ?? 0;
+                $href_ramo = $es_activo ? '/dashboard' : '/dashboard?' . http_build_query(['ramo' => $ramo_key]);
             ?>
-            <form method="POST" action="/set-ramo" style="display:contents;">
-                <input type="hidden" name="ramo" value="<?php echo $ramo_key; ?>">
-                <button type="submit"
+                <a href="<?php echo htmlspecialchars($href_ramo); ?>"
                     class="ramo-card <?php echo $es_activo ? 'active' : ''; ?>"
+                    <?php if ($es_activo): ?>title="Quitar el filtro y ver todos los ramos"<?php endif; ?>
                     style="--ramo-color:<?php echo $info['color']; ?>;--ramo-light:<?php echo $info['color_light']; ?>;">
                     <div class="ramo-active-indicator"></div>
                     <div class="ramo-card-inner">
                         <div class="ramo-card-top">
-                            <span class="ramo-emoji"><i class="bi <?php echo $info['icon']; ?>"></i></span>
+                            <span class="ramo-emoji"><?= icono($info['icon']) ?></span>
                             <span class="ramo-badge"><?php echo $es_activo ? 'Activo' : 'Cambiar'; ?></span>
                         </div>
-                        <div class="ramo-nombre"><?php echo $info['nombre']; ?></div>
+                        <div class="ramo-nombre"><?php echo htmlspecialchars($info['nombre']); ?></div>
                         <div class="ramo-desc"><?php echo $info['desc']; ?></div>
                         <div class="ramo-stats">
                             <div class="ramo-stat-item">
@@ -179,24 +200,31 @@ $pageTitle = 'Dashboard';
                             </div>
                         </div>
                     </div>
-                </button>
-            </form>
+                </a>
             <?php endforeach; ?>
         </div>
 
         <!-- Banner ramo activo -->
         <div class="ramo-banner" style="background:linear-gradient(135deg,<?php echo $ramo_actual['color']; ?>,<?php echo $ramo_actual['color']; ?>cc);">
-            <div class="ramo-banner-emoji"><i class="bi <?php echo $ramo_actual['icon']; ?>"></i></div>
+            <div class="ramo-banner-emoji"><?= icono($ramo_actual['icon']) ?></div>
             <div class="ramo-banner-info">
-                <div class="ramo-banner-title">Módulo <?php echo $ramo_actual['nombre']; ?></div>
+                <?php if ($ramo !== null): ?>
+                <div class="ramo-banner-title">Módulo <?php echo htmlspecialchars($ramo_actual['nombre']); ?></div>
                 <div class="ramo-banner-sub">
-                    Viendo estadísticas del ramo <?php echo strtolower($ramo_actual['nombre']); ?> —
+                    Viendo estadísticas del ramo <?php echo htmlspecialchars(mb_strtolower($ramo_actual['nombre'])); ?> —
                     <?php echo htmlspecialchars($agente['nombre'] . ' ' . $agente['apellido']); ?>
                 </div>
+                <?php else: ?>
+                <div class="ramo-banner-title"><?php echo htmlspecialchars($ramo_actual['nombre']); ?></div>
+                <div class="ramo-banner-sub">
+                    Viendo estadísticas de todos tus ramos —
+                    <?php echo htmlspecialchars($agente['nombre'] . ' ' . $agente['apellido']); ?>
+                </div>
+                <?php endif; ?>
             </div>
             <div class="ramo-banner-actions">
-                <a href="/crear-cotizacion" class="btn" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);">+ Cotización</a>
-                <a href="/clientes" class="btn" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);">Ver Clientes</a>
+                <a href="/crear-cotizacion<?php echo htmlspecialchars($qRamo); ?>" class="btn" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);">+ Cotización</a>
+                <a href="/clientes<?php echo htmlspecialchars($qRamo); ?>" class="btn" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);">Ver Clientes</a>
             </div>
         </div>
 
@@ -308,8 +336,8 @@ const datosClientesPorDia     = <?php echo $clientesPorDiaJSON; ?>;
 const datosCotizacionesVentas = <?php echo $cotizacionesVsVentasJSON; ?>;
 const datosVehiculosCotizados = <?php echo $vehiculosJSON; ?>;
 const datosEstadoClientes     = <?php echo $estadoClientesJSON; ?>;
-const ramoActivo              = '<?php echo $ramo; ?>';
-const ramoColor               = '<?php echo $ramo_actual['color']; ?>';
+const ramoActivo              = <?php echo json_encode((string) $ramo); ?>;
+const ramoColor               = <?php echo json_encode($ramo_actual['color']); ?>;
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof initDashboardCharts === 'function') initDashboardCharts();
 });

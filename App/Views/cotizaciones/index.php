@@ -2,59 +2,80 @@
 declare(strict_types=1);
 
 use App\Security\SessionManager;
-use App\Models\{CotizacionModel, ClientModel, HistorialModel};
+use App\Models\{CatalogoModel, CotizacionModel, ClientModel, HistorialModel};
+use App\Services\{ArchivosCotizacion, CotizacionCorreo};
 use Database\Connection;
 
 SessionManager::requireAuth('/login');
 
 $agenteId        = SessionManager::getAgentId();
 $empresaId       = \App\Security\Tenant::requireId();
-$ramoActivo      = SessionManager::getRamo(); // null = todos
 $cotizacionModel = new CotizacionModel();
 $clienteModel    = new ClientModel();
 $historialModel  = new HistorialModel();
+$catalogo        = new CatalogoModel();
+
+// Filtro de ramo de ESTA pantalla: /cotizaciones?ramo=<clave>, sin parámetro
+// son todos. Solo vale un ramo activo del catálogo de la empresa, y no se
+// guarda en sesión: no filtra ninguna otra pantalla.
+$ramosActivos = $catalogo->ramos();
+$ramoFiltro   = CotizacionModel::ramoDeParametro($_GET['ramo'] ?? null, $ramosActivos); // null = todos
 
 // ── Helper: URL pre-firmada de iDrive/S3 ──────────────────────────────────────
-function generarUrlIdrive(string $folio, string $tipo, string $nombreArchivo, int $minutos = 30): ?string
+/**
+ * Enlace firmado para un objeto de iDrive, o null si iDrive no está
+ * configurado, el objeto no existe o no es de la cotización indicada.
+ *
+ * La clave de los archivos de cotización la arma ArchivosCotizacion::claveIdrive(),
+ * igual que el cron que los sube (clientes/{slug}/{folio}/{carpeta}/…). Como esa
+ * clave no lleva la empresa, con $cotizacionId se comprueba antes la metadata
+ * `cotizacion-id` que pone el cron, para no firmar el archivo de otra empresa
+ * con un cliente homónimo y el mismo folio.
+ */
+function generarUrlIdrive(string $s3Key, int $cotizacionId = 0, int $minutos = 30): ?string
 {
-    static $s3     = null;
-    static $bucket = null;
+    static $s3       = null;
+    static $bucket   = null;
+    static $resuelto = false;
 
-    if ($s3 === null) {
+    if (!$resuelto) {
+        $resuelto  = true;
         $keyId     = getenv('IDRIVE_KEY_ID');
         $keySecret = getenv('IDRIVE_KEY_SECRET');
         $endpoint  = getenv('IDRIVE_ENDPOINT') ?: 's3.us-west-2.idrivee2.com';
         $region    = getenv('IDRIVE_REGION')   ?: 'us-west-2';
         $bucket    = getenv('IDRIVE_BUCKET')   ?: 'crmseguros';
 
-        if (!$keyId || !$keySecret) return null;
-
-        $autoloader = dirname(__DIR__, 2) . '/vendor/autoload.php';
-        if (!file_exists($autoloader)) return null;
-        require_once $autoloader;
-
-        try {
-            $s3 = new \Aws\S3\S3Client([
-                'version'                 => 'latest',
-                'region'                  => $region,
-                'endpoint'                => "https://{$endpoint}",
-                'use_path_style_endpoint' => true,
-                'credentials'             => ['key' => $keyId, 'secret' => $keySecret],
-            ]);
-        } catch (\Throwable $e) {
-            return null;
+        // Composer ya lo carga el front controller (public/index.php).
+        if ($keyId && $keySecret && class_exists(\Aws\S3\S3Client::class)) {
+            try {
+                $s3 = new \Aws\S3\S3Client([
+                    'version'                 => 'latest',
+                    'region'                  => $region,
+                    'endpoint'                => "https://{$endpoint}",
+                    'use_path_style_endpoint' => true,
+                    'credentials'             => ['key' => $keyId, 'secret' => $keySecret],
+                    // Quien espera es una persona frente a la pantalla.
+                    'http'                    => ['connect_timeout' => 5, 'timeout' => 20],
+                ]);
+            } catch (\Throwable $e) {
+                error_log('iDrive: no se pudo inicializar: ' . $e->getMessage());
+                $s3 = null;
+            }
         }
     }
 
-    $carpeta = match ($tipo) {
-        'poliza'           => 'polizas',
-        'comprobante_pago' => 'pagos',
-        default            => 'documentos',
-    };
-
-    $s3Key = 'cotizaciones/' . ($folio ?: 'sin_folio') . "/{$carpeta}/{$nombreArchivo}";
+    if ($s3 === null || $s3Key === '') return null;
 
     try {
+        if ($cotizacionId > 0) {
+            $cabecera = $s3->headObject(['Bucket' => $bucket, 'Key' => $s3Key]);
+            $deCot    = $cabecera['Metadata']['cotizacion-id'] ?? null;
+            if ($deCot !== null && (int) $deCot !== $cotizacionId) {
+                error_log("iDrive: el objeto pertenece a otra cotización (se esperaba #{$cotizacionId}); no se firma.");
+                return null;
+            }
+        }
         $cmd = $s3->getCommand('GetObject', ['Bucket' => $bucket, 'Key' => $s3Key]);
         return (string) $s3->createPresignedRequest($cmd, "+{$minutos} minutes")->getUri();
     } catch (\Throwable $e) {
@@ -166,21 +187,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
         $uploadsBase = dirname(__DIR__, 3) . '/uploads/';
         $folio       = $cot['folio'] ?? '';
 
-        $archivos = $cotizacionModel->getArchivos($cotId);
-        $tipoLabel = [
-            'poliza'=>'Póliza','ine'=>'INE','comprobante_dom'=>'Comprobante domicilio',
-            'tarjeta_circulacion'=>'Tarjeta circulación','factura_auto'=>'Factura del auto',
-            'constancia_fiscal'=>'Constancia fiscal',
-            'foto_coche_1'=>'Foto 1','foto_coche_2'=>'Foto 2','foto_coche_3'=>'Foto 3',
-            'foto_coche_4'=>'Foto 4','foto_coche_5'=>'Foto 5','comprobante_pago'=>'Comprobante pago',
-        ];
-        $docs = array_map(function($a) use ($tipoLabel, $uploadsBase, $cotId, $folio) {
+        // Nombre del cliente tal como lo arma el cron que sube a iDrive:
+        // CONCAT(nombre,' ',apellido_paterno), que es NULL si falta alguno.
+        $cli           = $clienteModel->find((int)$cot['cliente_id'], ['nombre', 'apellido_paterno']);
+        $clienteNombre = ($cli && $cli['nombre'] !== null && $cli['apellido_paterno'] !== null)
+            ? $cli['nombre'] . ' ' . $cli['apellido_paterno']
+            : '';
+
+        $archivos  = $cotizacionModel->getArchivos($cotId);
+        $tipoLabel = CotizacionModel::etiquetasDocumento((string)($cot['ramo'] ?? ''));
+        $docs = array_map(function($a) use ($tipoLabel, $uploadsBase, $cotId, $folio, $clienteNombre) {
             $ext       = strtolower(pathinfo($a['nombre_archivo'], PATHINFO_EXTENSION));
             $rutaFis   = $uploadsBase . 'cotizaciones/' . $cotId . '/' . $a['nombre_archivo'];
             $dispLocal = ($a['idrive_borrado'] === null) && file_exists($rutaFis);
             $urlLocal  = $dispLocal ? '/archivo?file=cotizaciones/' . $cotId . '/' . $a['nombre_archivo'] : null;
             if (!$urlLocal && !empty($a['idrive_subido'])) {
-                $urlLocal = generarUrlIdrive($folio, $a['tipo_documento'] ?? 'documentos', $a['nombre_archivo']);
+                $urlLocal = generarUrlIdrive(
+                    ArchivosCotizacion::claveIdrive($clienteNombre, $folio, (string)($a['tipo_documento'] ?? ''), $a['nombre_archivo']),
+                    $cotId
+                );
             }
             return [
                 'id'         => (int)$a['id'],
@@ -246,33 +271,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
                     }
                 }
                 if (!$urlPol && !empty($pol['idrive_subido'])) {
-                    if (!empty($pol['idrive_key'])) {
-                        try {
-                            static $s3pol = null;
-                            if ($s3pol === null) {
-                                $autoloader = dirname(__DIR__, 2) . '/vendor/autoload.php';
-                                if (file_exists($autoloader)) {
-                                    require_once $autoloader;
-                                    $s3pol = new \Aws\S3\S3Client([
-                                        'version'                 => 'latest',
-                                        'region'                  => getenv('IDRIVE_REGION') ?: 'us-west-2',
-                                        'endpoint'                => 'https://' . (getenv('IDRIVE_ENDPOINT') ?: 's3.us-west-2.idrivee2.com'),
-                                        'use_path_style_endpoint' => true,
-                                        'credentials'             => [
-                                            'key'    => getenv('IDRIVE_KEY_ID'),
-                                            'secret' => getenv('IDRIVE_KEY_SECRET'),
-                                        ],
-                                    ]);
-                                }
-                            }
-                            if ($s3pol) {
-                                $cmd    = $s3pol->getCommand('GetObject', ['Bucket' => getenv('IDRIVE_BUCKET') ?: 'crmseguros', 'Key' => $pol['idrive_key']]);
-                                $urlPol = (string) $s3pol->createPresignedRequest($cmd, '+30 minutes')->getUri();
-                            }
-                        } catch (\Throwable $eS3) {}
-                    } else {
-                        $urlPol = generarUrlIdrive($folio, 'poliza', $pol['nombre_archivo']);
-                    }
+                    // El cron guarda en idrive_key la clave con la que subió la
+                    // póliza; solo las filas antiguas sin ella usan la clave calculada.
+                    $urlPol = generarUrlIdrive(
+                        !empty($pol['idrive_key'])
+                            ? (string)$pol['idrive_key']
+                            : ArchivosCotizacion::claveIdrive($clienteNombre, $folio, 'poliza', (string)$pol['nombre_archivo'])
+                    );
                 }
                 $ext = strtolower(pathinfo($pol['nombre_archivo'], PATHINFO_EXTENSION));
                 $polizas[] = [
@@ -333,6 +338,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             'Folio: ' . ($cot['folio'] ?? '#'.$cotId)
         );
         echo json_encode(['ok'=>true]);
+        exit;
+    }
+
+    // Enviar la cotización al cliente por correo. Solo pasa a 'enviada' si
+    // el correo salió de verdad (antes solo se cambiaba el estado).
+    if ($_POST['accion'] === 'enviar_cliente') {
+        // Esta acción le escribe a alguien de fuera: no se acepta sin token.
+        if (!SessionManager::validateCsrf((string)($_POST['csrf_token'] ?? ''))) {
+            echo json_encode(['ok'=>false,'msg'=>'La sesión caducó. Recarga la página.']); exit;
+        }
+        $cotId = (int)($_POST['cotizacion_id'] ?? 0);
+        if (!$cotId) { echo json_encode(['ok'=>false,'msg'=>'ID inválido.']); exit; }
+
+        // El servicio carga la cotización y su cliente de la empresa activa,
+        // comprueba que sea del asesor (o que su rol vea todas), envía con el
+        // documento adjunto y, si salió, la marca y lo anota en el historial.
+        $envio = CotizacionCorreo::enviarAlCliente($cotId, $agenteId, SessionManager::getRole());
+
+        echo json_encode([
+            'ok'       => $envio['ok'],
+            'msg'      => $envio['msg'],
+            'estado'   => $envio['estado'],
+            'adjuntos' => $envio['adjuntos'],
+            'omitidos' => $envio['omitidos'],
+        ]);
         exit;
     }
 
@@ -407,8 +437,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
 }
 
 // ── Datos para la vista ───────────────────────────────────────────────────────
-// Filtramos por ramo activo si hay uno seleccionado en sesión
-$cotizaciones = $cotizacionModel->getAllConCliente($agenteId, $ramoActivo ?: null);
+// Filtramos por el ramo de la pestaña (?ramo=), si hay uno
+$cotizaciones = $cotizacionModel->getAllConCliente($agenteId, $ramoFiltro);
 foreach ($cotizaciones as &$c) {
     $c['id']        = (int)  $c['id'];
     $c['precio']    = (float)$c['precio'];
@@ -454,28 +484,25 @@ $estados_cot = [
     'pagado'    => ['label'=>'Pagado',    'class'=>'badge-success'],
 ];
 
-$ramos_info = [
-    'autos'          => ['icono'=>'car-front','label'=>'Autos'],
-    'vida'           => ['icono'=>'heart-fill','label'=>'Vida'],
-    'gastos_medicos' => ['icono'=>'hospital','label'=>'GMM'],
-    'empresas'       => ['icono'=>'building','label'=>'Empresas'],
-];
+// Nombre e ícono de cada ramo, del catálogo de la empresa. Incluye los ramos
+// apagados para que sus cotizaciones se sigan viendo con su nombre; las
+// pestañas, en cambio, solo muestran los activos ($ramosActivos).
+$ramos_info  = CotizacionModel::infoRamos();
 $ramos_icono = array_map(fn($r) => $r['icono'], $ramos_info);
 
-// Compañías y coberturas según ramo activo (usadas en modal editar)
-$companiasPorRamo = CotizacionModel::companiasPorRamo();
-$coberturasPorRamo = CotizacionModel::coberturasPorRamo();
-// Añadir 'empresas' al array legacy (retrocompatibilidad)
-$coberturasPorRamo['empresas'] = $coberturasPorRamo['empresas'] ?? ['Responsabilidad Civil','Daños','Vida en Grupo','GMM Colectivo'];
-
-$companias = $ramoActivo ? ($companiasPorRamo[$ramoActivo] ?? $companiasPorRamo['autos'])
-                         : ['GNP','Qualitas','AXA','HDI','Mapfre','Zurich','Banorte','Chubb','Ana Seguros','Inbursa'];
+// Filtro de compañía: las aseguradoras del catálogo (del ramo de la pestaña,
+// o de todos) más las que ya están guardadas en las cotizaciones listadas,
+// que conservan el nombre con el que se guardaron aunque el catálogo cambie.
+$companias = CotizacionModel::opcionesConValores(
+    $catalogo->etiquetas(CatalogoModel::ASEGURADORA, $ramoFiltro ?? ''),
+    array_column($cotizaciones, 'compania')
+);
 $vigencias  = ['6 meses','12 meses','24 meses'];
 $deducibles = [2,3,5,10,15,20];
 
-$cotizacionesJSON      = json_encode($cotizaciones);
-$companiasPorRamoJSON  = json_encode($companiasPorRamo);
-$coberturasPorRamoJSON = json_encode($coberturasPorRamo);
+$cotizacionesJSON = json_encode($cotizaciones);
+$ramosInfoJSON    = json_encode($ramos_info, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+$urlNuevaCot      = '/crear-cotizacion' . ($ramoFiltro ? '?ramo=' . urlencode($ramoFiltro) : '');
 $pageTitle = 'Cotizaciones';
 ?>
 <!DOCTYPE html>
@@ -526,29 +553,29 @@ $pageTitle = 'Cotizaciones';
                             </svg>
                         </span>
                         Cotizaciones
-                        <?php if ($ramoActivo): ?>
+                        <?php if ($ramoFiltro): ?>
                         <span style="font-size:14px;font-weight:400;color:var(--text-muted);margin-left:8px;">
-                            — <?php echo isset($ramos_info[$ramoActivo]) ? icono($ramos_info[$ramoActivo]['icono']) : ''; ?> <?php echo $ramos_info[$ramoActivo]['label'] ?? $ramoActivo; ?>
+                            — <?php echo icono($ramos_info[$ramoFiltro]['icono'] ?? 'clipboard'); ?> <?php echo htmlspecialchars($ramos_info[$ramoFiltro]['label'] ?? $ramoFiltro); ?>
                         </span>
                         <?php endif; ?>
                     </h1>
                     <p class="page-subtitle">Gestiona todas tus cotizaciones de seguros</p>
                 </div>
                 <div class="page-actions">
-                    <a href="/crear-cotizacion" class="btn btn-primary">+ Nueva Cotización</a>
+                    <a href="<?php echo htmlspecialchars($urlNuevaCot); ?>" class="btn btn-primary">+ Nueva Cotización</a>
                 </div>
             </div>
         </header>
 
-        <!-- ── Pestañas de ramo ── -->
+        <!-- ── Pestañas de ramo: filtran solo esta página (?ramo=) ── -->
         <div class="ramo-tabs">
-            <a href="/cotizaciones" class="ramo-tab <?php echo !$ramoActivo ? 'active' : ''; ?>">
+            <a href="/cotizaciones" class="ramo-tab <?php echo !$ramoFiltro ? 'active' : ''; ?>">
                 <?= icono('clipboard') ?> Todos
                 <span class="tab-count"><?php echo array_sum(array_column($ramoStats, 'cotizaciones')); ?></span>
             </a>
-            <?php foreach ($ramos_info as $ramo => $info): ?>
-            <a href="/set-ramo?ramo=<?php echo $ramo; ?>&redirect=/cotizaciones" class="ramo-tab <?php echo $ramoActivo === $ramo ? 'active' : ''; ?>">
-                <?php echo icono($info['icono']); ?> <?php echo $info['label']; ?>
+            <?php foreach ($ramosActivos as $ramo => $etiquetaRamo): ?>
+            <a href="/cotizaciones?ramo=<?php echo urlencode($ramo); ?>" class="ramo-tab <?php echo $ramoFiltro === $ramo ? 'active' : ''; ?>">
+                <?php echo icono($ramos_info[$ramo]['icono'] ?? 'clipboard'); ?> <?php echo htmlspecialchars($etiquetaRamo); ?>
                 <span class="tab-count"><?php echo $ramoStats[$ramo]['cotizaciones'] ?? 0; ?></span>
             </a>
             <?php endforeach; ?>
@@ -584,18 +611,11 @@ $pageTitle = 'Cotizaciones';
                         <option value="<?php echo $k; ?>"><?php echo $v['label']; ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <select class="filter-select" id="filterRamo">
-                        <option value="todos">Todos los ramos</option>
-                        <?php foreach($ramos_info as $rk=>$rv): ?>
-                        <option value="<?php echo $rk; ?>" <?php echo $ramoActivo===$rk?'selected':''; ?>>
-                            <?php echo $rv['label']; ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <?php /* El ramo se filtra con las pestañas de arriba; aquí no se repite. */ ?>
                     <select class="filter-select" id="filterCompania">
                         <option value="todos">Todas las compañías</option>
                         <?php foreach($companias as $c): ?>
-                        <option value="<?php echo $c; ?>"><?php echo $c; ?></option>
+                        <option value="<?php echo htmlspecialchars($c); ?>"><?php echo htmlspecialchars($c); ?></option>
                         <?php endforeach; ?>
                     </select>
                     <button id="btnSortVence" class="btn btn-outline"
@@ -621,8 +641,8 @@ $pageTitle = 'Cotizaciones';
                 <?php if (empty($cotizaciones)): ?>
                 <div class="empty-state">
                     <div class="empty-state-icon"><?= icono('clipboard') ?></div>
-                    <div class="empty-state-title">Sin cotizaciones<?php echo $ramoActivo ? ' en este ramo' : ''; ?></div>
-                    <a href="/crear-cotizacion" class="btn btn-primary">+ Nueva Cotización</a>
+                    <div class="empty-state-title">Sin cotizaciones<?php echo $ramoFiltro ? ' en este ramo' : ''; ?></div>
+                    <a href="<?php echo htmlspecialchars($urlNuevaCot); ?>" class="btn btn-primary">+ Nueva Cotización</a>
                 </div>
                 <?php else: ?>
                 <div class="table-container">
@@ -880,30 +900,23 @@ $pageTitle = 'Cotizaciones';
 // DATOS (inyectados desde PHP)
 // ─────────────────────────────────────────────────────────────────────────────
 const cotizacionesData    = <?php echo $cotizacionesJSON; ?>;
-const COMPANIAS_POR_RAMO  = <?php echo $companiasPorRamoJSON; ?>;
-const COBERTURAS_POR_RAMO = <?php echo $coberturasPorRamoJSON; ?>;
-const RAMO_ACTIVO         = <?php echo json_encode($ramoActivo ?: null); ?>;
+const RAMO_ACTIVO         = <?php echo json_encode($ramoFiltro); ?>; // ramo de la pestaña (?ramo=), null = todos
+const CSRF_TOKEN          = <?php echo json_encode(SessionManager::getCsrfToken()); ?>;
 
-const RAMOS_INFO = {
-    autos:          { icono: 'car-front', label: 'Autos' },
-    vida:           { icono: 'heart-fill', label: 'Vida' },
-    gastos_medicos: { icono: 'hospital', label: 'GMM' },
-    empresas:       { icono: 'building', label: 'Empresas' },
-};
+// Nombre e ícono de cada ramo, del catálogo de la empresa (incluye los apagados).
+const RAMOS_INFO = <?php echo $ramosInfoJSON; ?>;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FILTROS Y BÚSQUEDA
+// FILTROS Y BÚSQUEDA (el ramo lo filtran las pestañas, en el servidor)
 // ─────────────────────────────────────────────────────────────────────────────
 function filtrarTabla() {
     const q        = (document.getElementById('searchInput')?.value || '').toLowerCase();
     const estado   = document.getElementById('filterEstado')?.value  || 'todos';
-    const ramo     = document.getElementById('filterRamo')?.value    || 'todos';
     const compania = (document.getElementById('filterCompania')?.value || 'todos').toLowerCase();
     let visible    = 0;
     document.querySelectorAll('#cotizacionesTableBody tr').forEach(tr => {
         const show = (!q       || (tr.dataset.search   || '').includes(q))
                   && (estado   === 'todos' || tr.dataset.estado   === estado)
-                  && (ramo     === 'todos' || tr.dataset.ramo     === ramo)
                   && (compania === 'todos' || (tr.dataset.compania || '').toLowerCase() === compania);
         tr.style.display = show ? '' : 'none';
         if (show) visible++;
@@ -913,7 +926,6 @@ function filtrarTabla() {
 }
 document.getElementById('searchInput')?.addEventListener('input', filtrarTabla);
 document.getElementById('filterEstado')?.addEventListener('change', filtrarTabla);
-document.getElementById('filterRamo')?.addEventListener('change', filtrarTabla);
 document.getElementById('filterCompania')?.addEventListener('change', filtrarTabla);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -988,7 +1000,8 @@ function verCotizacion(id) {
     if (!cot) return;
     const eBadge = {pendiente:'badge-warning',enviada:'badge-info',aceptada:'badge-success',rechazada:'badge-danger',pagado:'badge-success'};
     const eLabel = {pendiente:'Pendiente',enviada:'Enviada',aceptada:'Aceptada',rechazada:'Rechazada',pagado:'Pagado'};
-    const ramos  = {autos:iconoSvg('car-front'),vida:iconoSvg('heart-fill'),gastos_medicos:iconoSvg('hospital'),empresas:iconoSvg('building')};
+    const ramos  = Object.fromEntries(Object.entries(RAMOS_INFO).map(([k, r]) => [k, iconoSvg(r.icono)]));
+    const ramoLabel = escapeHtml(RAMOS_INFO[cot.ramo]?.label || cot.ramo || '');
     const fechaFmt = cot.fecha ? new Date(cot.fecha+'T12:00').toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'}) : '—';
 
     // Construir sección de detalles por ramo
@@ -1019,7 +1032,7 @@ function verCotizacion(id) {
             detallesRamoHtml = `
             <div>
                 <div style="font-size:11px;font-weight:700;color:var(--accent-color);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">
-                    ${ramos[cot.ramo]||iconoSvg('clipboard')} Detalles de${RAMOS_INFO[cot.ramo]?.label||cot.ramo}
+                    ${ramos[cot.ramo]||iconoSvg('clipboard')} Detalles de ${ramoLabel}
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;">${items}</div>
             </div>`;
@@ -1061,7 +1074,7 @@ function verCotizacion(id) {
                 </div>
                 <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;text-align:center;">
                     <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;">Ramo</div>
-                    <div style="font-weight:600;margin-top:4px;font-size:13px;">${ramos[cot.ramo]||''} ${RAMOS_INFO[cot.ramo]?.label||cot.ramo||'Autos'}</div>
+                    <div style="font-weight:600;margin-top:4px;font-size:13px;">${ramos[cot.ramo]||''} ${ramoLabel}</div>
                 </div>
             </div>
             ${detallesRamoHtml}
@@ -1212,16 +1225,43 @@ function actualizarBadgeEnTabla(id, estado) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ENVIAR COTIZACIÓN
 // ─────────────────────────────────────────────────────────────────────────────
+// Envía la cotización al cliente por correo (con el documento adjunto). El
+// estado solo cambia si el servidor confirma que el correo salió.
 function enviarCotizacion(id) {
     const cot = cotizacionesData.find(c => c.id === id);
-    if (!cot || !confirm(`¿Marcar como enviada?\nCliente: ${cot.cliente_nombre}`)) return;
+    if (!cot) return;
+    const correo = (cot.cliente_correo || '').trim();
+    if (!correo) {
+        showToast('El cliente no tiene un correo válido. Agrégalo en su ficha antes de enviar la cotización.', 'error');
+        return;
+    }
+    if (!confirm(`¿Enviar la cotización por correo al cliente?\nCliente: ${cot.cliente_nombre}\nCorreo: ${correo}`)) return;
+
+    // Puede haber dos botones (fila y modal de detalle): se bloquean ambos mientras se envía.
+    const botones = document.querySelectorAll(`[data-action="enviar"][data-id="${id}"]`);
+    botones.forEach(b => { b.disabled = true; });
+
     const fd = new FormData();
-    fd.append('accion','cambiar_estado'); fd.append('cotizacion_id', id);
-    fd.append('estado','enviada');        fd.append('comentarios','Cotización enviada al cliente.');
-    fetch('/cotizaciones',{method:'POST',body:fd}).then(r=>r.json()).then(d => {
-        if (d.ok) { if(cot) cot.estado='enviada'; actualizarBadgeEnTabla(id,'enviada'); showToast('Marcada como enviada','success'); }
-        else showToast(d.msg||'Error','error');
-    });
+    fd.append('accion', 'enviar_cliente');
+    fd.append('cotizacion_id', id);
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch('/cotizaciones', {method:'POST', body:fd})
+        .then(r => r.json())
+        .then(d => {
+            if (d.ok) {
+                if (d.estado && d.estado !== cot.estado) {
+                    cot.estado = d.estado;
+                    actualizarBadgeEnTabla(id, d.estado);
+                }
+                // Salió, pero sin algún adjunto: aviso en vez de éxito, para que se note.
+                const tipo = (d.omitidos && d.omitidos.length) ? 'warning' : 'success';
+                showToast(escapeHtml(d.msg || 'Cotización enviada por correo.'), tipo);
+            } else {
+                showToast(escapeHtml(d.msg || 'No se pudo enviar la cotización.'), 'error');
+            }
+        })
+        .catch(() => showToast('Error de conexión', 'error'))
+        .finally(() => botones.forEach(b => { b.disabled = false; }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1243,7 +1283,7 @@ function enviarCoordinador(id) {
 // EDITAR COTIZACIÓN — redirige al formulario con modo edición
 // ─────────────────────────────────────────────────────────────────────────────
 function editarCotizacion(id) {
-    window.location.href = '/crear-cotizacion?editar=' + id;
+    window.location.href = '/crear-cotizacion?cotizacion_id=' + id;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

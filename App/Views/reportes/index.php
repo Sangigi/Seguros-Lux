@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 use App\Security\SessionManager;
-use App\Models\{ClientModel, CotizacionModel, CitaModel, HistorialModel};
+use App\Models\{CatalogoModel, ClientModel, CotizacionModel, CitaModel, HistorialModel};
 
 SessionManager::requireAuth('/login');
 
@@ -13,12 +13,20 @@ $cotizacionModel = new CotizacionModel();
 $citaModel       = new CitaModel();
 $historialModel  = new HistorialModel();
 
-// ── Filtro de ramo (GET param ?ramo=autos|vida|gastos_medicos|empresas|todos) ─
-$ramosDisponibles = ['todos','autos','vida','gastos_medicos','empresas'];
-$ramoFiltro = in_array($_GET['ramo'] ?? '', $ramosDisponibles, true)
-    ? $_GET['ramo']
-    : 'todos';
-$ramoParam = $ramoFiltro === 'todos' ? null : $ramoFiltro;
+// ── Filtro de ramo de esta página (GET ?ramo=<clave>; sin parámetro, todos) ─
+// Los ramos salen del catálogo de la empresa: solo se ofrecen los activos.
+$coloresRamo = ['autos'=>'#0ea5e9', 'vida'=>'#c9a227', 'gastos_medicos'=>'#10b981', 'empresas'=>'#8b5cf6'];
+$ramoLabels  = ['todos' => ['label'=>'Todos los ramos', 'icon'=>'bar-chart', 'color'=>'#64748b']];
+foreach ((new CatalogoModel())->ramos() as $clave => $etiqueta) {
+    $ramoLabels[$clave] = [
+        'label' => $etiqueta,
+        'icon'  => CatalogoModel::ICONOS_RAMO[$clave] ?? 'clipboard',
+        'color' => $coloresRamo[$clave] ?? '#64748b',
+    ];
+}
+$ramoGet    = $_GET['ramo'] ?? '';
+$ramoFiltro = is_string($ramoGet) && $ramoGet !== 'todos' && isset($ramoLabels[$ramoGet]) ? $ramoGet : 'todos';
+$ramoParam  = $ramoFiltro === 'todos' ? null : $ramoFiltro;
 
 $kpis = $cotizacionModel->getKpis($agenteId, $ramoParam);
 $kpis['clientes_total']    = $clienteModel->countTotal($agenteId, $ramoParam);
@@ -36,13 +44,6 @@ $actividad        = $historialModel->getRecentByAgenteId($agenteId);
 $iconosAct = ['registro'=>'person','cotizacion'=>'clipboard','venta'=>'check-circle-fill','cita'=>'calendar-event','llamada'=>'telephone','nota'=>'pencil-square','cambio_estado'=>'arrow-repeat'];
 $actividad = array_map(fn($a) => array_merge($a, ['icono' => isset($iconosAct[$a['tipo']]) ? icono($iconosAct[$a['tipo']]) : '•']), $actividad);
 
-$ramoLabels = [
-    'todos'          => ['label'=>'Todos los ramos',        'icon'=>'bar-chart',  'color'=>'#64748b'],
-    'autos'          => ['label'=>'Autos',                  'icon'=>'car-front',  'color'=>'#0ea5e9'],
-    'vida'           => ['label'=>'Vida',                   'icon'=>'heart-fill', 'color'=>'#c9a227'],
-    'gastos_medicos' => ['label'=>'Gastos Médicos Mayores', 'icon'=>'hospital',   'color'=>'#10b981'],
-    'empresas'       => ['label'=>'Empresas',               'icon'=>'building',   'color'=>'#8b5cf6'],
-];
 $ramoActualInfo = $ramoLabels[$ramoFiltro];
 
 $pageTitle = 'Reportes';
@@ -111,26 +112,22 @@ $pageTitle = 'Reportes';
         <!-- ── Selector de ramo ─────────────────────────────────────────────── -->
         <div class="ramo-tabs">
             <?php foreach ($ramoLabels as $slug => $info): ?>
-            <a href="?ramo=<?php echo $slug; ?>"
+            <a href="/reportes<?php echo $slug === 'todos' ? '' : '?' . htmlspecialchars(http_build_query(['ramo' => $slug])); ?>"
                class="ramo-tab <?php echo $ramoFiltro === $slug ? 'active' : ''; ?>"
                style="<?php echo $ramoFiltro === $slug ? 'background:'.$info['color'].';' : ''; ?>">
-                <?php echo icono($info['icon']); ?> <?php echo $info['label']; ?>
+                <?php echo icono($info['icon']); ?> <?php echo htmlspecialchars($info['label']); ?>
             </a>
             <?php endforeach; ?>
         </div>
 
-        <!-- Banner ramo activo -->
+        <!-- Banner ramo activo (para quitar el filtro está la pestaña "Todos los ramos") -->
         <?php if ($ramoFiltro !== 'todos'): ?>
         <div class="ramo-banner"
              style="background:<?php echo $ramoActualInfo['color']; ?>15;border:1.5px solid <?php echo $ramoActualInfo['color']; ?>40;">
             <span style="font-size:20px;"><?php echo icono($ramoActualInfo['icon']); ?></span>
             <span style="color:<?php echo $ramoActualInfo['color']; ?>;">
-                Mostrando estadísticas de <strong><?php echo $ramoActualInfo['label']; ?></strong>
+                Mostrando estadísticas de <strong><?php echo htmlspecialchars($ramoActualInfo['label']); ?></strong>
             </span>
-            <a href="?ramo=todos"
-               style="margin-left:auto;font-size:12px;color:var(--text-muted);text-decoration:none;background:var(--bg-secondary);padding:3px 10px;border-radius:99px;">
-                ✕ Ver todos
-            </a>
         </div>
         <?php endif; ?>
 
