@@ -288,7 +288,13 @@ $h = static fn(?string $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 
             const { ok, data } = await llamar(cuerpo);
 
             if (ok) {
-                location.reload();
+                // Al entrar a una empresa se va directo a su panel; al salir
+                // o cambiar su estado, se queda en la lista.
+                if (accion === 'entrar' && cuerpo.id > 0) {
+                    location.href = '/admin?tab=resumen';
+                } else {
+                    location.reload();
+                }
                 return;
             }
 

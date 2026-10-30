@@ -177,7 +177,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['accion'])) {
 
 // ── Determinar modo vista ─────────────────────────────────────────────────────
 $rol             = SessionManager::getRole();
-$esCoordinador   = in_array($rol, ['coordinador', 'administrador', 'superadmin'], true);
+// El propietario solo llega aquí dentro de una empresa, y la ve completa.
+$esCoordinador   = in_array($rol, ['coordinador', 'administrador', 'superadmin', 'propietario'], true);
 
 // ── Lectura ───────────────────────────────────────────────────────────────────
 $db = \Database\Connection::getConnection();

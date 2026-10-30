@@ -39,8 +39,28 @@ if ($_agenteRol === 'asesor' || $_agenteRol === 'superadmin') {
 }
 
 $_isCoord     = in_array($_agenteRol, ['coordinador', 'administrador'], true);
-$_isSuperadmin= $_agenteRol === 'superadmin';
 $_isAsesor    = $_agenteRol === 'asesor';
+
+// El propietario no pertenece a ninguna empresa. Dentro de una que eligió
+// en Empresas ve el mismo menú que su administrador; fuera, solo el de
+// plataforma.
+$_propietarioEnEmpresa = $_agenteRol === 'propietario' && \App\Security\Tenant::hayContexto();
+$_isSuperadmin = $_agenteRol === 'superadmin' || $_propietarioEnEmpresa;
+
+$_empresaVista = null;
+if ($_propietarioEnEmpresa) {
+    try {
+        $_empresaVista = (new \App\Models\EmpresaModel())->find((int) \App\Security\Tenant::id());
+    } catch (\Throwable $e) {
+        $_empresaVista = null;
+    }
+}
+
+$_inicio = match (true) {
+    $_agenteRol === 'propietario' && !$_propietarioEnEmpresa => '/plataforma/empresas',
+    $_isCoord || $_isSuperadmin                               => '/admin?tab=resumen',
+    default                                                    => '/dashboard',
+};
 
 // Tabs de admin disponibles por rol
 $_adminTabs = [
@@ -350,7 +370,7 @@ button.sidebar-link {
 <aside class="crm-sidebar" id="crmSidebar" role="navigation" aria-label="Menú del CRM">
 
     <!-- Logo -->
-    <a href="<?= ($_isCoord || $_isSuperadmin) ? '/admin?tab=resumen' : '/dashboard' ?>" class="sidebar-logo-wrap">
+    <a href="<?= $_inicio ?>" class="sidebar-logo-wrap">
         <div class="sidebar-logo-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -444,9 +464,20 @@ button.sidebar-link {
              (Panel admin completo + flujo de asesor)
         ══════════════════════════════════════════════ -->
         <div class="sidebar-section-label">
-            Panel Admin
-            <span class="sidebar-rol-badge superadmin">SA</span>
+            <?php if ($_propietarioEnEmpresa): ?>
+                <?= htmlspecialchars((string) ($_empresaVista['nombre'] ?? 'Empresa')) ?>
+                <span class="sidebar-rol-badge superadmin">PR</span>
+            <?php else: ?>
+                Panel Admin
+                <span class="sidebar-rol-badge superadmin">SA</span>
+            <?php endif; ?>
         </div>
+        <?php if ($_propietarioEnEmpresa): ?>
+        <a href="/plataforma/empresas" class="sidebar-link">
+            <i class="bi bi-arrow-left-right"></i>
+            Cambiar de empresa
+        </a>
+        <?php endif; ?>
 
         <?php foreach ($_adminTabsSA as $tabKey => [$icon, $label]): ?>
         <a href="/admin?tab=<?= $tabKey ?>"
@@ -519,6 +550,6 @@ button.sidebar-link {
 </aside>
 
 <script src="<?= asset_url('js/navbar.js') ?>" nonce="<?= $cspNonce ?? '' ?>"></script>
-<?php if ($_isAsesor || $_isSuperadmin): ?>
+<?php if ($_isAsesor || $_agenteRol === 'superadmin'): ?>
 <script src="<?= asset_url('js/notificaciones-navbar.js') ?>" nonce="<?= $cspNonce ?? '' ?>"></script>
 <?php endif; ?>

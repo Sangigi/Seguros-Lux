@@ -27,7 +27,7 @@ set_exception_handler(function(\Throwable $e) {
 $agenteId               = SessionManager::getAgentId();
 $agenteData             = SessionManager::getAgentData();
 $rolAgente              = $agenteData['rol'] ?? 'asesor';
-$esCoordinadorVista     = in_array($rolAgente, ['coordinador', 'administrador', 'superadmin'], true);
+$esCoordinadorVista     = in_array($rolAgente, ['coordinador', 'administrador', 'superadmin', 'propietario'], true);
 
 // Empresa activa: el filtro por empresa va SIEMPRE, sea coordinador o no.
 // `$esCoordinadorVista` solo decide si además se filtra por agente dentro de
